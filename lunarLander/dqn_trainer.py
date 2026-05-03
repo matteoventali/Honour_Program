@@ -1,12 +1,15 @@
 import numpy as np
 import gymnasium as gym
-from collections import defaultdict
+from collections import defaultdict, deque
 import random as ran
-import pickle
 import os
 import matplotlib.pyplot as plt
 import argparse
 import multiprocessing
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 
 # =====================================================================
 # PLOTTING FUNCTION
@@ -27,9 +30,9 @@ def plot_training_results(rewards, window_size=100, shaping=False, filename=None
         plt.plot(range(window_size - 1, len(rewards)), moving_avg, color='red', linewidth=2.5, label=f'Moving Average ({window_size} eps)')
     
     if shaping:
-        plt.title('Hierarchical Q-Learning Training Results (With Reward Shaping)')
+        plt.title('Hierarchical DQN Training Results (With Reward Shaping)')
     else:
-        plt.title('Hierarchical Q-Learning Training Results (No Reward Shaping)')
+        plt.title('Hierarchical DQN Training Results (No Reward Shaping)')
     
     plt.xlabel('Episode #')
     plt.ylabel('Reward')
@@ -37,10 +40,10 @@ def plot_training_results(rewards, window_size=100, shaping=False, filename=None
     plt.legend(loc='upper left')
     plt.tight_layout()
     
-    # Salva o mostra il grafico
+    # Save or show the plot
     if filename:
         plt.savefig(filename)
-        print(f"Grafico salvato in: {filename}")
+        print(f"Plot saved to: {filename}")
     else:
         plt.show()
     plt.close()
@@ -98,7 +101,6 @@ class AbstractGridMDP:
             if delta < theta: break
         print("Abstract Value Function computed.")
 
-
 class DiagonalAbstractGridMDP(AbstractGridMDP):
     """
     Extension of AbstractGridMDP for diagonal movements.
@@ -126,7 +128,6 @@ class DiagonalAbstractGridMDP(AbstractGridMDP):
         reward = 1.0 if next_state == self.goal_state else 0.0
         return next_state, reward
 
-
 # =====================================================================
 # STATE MAPPING (phi function)
 # =====================================================================
@@ -147,40 +148,113 @@ def phi_mapping(obs, grid_w=10, grid_h=10):
     return (abstract_x, abstract_y)
 
 # =====================================================================
-# HIERARCHICAL Q-LEARNER
+# DQN COMPONENTS
 # =====================================================================
 
-class HierarchicalQLearner:
-    def __init__(self, env, abstract_mdp, max_episodes=5000, alpha=0.1, gamma=0.99, policy_name="policy"):
+class QNetwork(nn.Module):
+    """Neural Network Architecture for the DQN"""
+    def __init__(self, state_dim, action_dim):
+        super(QNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_dim, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, action_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
+
+class ReplayBuffer:
+    """Buffer to store past experiences"""
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        batch = ran.sample(self.buffer, batch_size)
+        state, action, reward, next_state, done = map(np.array, zip(*batch))
+        return state, action, reward, next_state, done
+
+    def __len__(self):
+        return len(self.buffer)
+
+# =====================================================================
+# HIERARCHICAL DQN LEARNER
+# =====================================================================
+
+class HierarchicalDQNLearner:
+    def __init__(self, env, abstract_mdp, max_episodes=1000, gamma=0.99, policy_name="policy"):
         self.env = env
         self.abstract_mdp = abstract_mdp
         self.max_episodes = max_episodes
-        self.alpha = alpha
         self.gamma = gamma
-        self.eps = 1.0
-        self.eps_decay = 0.9995
-        self.q_table = defaultdict(lambda: np.zeros(self.env.action_space.n))
         self.policy_name = policy_name
-
-    def _discretize(self, obs):
-        x_intervals     = [-0.5, 0.5]
-        y_intervals     = [-0.1, 0.1, 1.5]
-        vx_intervals    = [-7.5, -5, -0.3, -0.1, 0.1, 0.3, 5, 7.5]
-        vy_intervals    = [-7.5, -5, -0.3, -0.1, 0.1, 0.3, 5, 7.5]
-        theta_intervals = [-1.25663706,  -0.1, 0.1, 1.25663706]
-        omega_intervals = [-7.5, -5, -0.1, 0.1, 5, 7.5]
         
-        res = [
-            np.digitize(obs[0], x_intervals), np.digitize(obs[1], y_intervals),
-            np.digitize(obs[2], vx_intervals), np.digitize(obs[3], vy_intervals),
-            np.digitize(obs[4], theta_intervals), np.digitize(obs[5], omega_intervals),
-            int(obs[6]), int(obs[7])
-        ]
-        return tuple(res)
+        # DQN Hyperparameters
+        self.batch_size = 64
+        self.lr = 1e-3
+        self.tau = 0.005 # For the target network soft update
+        self.eps = 1.0
+        self.eps_min = 0.01
+        self.eps_decay = 0.995 # Slower decay for DQN
+        
+        # Neural Networks Initialization
+        state_dim = self.env.observation_space.shape[0]
+        action_dim = self.env.action_space.n
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
+        self.target_net = QNetwork(state_dim, action_dim).to(self.device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
+        self.memory = ReplayBuffer(capacity=100000)
+
+    def select_action(self, state):
+        if ran.random() < self.eps:
+            return self.env.action_space.sample()
+        else:
+            with torch.no_grad():
+                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                q_values = self.policy_net(state_tensor)
+                return q_values.argmax(dim=1).item()
+
+    def optimize_model(self):
+        if len(self.memory) < self.batch_size:
+            return
+            
+        states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
+        
+        # Convert to tensors
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
+        next_states = torch.FloatTensor(next_states).to(self.device)
+        dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
+        
+        # Compute Q(s, a)
+        q_values = self.policy_net(states).gather(1, actions)
+        
+        # Compute Target Q: r + gamma * max Q(s', a')
+        with torch.no_grad():
+            next_q_values = self.target_net(next_states).max(1)[0].unsqueeze(1)
+            target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
+            
+        # Compute Loss and Backpropagation
+        loss = F.mse_loss(q_values, target_q_values)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        # Soft update for the Target Network
+        for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
+            target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
 
     def train_with_shaping(self):
-        # Step 1: Solve Abstraction
-        print(f"[{self.policy_name}] Starting HRL Training with Reward Shaping...")
+        print(f"[{self.policy_name}] Starting HRL Training with Reward Shaping (DQN)...")
         self.abstract_mdp.value_iteration()
         
         K = 100
@@ -188,100 +262,74 @@ class HierarchicalQLearner:
         
         for n_episode in range(self.max_episodes):
             s_raw, _ = self.env.reset()
-            s_disc = self._discretize(s_raw)
-            
             terminated = truncated = False
             episode_reward = 0
             
             while not (terminated or truncated):
-                # Epsilon-greedy action selection
-                if ran.random() < self.eps:
-                    a = self.env.action_space.sample()
-                else:
-                    a = np.argmax(self.q_table[s_disc])
-                
+                a = self.select_action(s_raw)
                 ns_raw, reward, terminated, truncated, _ = self.env.step(a)
-                ns_disc = self._discretize(ns_raw)
+                done = terminated or truncated
                 
                 # REWARD SHAPING CALCULATION
-                # Phi(s) = V_star(phi(s))
                 phi_s = self.abstract_mdp.v_star[phi_mapping(s_raw)]
                 phi_ns = self.abstract_mdp.v_star[phi_mapping(ns_raw)]
                 
-                # F(s, a, s') = gamma * Phi(s') - Phi(s)
                 shaping_signal = K * (self.gamma * phi_ns - phi_s)
-                # Total shaped reward
                 shaped_reward = reward + shaping_signal 
                 
-                # Q-Table Update
-                best_next_q = np.max(self.q_table[ns_disc])
-                self.q_table[s_disc][a] += self.alpha * (
-                    shaped_reward + self.gamma * best_next_q - self.q_table[s_disc][a]
-                )
+                # Save the experience in the replay buffer using SHAPED REWARD
+                self.memory.push(s_raw, a, shaped_reward, ns_raw, done)
+                
+                # Network training step
+                self.optimize_model()
 
-                s_raw, s_disc = ns_raw, ns_disc
+                s_raw = ns_raw
                 episode_reward += reward
 
-            self.eps = max(0.01, self.eps * self.eps_decay)
+            self.eps = max(self.eps_min, self.eps * self.eps_decay)
             total_rewards.append(episode_reward)
 
-            # Saving the policy obtained
-            if (n_episode + 1) % 1000 == 0:
-                self._save_policy()
-
             if (n_episode + 1) % 500 == 0:
-                print(f"[{self.policy_name}] Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
+                self._save_policy()
+                print(f"[{self.policy_name}] Episode {n_episode+1}/{self.max_episodes} | Avg Reward (last 100): {np.mean(total_rewards[-100:]):.2f} | Eps: {self.eps:.2f}")
 
         return np.array(total_rewards)
 
     def train(self):
-        print(f"[{self.policy_name}] Starting Normal Training")
-        
+        print(f"[{self.policy_name}] Starting Normal Training (DQN)...")
         total_rewards = []
         
         for n_episode in range(self.max_episodes):
             s_raw, _ = self.env.reset()
-            s_disc = self._discretize(s_raw)
-            
             terminated = truncated = False
             episode_reward = 0
             
             while not (terminated or truncated):
-                # Epsilon-greedy action selection
-                if ran.random() < self.eps:
-                    a = self.env.action_space.sample()
-                else:
-                    a = np.argmax(self.q_table[s_disc])
-                
+                a = self.select_action(s_raw)
                 ns_raw, reward, terminated, truncated, _ = self.env.step(a)
-                ns_disc = self._discretize(ns_raw)
+                done = terminated or truncated
                 
-                # Q-Table Update
-                best_next_q = np.max(self.q_table[ns_disc])
-                self.q_table[s_disc][a] += self.alpha * (
-                    reward + self.gamma * best_next_q - self.q_table[s_disc][a]
-                )
+                # Save the experience using the original reward
+                self.memory.push(s_raw, a, reward, ns_raw, done)
+                
+                self.optimize_model()
 
-                s_raw, s_disc = ns_raw, ns_disc
+                s_raw = ns_raw
                 episode_reward += reward
 
-            self.eps = max(0.01, self.eps * self.eps_decay)
+            self.eps = max(self.eps_min, self.eps * self.eps_decay)
             total_rewards.append(episode_reward)
 
-            # Saving the policy obtained
-            if (n_episode + 1) % 1000 == 0:
-                self._save_policy()
-            
             if (n_episode + 1) % 500 == 0:
-                print(f"[{self.policy_name}] Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
+                self._save_policy()
+                print(f"[{self.policy_name}] Episode {n_episode+1}/{self.max_episodes} | Avg Reward (last 100): {np.mean(total_rewards[-100:]):.2f} | Eps: {self.eps:.2f}")
         
         return np.array(total_rewards)
 
     def _save_policy(self):
         os.makedirs("./policy", exist_ok=True)
-        with open("./policy/" + self.policy_name, "wb") as f:
-            pickle.dump(dict(self.q_table), f)
-
+        # Save PyTorch model weights (.pth) instead of the pickle dict
+        torch.save(self.policy_net.state_dict(), f"./policy/{self.policy_name}")
 
 # =====================================================================
 # MAIN
@@ -292,28 +340,27 @@ def run_training(mode, episodes):
     
     if mode == "normal":
         abstract = AbstractGridMDP(width=12, height=12)
-        agent = HierarchicalQLearner(env, abstract, max_episodes=episodes, policy_name="training_normally.pkl")
+        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name="dqn_normally.pth")
         rewards = agent.train()
-        plot_training_results(rewards, window_size=600, shaping=False, filename="./img/training_normally.png")
+        plot_training_results(rewards, window_size=100, shaping=False, filename="./img/dqn_training_normally.png")
         
     elif mode == "shaping":
         abstract = AbstractGridMDP(width=12, height=12)
-        agent = HierarchicalQLearner(env, abstract, max_episodes=episodes, policy_name="training_with_shaping.pkl")
+        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name="dqn_shaping.pth")
         rewards = agent.train_with_shaping()
-        plot_training_results(rewards, window_size=600, shaping=True, filename="./img/training_with_shaping.png")
+        plot_training_results(rewards, window_size=100, shaping=True, filename="./img/dqn_training_with_shaping.png")
         
     elif mode == "extended":
         abstractExtended = DiagonalAbstractGridMDP(width=12, height=12)
-        agent_shaping = HierarchicalQLearner(env, abstractExtended, max_episodes=episodes, policy_name="training_with_shaping_extended.pkl")
+        agent_shaping = HierarchicalDQNLearner(env, abstractExtended, max_episodes=episodes, policy_name="dqn_shaping_extended.pth")
         rewards_shaping = agent_shaping.train_with_shaping()
-        plot_training_results(rewards_shaping, window_size=600, shaping=True, filename="./img/training_with_shaping_extended.png")
-
+        plot_training_results(rewards_shaping, window_size=100, shaping=True, filename="./img/dqn_training_with_shaping_extended.png")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Lancia gli allenamenti per HRL su LunarLander.")
-    parser.add_argument("--mode", type=str, choices=["normal", "shaping", "extended", "all"], default="normal", help="Scegli quale allenamento lanciare")
-    parser.add_argument("--episodes", type=int, default=15000, help="Numero di episodi per l'allenamento")
-    parser.add_argument("--parallel", action="store_true", help="Esegui tutti i 3 modelli in parallelo (ignora --mode)")
+    parser = argparse.ArgumentParser(description="Launch HRL training for LunarLander using DQN.")
+    parser.add_argument("--mode", type=str, choices=["normal", "shaping", "extended", "all"], default="normal", help="Choose which training mode to run")
+    parser.add_argument("--episodes", type=int, default=1500, help="Number of episodes for training")
+    parser.add_argument("--parallel", action="store_true", help="Run all 3 models in parallel (ignores --mode)")
     
     args = parser.parse_args()
     
@@ -321,7 +368,7 @@ if __name__ == "__main__":
     os.makedirs("./policy", exist_ok=True)
 
     if args.parallel:
-        print(f"--- Starting parallel training for {args.episodes} episodes ---")
+        print(f"--- Starting parallel DQN training for {args.episodes} episodes ---")
         modes = ["normal", "shaping", "extended"]
         processes = []
         
@@ -334,10 +381,10 @@ if __name__ == "__main__":
             p.join()
     else:
         if args.mode == "all":
-            print(f"--- Starting sequential training for {args.episodes} episodes ---")
+            print(f"--- Starting sequential DQN training for {args.episodes} episodes ---")
             run_training("normal", args.episodes)
             run_training("shaping", args.episodes)
             run_training("extended", args.episodes)
         else:
-            print(f"--- Starting single training: {args.mode.upper()} for {args.episodes} episodes ---")
+            print(f"--- Starting single DQN training: {args.mode.upper()} for {args.episodes} episodes ---")
             run_training(args.mode, args.episodes)

@@ -5,12 +5,14 @@ import random as ran
 import pickle
 import os
 import matplotlib.pyplot as plt
+import argparse
+import multiprocessing
 
 # =====================================================================
 # PLOTTING FUNCTION
 # =====================================================================
 
-def plot_training_results(rewards, window_size=100, shaping=False):
+def plot_training_results(rewards, window_size=100, shaping=False, filename=None):
     """
     Plots the raw rewards and a moving average to show the learning trend.
     """
@@ -34,7 +36,14 @@ def plot_training_results(rewards, window_size=100, shaping=False):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.legend(loc='upper left')
     plt.tight_layout()
-    plt.show()
+    
+    # Salva o mostra il grafico
+    if filename:
+        plt.savefig(filename)
+        print(f"Grafico salvato in: {filename}")
+    else:
+        plt.show()
+    plt.close()
 
 # =====================================================================
 # ABSTRACT MDP: GRID WORLD REPRESENTATION
@@ -124,7 +133,7 @@ class DiagonalAbstractGridMDP(AbstractGridMDP):
 
 def phi_mapping(obs, grid_w=10, grid_h=10):
     """
-    Maps continuous LunarLander state to Abstract Grid State[cite: 145].
+    Maps continuous LunarLander state to Abstract Grid State.
     obs[0]: x position (-1 to 1)
     obs[1]: y position (-0.5 to 1.5)
     """
@@ -170,8 +179,8 @@ class HierarchicalQLearner:
         return tuple(res)
 
     def train_with_shaping(self):
-        # Step 1: Solve Abstraction [cite: 197]
-        print(f"Starting HRL Training with Reward Shaping...")
+        # Step 1: Solve Abstraction
+        print(f"[{self.policy_name}] Starting HRL Training with Reward Shaping...")
         self.abstract_mdp.value_iteration()
         
         K = 100
@@ -194,7 +203,7 @@ class HierarchicalQLearner:
                 ns_raw, reward, terminated, truncated, _ = self.env.step(a)
                 ns_disc = self._discretize(ns_raw)
                 
-                # REWARD SHAPING CALCULATION [cite: 123]
+                # REWARD SHAPING CALCULATION
                 # Phi(s) = V_star(phi(s))
                 phi_s = self.abstract_mdp.v_star[phi_mapping(s_raw)]
                 phi_ns = self.abstract_mdp.v_star[phi_mapping(ns_raw)]
@@ -221,12 +230,12 @@ class HierarchicalQLearner:
                 self._save_policy()
 
             if (n_episode + 1) % 500 == 0:
-                print(f"Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
+                print(f"[{self.policy_name}] Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
 
         return np.array(total_rewards)
 
     def train(self):
-        print(f"Starting Normal Training")
+        print(f"[{self.policy_name}] Starting Normal Training")
         
         total_rewards = []
         
@@ -264,7 +273,7 @@ class HierarchicalQLearner:
                 self._save_policy()
             
             if (n_episode + 1) % 500 == 0:
-                print(f"Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
+                print(f"[{self.policy_name}] Episode {n_episode+1} | Avg Reward: {np.mean(total_rewards[-100:]):.2f}")
         
         return np.array(total_rewards)
 
@@ -272,28 +281,63 @@ class HierarchicalQLearner:
         os.makedirs("./policy", exist_ok=True)
         with open("./policy/" + self.policy_name, "wb") as f:
             pickle.dump(dict(self.q_table), f)
+
+
+# =====================================================================
+# MAIN
+# =====================================================================
+
+def run_training(mode, episodes):
+    env = gym.make("LunarLander-v3", continuous=False)
     
+    if mode == "normal":
+        abstract = AbstractGridMDP(width=12, height=12)
+        agent = HierarchicalQLearner(env, abstract, max_episodes=episodes, policy_name="training_normally.pkl")
+        rewards = agent.train()
+        plot_training_results(rewards, window_size=600, shaping=False, filename="./img/training_normally.png")
+        
+    elif mode == "shaping":
+        abstract = AbstractGridMDP(width=12, height=12)
+        agent = HierarchicalQLearner(env, abstract, max_episodes=episodes, policy_name="training_with_shaping.pkl")
+        rewards = agent.train_with_shaping()
+        plot_training_results(rewards, window_size=600, shaping=True, filename="./img/training_with_shaping.png")
+        
+    elif mode == "extended":
+        abstractExtended = DiagonalAbstractGridMDP(width=12, height=12)
+        agent_shaping = HierarchicalQLearner(env, abstractExtended, max_episodes=episodes, policy_name="training_with_shaping_extended.pkl")
+        rewards_shaping = agent_shaping.train_with_shaping()
+        plot_training_results(rewards_shaping, window_size=600, shaping=True, filename="./img/training_with_shaping_extended.png")
 
 
 if __name__ == "__main__":
-    env = gym.make("LunarLander-v3", continuous=False)
-    #env = gym.make("LunarLander-v3", continuous=False, gravity=-10.0, enable_wind=False, wind_power=15.0, turbulence_power=1.5)
+    parser = argparse.ArgumentParser(description="Lancia gli allenamenti per HRL su LunarLander.")
+    parser.add_argument("--mode", type=str, choices=["normal", "shaping", "extended", "all"], default="normal", help="Scegli quale allenamento lanciare")
+    parser.add_argument("--episodes", type=int, default=15000, help="Numero di episodi per l'allenamento")
+    parser.add_argument("--parallel", action="store_true", help="Esegui tutti i 3 modelli in parallelo (ignora --mode)")
     
-    # Create the abstract level
-    abstract = AbstractGridMDP(width=12, height=12)
-    abstractExtended = DiagonalAbstractGridMDP(width=12, height=12)
+    args = parser.parse_args()
     
-    # Training normally
-    agent = HierarchicalQLearner(env, abstract, max_episodes=15000, policy_name="training_normally")
-    rewards = agent.train()
-    plot_training_results(rewards, window_size=600, shaping=False)
+    os.makedirs("./img", exist_ok=True)
+    os.makedirs("./policy", exist_ok=True)
 
-    # Training with shaping
-    agent_shaping = HierarchicalQLearner(env, abstract, max_episodes=15000, policy_name="training_with_shaping")
-    rewards_shaping = agent_shaping.train_with_shaping()
-    plot_training_results(rewards_shaping, window_size=600, shaping=True)
-
-    # Training with shaping and action space extended
-    agent_shaping = HierarchicalQLearner(env, abstractExtended, max_episodes=15000, policy_name="training_with_shaping_extended")
-    rewards_shaping = agent_shaping.train_with_shaping()
-    plot_training_results(rewards_shaping, window_size=600, shaping=True)
+    if args.parallel:
+        print(f"--- Starting parallel training for {args.episodes} episodes ---")
+        modes = ["normal", "shaping", "extended"]
+        processes = []
+        
+        for m in modes:
+            p = multiprocessing.Process(target=run_training, args=(m, args.episodes))
+            p.start()
+            processes.append(p)
+            
+        for p in processes:
+            p.join()
+    else:
+        if args.mode == "all":
+            print(f"--- Starting sequential training for {args.episodes} episodes ---")
+            run_training("normal", args.episodes)
+            run_training("shaping", args.episodes)
+            run_training("extended", args.episodes)
+        else:
+            print(f"--- Starting single training: {args.mode.upper()} for {args.episodes} episodes ---")
+            run_training(args.mode, args.episodes)
