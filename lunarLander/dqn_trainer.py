@@ -15,7 +15,7 @@ import torch.nn.functional as F
 # PLOTTING FUNCTION
 # =====================================================================
 
-def plot_training_results(rewards, window_size=100, shaping=False, filename=None):
+def plot_training_results(rewards, window_size=100, shaping=False, algo="DQN", filename=None):
     """
     Plots the raw rewards and a moving average to show the learning trend.
     """
@@ -30,9 +30,9 @@ def plot_training_results(rewards, window_size=100, shaping=False, filename=None
         plt.plot(range(window_size - 1, len(rewards)), moving_avg, color='red', linewidth=2.5, label=f'Moving Average ({window_size} eps)')
     
     if shaping:
-        plt.title('Hierarchical DQN Training Results (With Reward Shaping)')
+        plt.title(f'Hierarchical {algo} Training Results (With Reward Shaping)')
     else:
-        plt.title('Hierarchical DQN Training Results (No Reward Shaping)')
+        plt.title(f'Hierarchical {algo} Training Results (No Reward Shaping)')
     
     plt.xlabel('Episode #')
     plt.ylabel('Reward')
@@ -181,24 +181,26 @@ class ReplayBuffer:
         return len(self.buffer)
 
 # =====================================================================
-# HIERARCHICAL DQN LEARNER
+# HIERARCHICAL DQN/DDQN LEARNER
 # =====================================================================
 
 class HierarchicalDQNLearner:
-    def __init__(self, env, abstract_mdp, max_episodes=1000, gamma=0.99, policy_name="policy"):
+    def __init__(self, env, abstract_mdp, max_episodes=1000, gamma=0.99, policy_name="policy", use_ddqn=False):
         self.env = env
         self.abstract_mdp = abstract_mdp
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
+        self.use_ddqn = use_ddqn
+        self.algo_name = "DDQN" if use_ddqn else "TRUE_SINGLE_DQN"
         
-        # DQN Hyperparameters
+        # Hyperparameters
         self.batch_size = 64
         self.lr = 1e-3
-        self.tau = 0.005 # For the target network soft update
+        self.tau = 0.005 # For the target network soft update (only used in DDQN now)
         self.eps = 1.0
         self.eps_min = 0.01
-        self.eps_decay = 0.995 # Slower decay for DQN
+        self.eps_decay = 0.995 
         
         # Neural Networks Initialization
         state_dim = self.env.observation_space.shape[0]
@@ -206,9 +208,13 @@ class HierarchicalDQNLearner:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
+        # Initialize ONE network
         self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
-        self.target_net = QNetwork(state_dim, action_dim).to(self.device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        
+        # Initialize Target Network ONLY if using DDQN
+        if self.use_ddqn:
+            self.target_net = QNetwork(state_dim, action_dim).to(self.device)
+            self.target_net.load_state_dict(self.policy_net.state_dict())
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
         self.memory = ReplayBuffer(capacity=100000)
@@ -238,9 +244,17 @@ class HierarchicalDQNLearner:
         # Compute Q(s, a)
         q_values = self.policy_net(states).gather(1, actions)
         
-        # Compute Target Q: r + gamma * max Q(s', a')
+        # Compute Target Q
         with torch.no_grad():
-            next_q_values = self.target_net(next_states).max(1)[0].unsqueeze(1)
+            if self.use_ddqn:
+                # DDQN: Select best action using policy_net, evaluate using target_net
+                best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
+                next_q_values = self.target_net(next_states).gather(1, best_actions)
+            else:
+                # TRUE SINGLE DQN: Compute max Q over next states directly from policy_net
+                # (No target network used!)
+                next_q_values = self.policy_net(next_states).max(1)[0].unsqueeze(1)
+                
             target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
             
         # Compute Loss and Backpropagation
@@ -249,12 +263,13 @@ class HierarchicalDQNLearner:
         loss.backward()
         self.optimizer.step()
         
-        # Soft update for the Target Network
-        for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
-            target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
+        # Soft update for the Target Network (ONLY for DDQN)
+        if self.use_ddqn:
+            for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
+                target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
 
     def train_with_shaping(self):
-        print(f"[{self.policy_name}] Starting HRL Training with Reward Shaping (DQN)...")
+        print(f"[{self.policy_name}] Starting HRL Training with Reward Shaping ({self.algo_name})...")
         self.abstract_mdp.value_iteration()
         
         K = 100
@@ -296,7 +311,7 @@ class HierarchicalDQNLearner:
         return np.array(total_rewards)
 
     def train(self):
-        print(f"[{self.policy_name}] Starting Normal Training (DQN)...")
+        print(f"[{self.policy_name}] Starting Normal Training ({self.algo_name})...")
         total_rewards = []
         
         for n_episode in range(self.max_episodes):
@@ -335,45 +350,54 @@ class HierarchicalDQNLearner:
 # MAIN
 # =====================================================================
 
-def run_training(mode, episodes):
+def run_training(mode, episodes, use_ddqn):
     env = gym.make("LunarLander-v3", continuous=False)
+    
+    algo_str = "ddqn" if use_ddqn else "single_dqn"
+    algo_display = "DDQN" if use_ddqn else "True Single DQN"
     
     if mode == "normal":
         abstract = AbstractGridMDP(width=12, height=12)
-        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name="dqn_normally.pth")
+        policy_name = f"{algo_str}_normally.pth"
+        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name=policy_name, use_ddqn=use_ddqn)
         rewards = agent.train()
-        plot_training_results(rewards, window_size=100, shaping=False, filename="./img/dqn_training_normally.png")
+        plot_training_results(rewards, window_size=100, shaping=False, algo=algo_display, filename=f"./img/{algo_str}_training_normally.png")
         
     elif mode == "shaping":
         abstract = AbstractGridMDP(width=12, height=12)
-        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name="dqn_shaping.pth")
+        policy_name = f"{algo_str}_shaping.pth"
+        agent = HierarchicalDQNLearner(env, abstract, max_episodes=episodes, policy_name=policy_name, use_ddqn=use_ddqn)
         rewards = agent.train_with_shaping()
-        plot_training_results(rewards, window_size=100, shaping=True, filename="./img/dqn_training_with_shaping.png")
+        plot_training_results(rewards, window_size=100, shaping=True, algo=algo_display, filename=f"./img/{algo_str}_training_with_shaping.png")
         
     elif mode == "extended":
         abstractExtended = DiagonalAbstractGridMDP(width=12, height=12)
-        agent_shaping = HierarchicalDQNLearner(env, abstractExtended, max_episodes=episodes, policy_name="dqn_shaping_extended.pth")
-        rewards_shaping = agent_shaping.train_with_shaping()
-        plot_training_results(rewards_shaping, window_size=100, shaping=True, filename="./img/dqn_training_with_shaping_extended.png")
+        policy_name = f"{algo_str}_shaping_extended.pth"
+        agent = HierarchicalDQNLearner(env, abstractExtended, max_episodes=episodes, policy_name=policy_name, use_ddqn=use_ddqn)
+        rewards = agent.train_with_shaping()
+        plot_training_results(rewards, window_size=100, shaping=True, algo=algo_display, filename=f"./img/{algo_str}_training_with_shaping_extended.png")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Launch HRL training for LunarLander using DQN.")
+    parser = argparse.ArgumentParser(description="Launch HRL training for LunarLander using True Single DQN or DDQN.")
     parser.add_argument("--mode", type=str, choices=["normal", "shaping", "extended", "all"], default="normal", help="Choose which training mode to run")
     parser.add_argument("--episodes", type=int, default=1500, help="Number of episodes for training")
     parser.add_argument("--parallel", action="store_true", help="Run all 3 models in parallel (ignores --mode)")
+    parser.add_argument("--ddqn", action="store_true", help="Enable Double DQN (DDQN) architecture (Uses Target Network)")
     
     args = parser.parse_args()
     
     os.makedirs("./img", exist_ok=True)
     os.makedirs("./policy", exist_ok=True)
 
+    algo = "DDQN" if args.ddqn else "True Single DQN"
+
     if args.parallel:
-        print(f"--- Starting parallel DQN training for {args.episodes} episodes ---")
+        print(f"--- Starting parallel {algo} training for {args.episodes} episodes ---")
         modes = ["normal", "shaping", "extended"]
         processes = []
         
         for m in modes:
-            p = multiprocessing.Process(target=run_training, args=(m, args.episodes))
+            p = multiprocessing.Process(target=run_training, args=(m, args.episodes, args.ddqn))
             p.start()
             processes.append(p)
             
@@ -381,10 +405,10 @@ if __name__ == "__main__":
             p.join()
     else:
         if args.mode == "all":
-            print(f"--- Starting sequential DQN training for {args.episodes} episodes ---")
-            run_training("normal", args.episodes)
-            run_training("shaping", args.episodes)
-            run_training("extended", args.episodes)
+            print(f"--- Starting sequential {algo} training for {args.episodes} episodes ---")
+            run_training("normal", args.episodes, args.ddqn)
+            run_training("shaping", args.episodes, args.ddqn)
+            run_training("extended", args.episodes, args.ddqn)
         else:
-            print(f"--- Starting single DQN training: {args.mode.upper()} for {args.episodes} episodes ---")
-            run_training(args.mode, args.episodes)
+            print(f"--- Starting single {algo} training: {args.mode.upper()} for {args.episodes} episodes ---")
+            run_training(args.mode, args.episodes, args.ddqn)
