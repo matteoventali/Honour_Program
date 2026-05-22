@@ -142,7 +142,11 @@ class HierarchicalDQNLearner:
                 done = terminated or truncated
                 
                 phi_s = self.abstract_mdp.v_star[self.mapping_fn(s_raw)]
+                
+                # MODIFICA PAPER: Non Return-Invariant RS. 
+                # Nessun azzeramento del potenziale agli stati terminali.
                 phi_ns = self.abstract_mdp.v_star[self.mapping_fn(ns_raw)]
+                
                 shaping_signal = K * (self.gamma * phi_ns - phi_s)
                 
                 self.memory.push(s_raw, a, reward + shaping_signal, ns_raw, done)
@@ -175,7 +179,11 @@ class HierarchicalDQNLearner:
                 episode_goal_reward += env_goal_reward
 
                 phi_s = self.abstract_mdp.v_star[self.mapping_fn(s_raw)]
+                
+                # MODIFICA PAPER: Non Return-Invariant RS.
+                # Nessun azzeramento del potenziale agli stati terminali.
                 phi_ns = self.abstract_mdp.v_star[self.mapping_fn(ns_raw)]
+
                 shaping_signal = K * (self.gamma * phi_ns - phi_s)
                 
                 self.memory.push(s_raw, a, env_goal_reward + shaping_signal, ns_raw, done)
