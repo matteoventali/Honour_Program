@@ -10,11 +10,11 @@ class AbstractGridMDP:
         self.actions = [0, 1, 2, 3]  
         
         # Goal 2D spostato a sinistra per l'esperimento di debugging
-        #self.goal_state = (0, height // 2)
+        self.goal_state = (0, 0)
 
-        center_continuous_x = 0.0
-        mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
-        self.goal_state = (mapped_center_x, 0)
+        #center_continuous_x = 0.0
+        #mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
+        #self.goal_state = (mapped_center_x, 0)
 
         self.v_star = defaultdict(float)
 
