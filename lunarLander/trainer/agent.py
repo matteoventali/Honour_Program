@@ -176,12 +176,13 @@ class HierarchicalDQNLearner:
                 episode_true_reward += original_reward
                 
                 env_goal_reward = original_reward if terminated else 0.0
+                
+                if terminated and self.mapping_fn(ns_raw) == self.abstract_mdp.goal_state:
+                    env_goal_reward += 100.0 # Dagli un vero motivo per restare a sinistra!
+
                 episode_goal_reward += env_goal_reward
 
                 phi_s = self.abstract_mdp.v_star[self.mapping_fn(s_raw)]
-                
-                # MODIFICA PAPER: Non Return-Invariant RS.
-                # Nessun azzeramento del potenziale agli stati terminali.
                 phi_ns = self.abstract_mdp.v_star[self.mapping_fn(ns_raw)]
 
                 shaping_signal = K * (self.gamma * phi_ns - phi_s)
