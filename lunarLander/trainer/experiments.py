@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Import components from your existing modules
-from abstract_mdps import AbstractGridMDP
+from abstract_mdps import DiagonalAbstractGridMDP
 from utils import phi_mapping_grid
 from agent import HierarchicalDQNLearner
 
@@ -72,6 +72,52 @@ def run_sparse_goal_mdp_training(env, agent, abstract_mdp, mapping_fn, episodes,
     return np.array(true_episode_rewards)
 
 
+def plot_value_function_heatmap(abstract_mdp, width=12, height=12, title="Mappa del Potenziale V*"):
+    """
+    Converte il dizionario v_star in una matrice 2D e la stampa come Heatmap,
+    con le linee della griglia posizionate perfettamente sui bordi delle celle.
+    """
+    v_matrix = np.zeros((height, width))
+    
+    for (x, y), value in abstract_mdp.v_star.items():
+        if 0 <= x < width and 0 <= y < height:
+            v_matrix[y, x] = value
+            
+    plt.figure(figsize=(9, 8))
+    im = plt.imshow(v_matrix, cmap='viridis', origin='lower')
+    
+    # Stampa i valori testuali al centro delle celle attive
+    for y in range(height):
+        for x in range(width):
+            val = v_matrix[y, x]
+            if val > 0: 
+                plt.text(x, y, f"{val:.2f}", ha='center', va='center', 
+                         color='white' if val < 0.5 else 'black', fontsize=8, fontweight='bold')
+                
+    plt.colorbar(im, fraction=0.046, pad=0.04, label="Valore del Potenziale")
+    plt.title(title, fontsize=14)
+    plt.xlabel("X (Posizione Orizzontale)", fontsize=12)
+    plt.ylabel("Y (Altitudine / Distanza dal suolo)", fontsize=12)
+    
+    # --- CORREZIONE DEL DISALLINEAMENTO DELLA GRIGLIA ---
+    # 1. Imposta i numeri (Major Ticks) esattamente al centro delle celle
+    plt.xticks(np.arange(0, width, 1))
+    plt.yticks(np.arange(0, height, 1))
+    
+    # 2. Crea dei "Tick Minori" invisibili sui bordi delle celle (-0.5, 0.5, 1.5...)
+    ax = plt.gca()
+    ax.set_xticks(np.arange(-.5, width, 1), minor=True)
+    ax.set_yticks(np.arange(-.5, height, 1), minor=True)
+    
+    # 3. Disegna la griglia SOLO agganciandola ai Tick Minori (sui bordi)
+    ax.grid(which='minor', color='w', linestyle='-', linewidth=1, alpha=0.4)
+    ax.grid(which='major', color='none') # Disattiva la griglia sui numeri
+    # ----------------------------------------------------
+    
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_single_result(rewards, window_size=250, title="Training Results", ylabel="True Episode Reward"):
     """Plots a single training curve without saving."""
     plt.figure(figsize=(10, 6))
@@ -125,13 +171,13 @@ def experiment_1_baseline_vs_shaping(episodes=600):
     
     # --- 1. BASELINE (No Shaping) ---
     print("\n>>> Running Baseline Agent (No Shaping)...")
-    abstract_mdp = AbstractGridMDP() # Used only for the goal state reference
+    abstract_mdp = DiagonalAbstractGridMDP() # Used only for the goal state reference
     agent_baseline = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=episodes, use_ddqn=True, policy_name="baseline_sparse_goal.pth")
     rewards_baseline = run_sparse_goal_mdp_training(env, agent_baseline, abstract_mdp, phi_mapping_grid, episodes, use_shaping=False)
     
     # --- 2. SHAPING ---
     print("\n>>> Running Shaping Agent...")
-    abstract_mdp_shaping = AbstractGridMDP()
+    abstract_mdp_shaping = DiagonalAbstractGridMDP()
     agent_shaping = HierarchicalDQNLearner(env, abstract_mdp_shaping, phi_mapping_grid, max_episodes=episodes, use_ddqn=True, policy_name="shaping_sparse_goal.pth")
     rewards_shaping = run_sparse_goal_mdp_training(env, agent_shaping, abstract_mdp_shaping, phi_mapping_grid, episodes, use_shaping=True)
     
@@ -229,7 +275,7 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     
     # --- 1. STANDARD SHAPING (Baseline per questo esperimento) ---
     print("\n>>> Running Standard Shaping Agent...")
-    abstract_mdp_std = AbstractGridMDP()
+    abstract_mdp_std = DiagonalAbstractGridMDP()
     agent_std = HierarchicalDQNLearner(
         env, abstract_mdp_std, phi_mapping_grid, 
         max_episodes=episodes, use_ddqn=True, policy_name="shaping_std_exp2.pth"
@@ -238,7 +284,7 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     rewards_std = run_sparse_goal_mdp_training(
         env, agent_std, abstract_mdp_std, phi_mapping_grid, episodes, use_shaping=True
     )
-    plot_single_result(rewards_std, title="Exp 2 - Standard Shaping")
+    
 
     # --- 2. TRAJECTORY SHAPING ---
     print("\n>>> Running Trajectory Sub-goals Agent...")
@@ -247,7 +293,7 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     # (Il lander spawna circa al centro-alto: x=5/6, y=7/8 nella griglia 12x12)
     trajectory_path = [(5, 7), (4, 5), (3, 4), (2, 2), (1, 1), (0, 0)]
     
-    abstract_mdp_traj = AbstractGridMDP()
+    abstract_mdp_traj = DiagonalAbstractGridMDP()
     abstract_mdp_traj.value_iteration() # Calcola i potenziali completi
     
     # AZZERAMENTO V* (Creazione del Canyon)
@@ -255,6 +301,8 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     for s in list(abstract_mdp_traj.v_star.keys()):
         if s not in trajectory_path:
             abstract_mdp_traj.v_star[s] = 0.0
+
+    plot_value_function_heatmap(abstract_mdp_traj, title="Effetto Canyon: V* della Traiettoria")
 
     agent_traj = HierarchicalDQNLearner(
         env, abstract_mdp_traj, phi_mapping_grid, 
@@ -264,10 +312,12 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     rewards_traj = run_trajectory_goal_mdp_training(
         env, agent_traj, abstract_mdp_traj, phi_mapping_grid, episodes, trajectory_path
     )
-    plot_single_result(rewards_traj, title="Exp 2 - Trajectory Shaping (+10 Sub-goals)")
+    
 
     # --- 3. COMBINED PLOT ---
     print("\n>>> Generating Combined Plot...")
+    plot_single_result(rewards_std, title="Exp 2 - Standard Shaping")
+    plot_single_result(rewards_traj, title="Exp 2 - Trajectory Shaping (+10 Sub-goals)")
     plot_combined_results({
         "Standard Shaping": rewards_std,
         "Trajectory Sub-goals": rewards_traj
@@ -279,6 +329,5 @@ def experiment_2_trajectory_vs_standard(episodes=800):
 if __name__ == "__main__":
     EPISODES = 1500 
     
-    experiment_1_baseline_vs_shaping(episodes=EPISODES)
-    
-    # experiment_2_trajectory_vs_standard()
+    #experiment_1_baseline_vs_shaping(episodes=EPISODES)
+    experiment_2_trajectory_vs_standard(episodes=EPISODES)
