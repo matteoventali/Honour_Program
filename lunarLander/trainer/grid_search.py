@@ -155,7 +155,7 @@ def main():
     print("=== STARTING GRID SEARCH: Diagonal Abstract MDP ===")
     
     # Ensure a directory exists for our generated plots
-    os.makedirs("grid_search_plots", exist_ok=True)
+    os.makedirs("img/grid_search_plots", exist_ok=True)
     
     # 1. Define the hyperparameters to explore
     goal_configurations = {
@@ -181,7 +181,7 @@ def main():
         rew_str = str(int(g_rew))
         
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Rew:{g_rew}"
-        heatmap_filename = f"grid_search_plots/v_{goal_prefix}_{gamma_str}_{rew_str}.png"
+        heatmap_filename = f"img/grid_search_plots/v_{goal_prefix}_{gamma_str}_{rew_str}.png"
         
         print(f"\n[{idx+1}/{len(combinations)}] Preparing -> {config_name}")
         
@@ -223,8 +223,8 @@ def main():
     print(f"\n🏆 BEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
     
     # Automatically save the final composite learning curves chart
-    save_grid_search_learning_curves(results, filename="grid_search_plots/final_learning_curves.png")
-    print(f">>> All plots successfully saved in the 'grid_search_plots' directory.")
+    save_grid_search_learning_curves(results, filename="img/grid_search_plots/final_learning_curves.png")
+    print(f">>> All plots successfully saved in the 'img/grid_search_plots' directory.")
 
 
 if __name__ == "__main__":
