@@ -17,7 +17,7 @@ class AbstractGridMDP:
         # 2D Goal moved to the bottom-left for the debugging experiment
         self.goal_state = (0, 0)
 
-        # Optional: Dynamic center mapping
+        # Optional: Dynamic center mapping (commented out for current experiments)
         # center_continuous_x = 0.0
         # mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
         # self.goal_state = (mapped_center_x, 0)
@@ -82,10 +82,83 @@ class DiagonalAbstractGridMDP(AbstractGridMDP):
         return next_state, reward
 
 
+class ConfigurableDiagonalMDP(DiagonalAbstractGridMDP):
+    """
+    A configurable version of the DiagonalAbstractGridMDP designed specifically 
+    for Grid Search and Hyperparameter tuning. It supports dynamic goal sets, 
+    variable gamma values, and adjustable reward magnitudes.
+    """
+    def __init__(self, width=12, height=12, gamma=0.99, goal_states=[(0,0)], goal_reward=1.0):
+        super().__init__(width, height, gamma)
+        # Replaces the single goal_state with a Set of multiple valid goal_states
+        self.goal_states = set(goal_states)
+        self.goal_reward = goal_reward
+
+    def get_transitions(self, state, action):
+        # Inherit diagonal movement logic from parent
+        next_state, _ = super().get_transitions(state, action)
+        
+        # Reward is granted if the agent enters ANY of the designated goal cells
+        reward = self.goal_reward if next_state in self.goal_states else 0.0
+        return next_state, reward
+
+    def value_iteration(self, theta=0.001):
+        """Updated Value Iteration to support multiple goal states and variable rewards."""
+        while True:
+            delta = 0
+            new_v = self.v_star.copy()
+            for s in self.states:
+                # Skip computation if the state is one of our goals
+                if s in self.goal_states: continue
+                
+                v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                best_v = max(v_actions)
+                delta = max(delta, abs(best_v - self.v_star[s]))
+                new_v[s] = best_v
+                
+            self.v_star = new_v
+            if delta < theta: break
+            
+        # Ensure all goal states strictly hold their maximum reward value
+        for g in self.goal_states:
+            self.v_star[g] = self.goal_reward
+
+
+class ValleyDiagonalAbstractMDP(DiagonalAbstractGridMDP):
+    """
+    Experiment 3 Variant: The Potential Valley.
+    Instead of manually zeroing out states after computation, this MDP 
+    injects a transition cost (-1.0) for leaving the desired trajectory.
+    This mathematically carves a V* gradient (a funnel) pointing towards the path.
+    """
+    def __init__(self, trajectory_path, width=12, height=12, gamma=0.99):
+        super().__init__(width, height, gamma)
+        # Convert the trajectory list to a Set for O(1) instant lookups
+        self.trajectory_path = set(trajectory_path)
+
+    def get_transitions(self, state, action):
+        # Inherit standard movement calculation
+        next_state, base_reward = super().get_transitions(state, action)
+        
+        # If it hits the final goal, return the clean base reward
+        if next_state == self.goal_state:
+            return next_state, base_reward
+            
+        # THE MAGIC OF THE VALLEY: We inject a negative transition cost 
+        # if the destination state IS NOT part of our desired trajectory.
+        if next_state not in self.trajectory_path:
+            step_penalty = -1.0  # Digs the potential downward (creates the valley)
+        else:
+            step_penalty = 0.0   # The golden path costs nothing
+            
+        total_reward = base_reward + step_penalty
+        return next_state, total_reward
+
+
 class KinematicAbstractMDP:
     """
     4D Kinematic Abstraction.
-    Introduces physics directly into the abstract model.
+    Introduces physics (velocity and angle) directly into the abstract model.
     State representation: (X, Y, Velocity_Y, Angle)
     """
     def __init__(self, width=12, height=12, gamma=0.99):
@@ -106,7 +179,7 @@ class KinematicAbstractMDP:
     def get_transitions(self, state, action):
         x, y, vy, a = state
 
-        # ---- NEW MODIFICATION: THE ASCENT TRAP (SINK STATE) ----
+        # ---- THE ASCENT TRAP (SINK STATE) ----
         # If the agent is moving upward (vy == 2), we treat it as a "black hole".
         # The abstract agent gets stuck here with a 0.0 reward.
         # This elegantly forces the Value Iteration to assign a potential of 
@@ -127,23 +200,23 @@ class KinematicAbstractMDP:
         elif action == 1: # Fire Left Engine (Pushes lander to the Right)
             if x < self.width - 1: next_x += 1
             
-            # MODIFICATION: Incremental angle variation
+            # Incremental angle variation
             if a == 2: next_a = 1   # If tilted right, firing left engine straightens it
             else: next_a = 0        # Otherwise, it tilts further to the left
             
-            # Maintain the "gliding" logic (gravity still acts if not thrusting main)
+            # Gravity still acts if not thrusting main engine
             if y > 0 and vy == 0: next_y -= 1 
             
         elif action == 2: # Fire Main Engine (Pushes Upward / Slows Fall)
             if y > 0: next_y -= 1
             next_vy = 1
-            # MODIFICATION: The main engine NO LONGER straightens the angle.
+            # The main engine does not straighten the angle.
             # The angle remains whatever it currently is (next_a = a)
             
         elif action == 3: # Fire Right Engine (Pushes lander to the Left)
             if x > 0: next_x -= 1
             
-            # MODIFICATION: Incremental angle variation
+            # Incremental angle variation
             if a == 0: next_a = 1   # If tilted left, firing right engine straightens it
             else: next_a = 2        # Otherwise, it tilts further to the right
             
@@ -154,6 +227,7 @@ class KinematicAbstractMDP:
         return next_state, reward
 
     def value_iteration(self, theta=0.001):
+        """Value iteration for the larger 4D state space."""
         print(f"Solving 4D Kinematic Abstract MDP ({len(self.states)} states)...")
         while True:
             delta = 0
@@ -168,34 +242,4 @@ class KinematicAbstractMDP:
 
             self.v_star = new_v
             if delta < theta: break
-
-
-class ValleyDiagonalAbstractMDP(DiagonalAbstractGridMDP):
-    """
-    Experiment 3 Variant: The Potential Valley.
-    Instead of zeroing out states manually after computation, this MDP 
-    injects a transition cost for leaving the desired trajectory.
-    This naturally shapes a V* gradient (funnel) pointing towards the path.
-    """
-    def __init__(self, trajectory_path, width=12, height=12, gamma=0.99):
-        super().__init__(width, height, gamma)
-        # We convert the list to a Set for O(1) instant lookups
-        self.trajectory_path = set(trajectory_path)
-
-    def get_transitions(self, state, action):
-        # Inherit standard movement calculation and base reward (the goal)
-        next_state, base_reward = super().get_transitions(state, action)
-        
-        # If it hits the goal, return the clean base reward
-        if next_state == self.goal_state:
-            return next_state, base_reward
-            
-        # THE MAGIC OF THE VALLEY: We inject a negative transition cost 
-        # if the destination state IS NOT part of our desired trajectory.
-        if next_state not in self.trajectory_path:
-            step_penalty = -1.0  # Digs the potential downward (creates the valley)
-        else:
-            step_penalty = 0.0   # The golden path costs nothing
-            
-        total_reward = base_reward + step_penalty
-        return next_state, total_reward
+        self.v_star[self.goal_state] = 1.0
