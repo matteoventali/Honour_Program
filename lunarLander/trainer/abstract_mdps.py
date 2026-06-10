@@ -2,6 +2,11 @@ from collections import defaultdict
 import numpy as np
 
 class AbstractGridMDP:
+    """
+    Standard 2D Grid Abstraction for the LunarLander.
+    The agent can only move Up, Down, Left, or Right (no diagonals).
+    State representation: (X, Y)
+    """
     def __init__(self, width=12, height=12, gamma=0.99):
         self.width = width
         self.height = height
@@ -9,27 +14,31 @@ class AbstractGridMDP:
         self.states = [(x, y) for x in range(width) for y in range(height)]
         self.actions = [0, 1, 2, 3]  
         
-        # Goal 2D spostato a sinistra per l'esperimento di debugging
+        # 2D Goal moved to the bottom-left for the debugging experiment
         self.goal_state = (0, 0)
 
-        #center_continuous_x = 0.0
-        #mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
-        #self.goal_state = (mapped_center_x, 0)
+        # Optional: Dynamic center mapping
+        # center_continuous_x = 0.0
+        # mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
+        # self.goal_state = (mapped_center_x, 0)
 
         self.v_star = defaultdict(float)
 
     def get_transitions(self, state, action):
         x, y = state
-        if action == 0: y = min(y + 1, self.height - 1) 
-        elif action == 1: y = max(y - 1, 0)             
-        elif action == 2: x = max(x - 1, 0)             
-        elif action == 3: x = min(x + 1, self.width - 1) 
+        
+        # Standard Gridworld Movement
+        if action == 0: y = min(y + 1, self.height - 1)  # Move Up
+        elif action == 1: y = max(y - 1, 0)              # Move Down
+        elif action == 2: x = max(x - 1, 0)              # Move Left
+        elif action == 3: x = min(x + 1, self.width - 1) # Move Right
         
         next_state = (x, y)
         reward = 1.0 if next_state == self.goal_state else 0.0
         return next_state, reward
 
     def value_iteration(self, theta=0.001):
+        """Standard Value Iteration algorithm to compute V*."""
         print("Solving Abstract MDP with Value Iteration...")
         while True:
             delta = 0
@@ -42,16 +51,29 @@ class AbstractGridMDP:
                 new_v[s] = best_v
             self.v_star = new_v
             if delta < theta: break
+        self.v_star[self.goal_state] = 1.0
+
 
 class DiagonalAbstractGridMDP(AbstractGridMDP):
+    """
+    Enhanced 2D Grid Abstraction.
+    Allows the agent to move in 8 directions (including diagonals),
+    enabling smoother, continuous trajectories for shaping.
+    """
     def __init__(self, width=12, height=12, gamma=0.99):
         super().__init__(width, height, gamma)
+        # Actions 0-3: Standard (Up, Down, Left, Right)
+        # Actions 4-7: Diagonals (Up-Left, Up-Right, Down-Left, Down-Right)
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
 
     def get_transitions(self, state, action):
         x, y = state
+        
+        # Calculate Y-axis changes
         if action in [0, 4, 5]:    y = min(y + 1, self.height - 1)
         elif action in [1, 6, 7]:  y = max(y - 1, 0)
+            
+        # Calculate X-axis changes
         if action in [2, 4, 6]:    x = max(x - 1, 0)
         elif action in [3, 5, 7]:  x = min(x + 1, self.width - 1)
             
@@ -59,33 +81,36 @@ class DiagonalAbstractGridMDP(AbstractGridMDP):
         reward = 1.0 if next_state == self.goal_state else 0.0
         return next_state, reward
 
+
 class KinematicAbstractMDP:
+    """
+    4D Kinematic Abstraction.
+    Introduces physics directly into the abstract model.
+    State representation: (X, Y, Velocity_Y, Angle)
+    """
     def __init__(self, width=12, height=12, gamma=0.99):
         self.width = width
         self.height = height
         self.gamma = gamma
+        
+        # State space expansion: x, y, vertical_velocity (3 states), angle (3 states)
         self.states = [(x, y, vy, a) for x in range(width) for y in range(height) for vy in range(3) for a in range(3)]
         self.actions = [0, 1, 2, 3]  
         
-        # Goal cinematico a sinistra per esperimento di shaping
+        # Kinematic goal on the bottom-left for the shaping experiment
+        # Goal state format: (X=0, Y=0, Velocity_Y=1 (slow/safe fall), Angle=1 (upright))
         self.goal_state = (0, 0, 1, 1)
-
-        #center_continuous_x = 0.0
-        #mapped_center_x = int(np.clip((center_continuous_x + 1) / 2 * (width - 1), 0, width - 1))
-        #
-        ## Impostiamo il goal_state dinamicamente
-        #self.goal_state = (mapped_center_x, 0, 1, 1)
 
         self.v_star = defaultdict(float)
 
     def get_transitions(self, state, action):
         x, y, vy, a = state
 
-        # ---- NUOVA MODIFICA: LA TRAPPOLA PER LA SALITA ----
-        # Se l'agente sta salendo (vy == 2), lo consideriamo un "buco nero" 
-        # (sink state). L'agente astratto rimane bloccato qui con reward 0.0.
-        # Questo costringerà il Value Iteration ad assegnare un potenziale 
-        # ESATTAMENTE PARI A 0.0 a tutti gli stati in cui il lander sale.
+        # ---- NEW MODIFICATION: THE ASCENT TRAP (SINK STATE) ----
+        # If the agent is moving upward (vy == 2), we treat it as a "black hole".
+        # The abstract agent gets stuck here with a 0.0 reward.
+        # This elegantly forces the Value Iteration to assign a potential of 
+        # EXACTLY 0.0 to all states where the lander goes up, discouraging climbing.
         if vy == 2:
             return state, 0.0
 
@@ -94,33 +119,33 @@ class KinematicAbstractMDP:
         next_vy = vy
         next_a = a
 
-        # Azioni cinematiche astratte
-        if action == 0: # Nessuna spinta
+        # Abstract kinematic actions mapping to LunarLander controls
+        if action == 0: # Do nothing (No engine)
             if y > 0: next_y -= 1
             next_vy = 0
             
-        elif action == 1: # Spinta motore sinistro (sposta a destra)
+        elif action == 1: # Fire Left Engine (Pushes lander to the Right)
             if x < self.width - 1: next_x += 1
             
-            # MODIFICA: Variazione incrementale dell'angolo
-            if a == 2: next_a = 1   # Se era inclinato a dx, si raddrizza
-            else: next_a = 0        # Altrimenti si inclina a sx
+            # MODIFICATION: Incremental angle variation
+            if a == 2: next_a = 1   # If tilted right, firing left engine straightens it
+            else: next_a = 0        # Otherwise, it tilts further to the left
             
-            # (Mantieni la logica del veleggiamento se l'avevi inserita)
+            # Maintain the "gliding" logic (gravity still acts if not thrusting main)
             if y > 0 and vy == 0: next_y -= 1 
             
-        elif action == 2: # Spinta motore principale
+        elif action == 2: # Fire Main Engine (Pushes Upward / Slows Fall)
             if y > 0: next_y -= 1
             next_vy = 1
-            # MODIFICA: Il motore principale NON raddrizza più l'angolo.
-            # Rimuovi "next_a = 1", l'angolo rimane quello che era (next_a = a)
+            # MODIFICATION: The main engine NO LONGER straightens the angle.
+            # The angle remains whatever it currently is (next_a = a)
             
-        elif action == 3: # Spinta motore destro (sposta a sinistra)
+        elif action == 3: # Fire Right Engine (Pushes lander to the Left)
             if x > 0: next_x -= 1
             
-            # MODIFICA: Variazione incrementale dell'angolo
-            if a == 0: next_a = 1   # Se era inclinato a sx, si raddrizza
-            else: next_a = 2        # Altrimenti si inclina a dx
+            # MODIFICATION: Incremental angle variation
+            if a == 0: next_a = 1   # If tilted left, firing right engine straightens it
+            else: next_a = 2        # Otherwise, it tilts further to the right
             
             if y > 0 and vy == 0: next_y -= 1
 
@@ -143,3 +168,34 @@ class KinematicAbstractMDP:
 
             self.v_star = new_v
             if delta < theta: break
+
+
+class ValleyDiagonalAbstractMDP(DiagonalAbstractGridMDP):
+    """
+    Experiment 3 Variant: The Potential Valley.
+    Instead of zeroing out states manually after computation, this MDP 
+    injects a transition cost for leaving the desired trajectory.
+    This naturally shapes a V* gradient (funnel) pointing towards the path.
+    """
+    def __init__(self, trajectory_path, width=12, height=12, gamma=0.99):
+        super().__init__(width, height, gamma)
+        # We convert the list to a Set for O(1) instant lookups
+        self.trajectory_path = set(trajectory_path)
+
+    def get_transitions(self, state, action):
+        # Inherit standard movement calculation and base reward (the goal)
+        next_state, base_reward = super().get_transitions(state, action)
+        
+        # If it hits the goal, return the clean base reward
+        if next_state == self.goal_state:
+            return next_state, base_reward
+            
+        # THE MAGIC OF THE VALLEY: We inject a negative transition cost 
+        # if the destination state IS NOT part of our desired trajectory.
+        if next_state not in self.trajectory_path:
+            step_penalty = -1.0  # Digs the potential downward (creates the valley)
+        else:
+            step_penalty = 0.0   # The golden path costs nothing
+            
+        total_reward = base_reward + step_penalty
+        return next_state, total_reward
