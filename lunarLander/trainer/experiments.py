@@ -518,6 +518,6 @@ def experiment_3_valley(episodes=800):
 if __name__ == "__main__":
     EPISODES = 1000
     
-    # experiment_1_baseline_vs_shaping(episodes=EPISODES)
-    experiment_2_trajectory_vs_standard(episodes=EPISODES)
-    # experiment_3_valley(episodes=EPISODES)
+    #experiment_1_baseline_vs_shaping(episodes=EPISODES)
+    #experiment_2_trajectory_vs_standard(episodes=EPISODES)
+    experiment_3_valley(episodes=EPISODES)
