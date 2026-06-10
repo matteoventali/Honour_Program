@@ -408,15 +408,15 @@ def experiment_2_trajectory_vs_standard(episodes=800):
     env = gym.make("LunarLander-v3", continuous=False)
     
     # --- 0. BASELINE (No Shaping) ---
-    #print("\n>>> Running Baseline Agent (No Shaping)...")
-    #abstract_mdp_base = DiagonalAbstractGridMDP()
-    #agent_base = HierarchicalDQNLearner(
-    #    env, abstract_mdp_base, phi_mapping_grid, 
-    #    max_episodes=episodes, use_ddqn=True, policy_name="baseline_exp2.pth"
-    #)
-    #rewards_base = run_sparse_goal_mdp_training(
-    #    env, agent_base, abstract_mdp_base, phi_mapping_grid, episodes, use_shaping=False
-    #)
+    print("\n>>> Running Baseline Agent (No Shaping)...")
+    abstract_mdp_base = DiagonalAbstractGridMDP()
+    agent_base = HierarchicalDQNLearner(
+        env, abstract_mdp_base, phi_mapping_grid, 
+        max_episodes=episodes, use_ddqn=True, policy_name="baseline_exp2.pth"
+    )
+    rewards_base = run_sparse_goal_mdp_training(
+        env, agent_base, abstract_mdp_base, phi_mapping_grid, episodes, use_shaping=False
+    )
     
     # --- 1. STANDARD SHAPING ---
     print("\n>>> Running Standard Shaping Agent...")
@@ -426,8 +426,8 @@ def experiment_2_trajectory_vs_standard(episodes=800):
         max_episodes=episodes, use_ddqn=True, policy_name="shaping_std_exp2.pth"
     )
 
-    #abstract_mdp_std.value_iteration()
-    #plot_value_function_heatmap(abstract_mdp_std, title="Canyon Effect: Trajectory V*")
+    abstract_mdp_std.value_iteration()
+    plot_value_function_heatmap(abstract_mdp_std, title="Canyon Effect: Trajectory V*")
     
     rewards_std = run_sparse_goal_mdp_training(
         env, agent_std, abstract_mdp_std, phi_mapping_grid, episodes, use_shaping=True

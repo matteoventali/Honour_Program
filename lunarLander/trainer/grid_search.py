@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 import pickle
 import matplotlib.pyplot as plt
+import os
 
 # Import the configurable diagonal MDP and agent components
 from abstract_mdps import ConfigurableDiagonalMDP
@@ -13,10 +14,9 @@ from agent import HierarchicalDQNLearner
 # PLOTTING UTILITIES
 # =====================================================================
 
-def plot_value_function_heatmap(abstract_mdp, width=12, height=12, title="Potential Map V*"):
+def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
     """
-    Converts the v_star dictionary into a 2D matrix and plots it as a Heatmap.
-    This provides a visual check of the shaping gradient before training starts.
+    Converts the v_star dictionary into a 2D matrix and saves it as a Heatmap PNG.
     """
     v_matrix = np.zeros((height, width))
     
@@ -52,15 +52,18 @@ def plot_value_function_heatmap(abstract_mdp, width=12, height=12, title="Potent
     ax.grid(which='major', color='none') 
     
     plt.tight_layout()
-    # Blocking call: training will pause until the user closes this plot window
-    plt.show()
+    
+    # Save the figure to disk instead of blocking execution
+    plt.savefig(filename, dpi=150, bbox_inches='tight')
+    plt.close() # CRITICAL: Frees up memory so the RAM doesn't overflow during the loop
 
-def plot_grid_search_learning_curves(results_dict, window_size=50):
+
+def save_grid_search_learning_curves(results_dict, filename="grid_search_learning_curves.png", window_size=50):
     """
-    Takes the dictionary of results and plots smoothed learning curves 
+    Takes the dictionary of results and saves smoothed learning curves 
     for every tested configuration on a single chart.
     """
-    print("\n>>> Generating Learning Curves Plot...")
+    print("\n>>> Generating and saving Learning Curves Plot...")
     plt.figure(figsize=(16, 9)) 
     
     # Generate distinct colors for the different curves
@@ -85,7 +88,9 @@ def plot_grid_search_learning_curves(results_dict, window_size=50):
     # Place legend outside the main plot area to prevent obscuring the lines
     plt.legend(bbox_to_anchor=(1.04, 1), loc="upper left", borderaxespad=0., fontsize=10)
     plt.tight_layout()
-    plt.show()
+    
+    plt.savefig(filename, dpi=200, bbox_inches='tight')
+    plt.close()
 
 
 # =====================================================================
@@ -130,8 +135,12 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
             total_step_reward = env_goal_reward + shaping_signal
             agent.memory.push(s_raw, a, total_step_reward, ns_raw, done)
             agent.optimize_model()
-            
+
             s_raw = ns_raw
+
+        if (n_episode + 1) % 100 == 0:
+            recent_avg = np.mean(true_episode_rewards[-100:])
+            print(f"-> Progress: Episode {n_episode + 1}/{episodes} | Recent 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
             
         agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
         true_episode_rewards.append(episode_true_reward)
@@ -145,6 +154,9 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
 def main():
     print("=== STARTING GRID SEARCH: Diagonal Abstract MDP ===")
     
+    # Ensure a directory exists for our generated plots
+    os.makedirs("grid_search_plots", exist_ok=True)
+    
     # 1. Define the hyperparameters to explore
     goal_configurations = {
         "1x1_Strict": [(0,0)],
@@ -152,7 +164,8 @@ def main():
         "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
     }
     gammas = [0.99, 0.90, 0.80]
-    goal_rewards = [1.0, 100.0]
+    #goal_rewards = [1.0, 100.0]
+    goal_rewards = [100.0]
     
     episodes_per_run = 1000
     results = {}
@@ -160,7 +173,16 @@ def main():
     combinations = list(itertools.product(goal_configurations.items(), gammas, goal_rewards))
     
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
+        
+        # Format variables for clean terminal logging and file naming
+        # E.g., goal_prefix: "1x1", gamma_str: "099", rew_str: "1" or "100"
+        goal_prefix = goal_name.split('_')[0] 
+        gamma_str = str(gamma).replace('.', '')
+        rew_str = str(int(g_rew))
+        
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Rew:{g_rew}"
+        heatmap_filename = f"grid_search_plots/v_{goal_prefix}_{gamma_str}_{rew_str}.png"
+        
         print(f"\n[{idx+1}/{len(combinations)}] Preparing -> {config_name}")
         
         # Fresh environment instantiation prevents memory leaks and seed contamination
@@ -173,9 +195,9 @@ def main():
         )
         abstract_mdp.value_iteration()
         
-        # --- SHOW V* HEATMAP BEFORE TRAINING ---
-        print(">>> Displaying V* map. (Close the plot window to start training...)")
-        plot_value_function_heatmap(abstract_mdp, title=f"V* | {config_name}")
+        # --- SAVE V* HEATMAP AUTOMATICALLY ---
+        print(f">>> Saving V* map to: {heatmap_filename}")
+        save_value_function_heatmap(abstract_mdp, filename=heatmap_filename, title=f"V* | {config_name}")
         
         agent = HierarchicalDQNLearner(
             env, abstract_mdp, phi_mapping_grid, 
@@ -189,8 +211,8 @@ def main():
         
         env.close()
         
-        final_avg = np.mean(learning_curve[-50:])
-        print(f"-> Finished. Final 50-eps Avg Reward: {final_avg:.2f}")
+        final_avg = np.mean(learning_curve[-100:])
+        print(f"-> Finished. Final 100-eps Avg Reward: {final_avg:.2f}")
         
     print("\n=== GRID SEARCH COMPLETED ===")
     with open('grid_search_results.pkl', 'wb') as f:
@@ -198,10 +220,11 @@ def main():
         
     best_config = max(results, key=lambda k: np.mean(results[k][-50:]))
     best_score = np.mean(results[best_config][-50:])
-    print(f"\nBEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
+    print(f"\n🏆 BEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
     
-    # Display the final composite learning curves
-    plot_grid_search_learning_curves(results)
+    # Automatically save the final composite learning curves chart
+    save_grid_search_learning_curves(results, filename="grid_search_plots/final_learning_curves.png")
+    print(f">>> All plots successfully saved in the 'grid_search_plots' directory.")
 
 
 if __name__ == "__main__":
