@@ -124,7 +124,7 @@ def plot_targeted_learning_curve(rewards, config_name):
 # MAIN ANALYSIS & LAUNCHER
 # =====================================================================
 
-def analyze_and_launch(filename='grid_search_results.pkl'):
+def analyze_and_launch(filename='policy/grid_search_results.pkl'):
     try:
         with open(filename, 'rb') as f:
             results = pickle.load(f)
