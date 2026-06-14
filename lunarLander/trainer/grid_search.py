@@ -4,6 +4,7 @@ import itertools
 import pickle
 import matplotlib.pyplot as plt
 import os
+import re
 
 # Import the configurable diagonal MDP and agent components
 from abstract_mdps import ConfigurableDiagonalMDP
@@ -58,7 +59,7 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     plt.close() # CRITICAL: Frees up memory so the RAM doesn't overflow during the loop
 
 
-def save_grid_search_learning_curves(results_dict, filename="grid_search_learning_curves.png", window_size=50):
+def save_grid_search_learning_curves_old(results_dict, filename="grid_search_learning_curves.png", window_size=50):
     """
     Takes the dictionary of results and saves smoothed learning curves 
     for every tested configuration on a single chart.
@@ -92,6 +93,62 @@ def save_grid_search_learning_curves(results_dict, filename="grid_search_learnin
     plt.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close()
 
+
+def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plots", window_size=50):
+    """
+    Generates and saves a SEPARATE plot for each Goal configuration, 
+    displaying ONLY the smoothed moving average of the learning curves.
+    """
+    import os
+    os.makedirs(base_dir, exist_ok=True)
+    print("\n>>> Generating and saving Individual Smoothed Learning Curves Plots...")
+    
+    # 1. Extract unique goal configurations from the dictionary keys
+    goals = sorted(list(set([
+        re.search(r'Goal:(.*?)\s\|', k).group(1) for k in results_dict.keys() if re.search(r'Goal:(.*?)\s\|', k)
+    ])))
+    
+    if not goals:
+        print("Error: Could not parse results keys. Ensure the config_name formatting is unchanged.")
+        return
+        
+    cmap = plt.get_cmap('Set1')
+
+    # 2. Iterate over each goal and create a distinct figure
+    for goal in goals:
+        # Create a fresh figure for this specific goal
+        plt.figure(figsize=(10, 6))
+        
+        plt.title(f"Goal Performance: {goal}", fontsize=16, fontweight='bold', pad=10)
+        plt.axhline(y=100, color='black', linestyle='--', alpha=0.7, label='Win Threshold')
+        plt.ylabel('Smoothed Episode Reward', fontsize=12)
+        plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.4)
+        
+        # Filter results that belong ONLY to this specific goal
+        goal_results = {k: v for k, v in results_dict.items() if f"Goal:{goal}" in k}
+        
+        for idx, (config_name, rewards) in enumerate(goal_results.items()):
+            short_label = config_name.split('|', 1)[1].strip()
+            color = cmap(idx % 9)
+            
+            # Plot ONLY the Moving Average (Smoothed line)
+            if len(rewards) >= window_size:
+                moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
+                x_axis = range(window_size - 1, len(rewards))
+                plt.plot(x_axis, moving_avg, color=color, linewidth=2.5, label=short_label)
+            else:
+                plt.plot(rewards, color=color, linewidth=2.5, label=short_label)
+
+        plt.legend(loc="lower right", fontsize=11, framealpha=0.9, title="Hyperparameters")
+        plt.tight_layout()
+        
+        # 3. Save the specific figure dynamically
+        filename = os.path.join(base_dir, f"learning_curve_{goal}.png")
+        plt.savefig(filename, dpi=200, bbox_inches='tight')
+        plt.close() # Close to free up memory before the next loop
+        
+        print(f"   [v] Saved plot for {goal} -> {filename}")
 
 # =====================================================================
 # TRAINING LOOP
@@ -128,7 +185,7 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
             episode_true_reward += env_goal_reward
                 
             phi_s = abstract_mdp.v_star[abstract_s]
-            phi_ns = 0.0 if done else abstract_mdp.v_star[abstract_ns]
+            phi_ns = abstract_mdp.v_star[abstract_ns]
             
             shaping_signal = K * (agent.gamma * phi_ns - phi_s)
             
@@ -141,6 +198,7 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
             print(f"-> Progress: Episode {n_episode + 1}/{episodes} | Recent 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
+            agent._save_policy()
             
         agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
         true_episode_rewards.append(episode_true_reward)
@@ -202,7 +260,7 @@ def main():
         agent = HierarchicalDQNLearner(
             env, abstract_mdp, phi_mapping_grid, 
             max_episodes=episodes_per_run, use_ddqn=True, 
-            policy_name=f"grid_model_{idx}.pth"
+            policy_name=f"p_{goal_prefix}_{gamma_str}_{rew_str}.pth"
         )
         
         print(">>> Training in progress...")
@@ -211,19 +269,16 @@ def main():
         
         env.close()
         
-        final_avg = np.mean(learning_curve[-100:])
-        print(f"-> Finished. Final 100-eps Avg Reward: {final_avg:.2f}")
-        
     print("\n=== GRID SEARCH COMPLETED ===")
     with open('grid_search_results.pkl', 'wb') as f:
         pickle.dump(results, f)
         
-    best_config = max(results, key=lambda k: np.mean(results[k][-50:]))
-    best_score = np.mean(results[best_config][-50:])
-    print(f"\n🏆 BEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
+    best_config = max(results, key=lambda k: np.mean(results[k][-100:]))
+    best_score = np.mean(results[best_config][-100:])
+    print(f"\nBEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
     
     # Automatically save the final composite learning curves chart
-    save_grid_search_learning_curves(results, filename="img/grid_search_plots/final_learning_curves.png")
+    save_grid_search_learning_curves(results, window_size=100)
     print(f">>> All plots successfully saved in the 'img/grid_search_plots' directory.")
 
 
