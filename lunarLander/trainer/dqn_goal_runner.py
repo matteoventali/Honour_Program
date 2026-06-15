@@ -186,7 +186,7 @@ def plot_evaluation_curves_by_goal(results_dict, base_dir="img/eval_plots", wind
         plt.ylabel("Smoothed Reward (Win Rate %)", fontsize=12)
         
 
-        plt.ylim(-5, 105) 
+        plt.ylim(-5, 105)
         plt.xlim(0, max_episodes)
 
         # Linea orizzontale per indicare la vittoria perfetta (100)

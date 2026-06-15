@@ -28,12 +28,10 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     plt.figure(figsize=(9, 8))
     im = plt.imshow(v_matrix, cmap='viridis', origin='lower')
     
-    # Print textual values at the center of all non-zero cells
     for y in range(height):
         for x in range(width):
             val = v_matrix[y, x]
             if val != 0.0: 
-                # Adapt text color for readability against the heatmap background
                 text_color = 'white' if val < (np.max(v_matrix) / 2) else 'black'
                 plt.text(x, y, f"{val:.2f}", ha='center', va='center', 
                          color=text_color, fontsize=8, fontweight='bold')
@@ -43,7 +41,6 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     plt.xlabel("X (Horizontal Position)", fontsize=12)
     plt.ylabel("Y (Altitude / Distance from ground)", fontsize=12)
     
-    # --- GRID ALIGNMENT ---
     plt.xticks(np.arange(0, width, 1))
     plt.yticks(np.arange(0, height, 1))
     ax = plt.gca()
@@ -53,44 +50,7 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     ax.grid(which='major', color='none') 
     
     plt.tight_layout()
-    
-    # Save the figure to disk instead of blocking execution
     plt.savefig(filename, dpi=150, bbox_inches='tight')
-    plt.close() # CRITICAL: Frees up memory so the RAM doesn't overflow during the loop
-
-
-def save_grid_search_learning_curves_old(results_dict, filename="grid_search_learning_curves.png", window_size=50):
-    """
-    Takes the dictionary of results and saves smoothed learning curves 
-    for every tested configuration on a single chart.
-    """
-    print("\n>>> Generating and saving Learning Curves Plot...")
-    plt.figure(figsize=(16, 9)) 
-    
-    # Generate distinct colors for the different curves
-    cmap = plt.get_cmap('tab20')
-    colors = cmap(np.linspace(0, 1, len(results_dict)))
-    
-    for idx, (config_name, rewards) in enumerate(results_dict.items()):
-        if len(rewards) >= window_size:
-            moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
-            x_axis = range(window_size - 1, len(rewards))
-            plt.plot(x_axis, moving_avg, color=colors[idx], linewidth=2.0, alpha=0.85, label=config_name)
-        else:
-            plt.plot(rewards, color=colors[idx], linewidth=2.0, alpha=0.85, label=config_name)
-
-    plt.title("Grid Search: Learning Curves Comparison", fontsize=16, fontweight='bold')
-    plt.xlabel('Episode #', fontsize=14)
-    plt.ylabel(f'True Episode Reward (Moving Avg window={window_size})', fontsize=14)
-    
-    plt.axhline(y=100, color='black', linestyle='--', alpha=0.5, label='Win Threshold')
-    
-    plt.grid(True, linestyle='--', alpha=0.6)
-    # Place legend outside the main plot area to prevent obscuring the lines
-    plt.legend(bbox_to_anchor=(1.04, 1), loc="upper left", borderaxespad=0., fontsize=10)
-    plt.tight_layout()
-    
-    plt.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close()
 
 
@@ -98,12 +58,11 @@ def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plo
     """
     Generates and saves a SEPARATE plot for each Goal configuration, 
     displaying ONLY the smoothed moving average of the learning curves.
+    The Baseline is highlighted dynamically.
     """
-    import os
     os.makedirs(base_dir, exist_ok=True)
     print("\n>>> Generating and saving Individual Smoothed Learning Curves Plots...")
     
-    # 1. Extract unique goal configurations from the dictionary keys
     goals = sorted(list(set([
         re.search(r'Goal:(.*?)\s\|', k).group(1) for k in results_dict.keys() if re.search(r'Goal:(.*?)\s\|', k)
     ])))
@@ -114,39 +73,47 @@ def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plo
         
     cmap = plt.get_cmap('Set1')
 
-    # 2. Iterate over each goal and create a distinct figure
     for goal in goals:
-        # Create a fresh figure for this specific goal
         plt.figure(figsize=(10, 6))
         
         plt.title(f"Goal Performance: {goal}", fontsize=16, fontweight='bold', pad=10)
-        plt.axhline(y=100, color='black', linestyle='--', alpha=0.7, label='Win Threshold')
+        plt.axhline(y=100, color='black', linestyle=':', alpha=0.5, label='Win Threshold')
         plt.ylabel('Smoothed Episode Reward', fontsize=12)
         plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
         plt.grid(True, linestyle='--', alpha=0.4)
         
-        # Filter results that belong ONLY to this specific goal
         goal_results = {k: v for k, v in results_dict.items() if f"Goal:{goal}" in k}
         
         for idx, (config_name, rewards) in enumerate(goal_results.items()):
             short_label = config_name.split('|', 1)[1].strip()
-            color = cmap(idx % 9)
             
-            # Plot ONLY the Moving Average (Smoothed line)
+            # Formattazione dedicata per la baseline
+            if "Baseline" in short_label:
+                color = 'black'
+                linestyle = '-'
+                linewidth = 2.0
+                zorder = 10
+            else:
+                color = cmap(idx % 9)
+                linestyle = '-'
+                linewidth = 2.0
+                zorder = 5
+            
             if len(rewards) >= window_size:
                 moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
                 x_axis = range(window_size - 1, len(rewards))
-                plt.plot(x_axis, moving_avg, color=color, linewidth=2.5, label=short_label)
+                plt.plot(x_axis, moving_avg, color=color, linestyle=linestyle, 
+                         linewidth=linewidth, zorder=zorder, label=short_label)
             else:
-                plt.plot(rewards, color=color, linewidth=2.5, label=short_label)
+                plt.plot(rewards, color=color, linestyle=linestyle, 
+                         linewidth=linewidth, zorder=zorder, label=short_label)
 
         plt.legend(loc="lower right", fontsize=11, framealpha=0.9, title="Hyperparameters")
         plt.tight_layout()
         
-        # 3. Save the specific figure dynamically
         filename = os.path.join(base_dir, f"learning_curve_{goal}.png")
         plt.savefig(filename, dpi=200, bbox_inches='tight')
-        plt.close() # Close to free up memory before the next loop
+        plt.close() 
         
         print(f"   [v] Saved plot for {goal} -> {filename}")
 
@@ -154,14 +121,11 @@ def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plo
 # TRAINING LOOP
 # =====================================================================
 
-def run_grid_search_training(env, agent, abstract_mdp, episodes):
+def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=True):
     """Optimized training loop for Grid Search execution."""
     true_episode_rewards = []
     
-    # --- DYNAMIC K HANDLING ---
-    # Scales K inversely to the goal_reward so the final shaping signal 
-    # always matches the environment's +100 scale, preventing gradient explosion.
-    K = 100.0 / abstract_mdp.goal_reward
+    K = 100.0 / abstract_mdp.goal_reward if abstract_mdp.goal_reward > 0 else 1.0
 
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
@@ -178,16 +142,18 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
             
             env_goal_reward = 0.0
             
-            # Victory Check: Is the agent in ANY of the designated goal cells?
             if terminated and abstract_ns in abstract_mdp.goal_states:
                 env_goal_reward = 100.0
                 
             episode_true_reward += env_goal_reward
                 
-            phi_s = abstract_mdp.v_star[abstract_s]
-            phi_ns = abstract_mdp.v_star[abstract_ns]
-            
-            shaping_signal = K * (agent.gamma * phi_ns - phi_s)
+            # Calcolo del segnale di shaping
+            if use_shaping:
+                phi_s = abstract_mdp.v_star[abstract_s]
+                phi_ns = abstract_mdp.v_star[abstract_ns]
+                shaping_signal = K * (agent.gamma * phi_ns - phi_s)
+            else:
+                shaping_signal = 0.0
             
             total_step_reward = env_goal_reward + shaping_signal
             agent.memory.push(s_raw, a, total_step_reward, ns_raw, done)
@@ -210,30 +176,51 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes):
 # =====================================================================
 
 def main():
-    print("=== STARTING GRID SEARCH: Diagonal Abstract MDP ===")
+    print("=== STARTING EXPERIMENTS: Diagonal Abstract MDP ===")
     
-    # Ensure a directory exists for our generated plots
     os.makedirs("img/grid_search_plots", exist_ok=True)
     
-    # 1. Define the hyperparameters to explore
     goal_configurations = {
         "1x1_Strict": [(0,0)],
         "2x1_Base": [(0,0), (1,0)],
         "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
     }
     gammas = [0.99, 0.90, 0.80]
-    #goal_rewards = [1.0, 100.0]
     goal_rewards = [100.0]
     
     episodes_per_run = 1000
     results = {}
-    
+
+    # --- 1. ESECUZIONE BASELINE (Senza Shaping) ---
+    print("\n--- RUNNING BASELINES (No Shaping) ---")
+    for goal_name, goal_states in goal_configurations.items():
+        config_name = f"Goal:{goal_name} | Baseline (No Shaping)"
+        goal_prefix = goal_name.split('_')[0]
+        
+        print(f"\nPreparing -> {config_name}")
+        env = gym.make("LunarLander-v3", continuous=False)
+        
+        # Inizializziamo l'abstract_mdp solo per monitorare i goal_states e le transizioni
+        abstract_mdp = ConfigurableDiagonalMDP(gamma=0.99, goal_states=goal_states, goal_reward=1.0)
+        abstract_mdp.value_iteration()
+        
+        agent = HierarchicalDQNLearner(
+            env, abstract_mdp, phi_mapping_grid, 
+            max_episodes=episodes_per_run, use_ddqn=True, 
+            policy_name=f"p_{goal_prefix}_baseline.pth"
+        )
+        
+        print(">>> Training Baseline in progress...")
+        learning_curve = run_grid_search_training(env, agent, abstract_mdp, episodes_per_run, use_shaping=False)
+        results[config_name] = learning_curve
+        env.close()
+
+    # --- 2. ESECUZIONE GRID SEARCH (Con Shaping) ---
+    print("\n--- STARTING SHAPING GRID SEARCH ---")
     combinations = list(itertools.product(goal_configurations.items(), gammas, goal_rewards))
     
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
         
-        # Format variables for clean terminal logging and file naming
-        # E.g., goal_prefix: "1x1", gamma_str: "099", rew_str: "1" or "100"
         goal_prefix = goal_name.split('_')[0] 
         gamma_str = str(gamma).replace('.', '')
         rew_str = str(int(g_rew))
@@ -243,7 +230,6 @@ def main():
         
         print(f"\n[{idx+1}/{len(combinations)}] Preparing -> {config_name}")
         
-        # Fresh environment instantiation prevents memory leaks and seed contamination
         env = gym.make("LunarLander-v3", continuous=False)
         
         abstract_mdp = ConfigurableDiagonalMDP(
@@ -253,7 +239,6 @@ def main():
         )
         abstract_mdp.value_iteration()
         
-        # --- SAVE V* HEATMAP AUTOMATICALLY ---
         print(f">>> Saving V* map to: {heatmap_filename}")
         save_value_function_heatmap(abstract_mdp, filename=heatmap_filename, title=f"V* | {config_name}")
         
@@ -264,12 +249,13 @@ def main():
         )
         
         print(">>> Training in progress...")
-        learning_curve = run_grid_search_training(env, agent, abstract_mdp, episodes_per_run)
+        # L'argomento use_shaping=True è il valore predefinito
+        learning_curve = run_grid_search_training(env, agent, abstract_mdp, episodes_per_run, use_shaping=True)
         results[config_name] = learning_curve
         
         env.close()
         
-    print("\n=== GRID SEARCH COMPLETED ===")
+    print("\n=== EXPERIMENTS COMPLETED ===")
     with open('grid_search_results.pkl', 'wb') as f:
         pickle.dump(results, f)
         
@@ -277,7 +263,6 @@ def main():
     best_score = np.mean(results[best_config][-100:])
     print(f"\nBEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
     
-    # Automatically save the final composite learning curves chart
     save_grid_search_learning_curves(results, window_size=100)
     print(f">>> All plots successfully saved in the 'img/grid_search_plots' directory.")
 
