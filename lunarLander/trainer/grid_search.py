@@ -56,66 +56,80 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
 
 def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plots", window_size=50):
     """
-    Generates and saves a SEPARATE plot for each Goal configuration, 
-    displaying ONLY the smoothed moving average of the learning curves.
-    The Baseline is highlighted dynamically.
+    Generates and saves a SEPARATE plot for each (Goal, Gamma) configuration, 
+    displaying the smoothed moving average of the learning curves.
+    This cleanly compares the shaping agent against its specific baseline.
     """
     os.makedirs(base_dir, exist_ok=True)
     print("\n>>> Generating and saving Individual Smoothed Learning Curves Plots...")
     
+    # Extract unique goals and gammas from the dictionary keys
     goals = sorted(list(set([
         re.search(r'Goal:(.*?)\s\|', k).group(1) for k in results_dict.keys() if re.search(r'Goal:(.*?)\s\|', k)
     ])))
+    gammas = sorted(list(set([
+        re.search(r'Gamma:(.*?)\s\|', k).group(1) for k in results_dict.keys() if re.search(r'Gamma:(.*?)\s\|', k)
+    ])))
     
-    if not goals:
-        print("Error: Could not parse results keys. Ensure the config_name formatting is unchanged.")
+    if not goals or not gammas:
+        print("Error: Could not parse results keys for goals or gammas. Ensure the config_name formatting is unchanged.")
         return
         
     cmap = plt.get_cmap('Set1')
 
     for goal in goals:
-        plt.figure(figsize=(10, 6))
-        
-        plt.title(f"Goal Performance: {goal}", fontsize=16, fontweight='bold', pad=10)
-        plt.axhline(y=100, color='black', linestyle=':', alpha=0.5, label='Win Threshold')
-        plt.ylabel('Smoothed Episode Reward', fontsize=12)
-        plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
-        plt.grid(True, linestyle='--', alpha=0.4)
-        
-        goal_results = {k: v for k, v in results_dict.items() if f"Goal:{goal}" in k}
-        
-        for idx, (config_name, rewards) in enumerate(goal_results.items()):
-            short_label = config_name.split('|', 1)[1].strip()
+        for gamma in gammas:
+            # FIX: Aggiunto " |" per forzare il match esatto e prevenire che "0.9" faccia match con "0.99"
+            plot_results = {k: v for k, v in results_dict.items() if f"Goal:{goal} |" in k and f"Gamma:{gamma} |" in k}
             
-            # Dedicated formatting for the baseline
-            if "Baseline" in short_label:
-                color = 'black'
-                linestyle = '-'
-                linewidth = 2.0
-                zorder = 10
-            else:
-                color = cmap(idx % 9)
-                linestyle = '-'
-                linewidth = 2.0
-                zorder = 5
-            
-            if len(rewards) >= window_size:
-                moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
-                x_axis = range(window_size - 1, len(rewards))
-                plt.plot(x_axis, moving_avg, color=color, linestyle=linestyle, 
-                         linewidth=linewidth, zorder=zorder, label=short_label)
-            else:
-                plt.plot(rewards, color=color, linestyle=linestyle, 
-                         linewidth=linewidth, zorder=zorder, label=short_label)
+            # Skip if no data exists for this specific combination
+            if not plot_results:
+                continue
 
-        plt.legend(loc="lower right", fontsize=11, framealpha=0.9, title="Hyperparameters")
-        plt.tight_layout()
-        
-        filename = os.path.join(base_dir, f"learning_curve_{goal}.png")
-        plt.savefig(filename, dpi=200, bbox_inches='tight')
-        plt.close() 
-        
-        print(f"   [v] Saved plot for {goal} -> {filename}")
+            plt.figure(figsize=(10, 6))
+            
+            plt.title(f"Performance: {goal} | Gamma: {gamma}", fontsize=16, fontweight='bold', pad=10)
+            plt.axhline(y=100, color='black', linestyle=':', alpha=0.5, label='Win Threshold')
+            plt.ylabel('Smoothed Episode Reward', fontsize=12)
+            plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
+            plt.grid(True, linestyle='--', alpha=0.4)
+            
+            for idx, (config_name, rewards) in enumerate(plot_results.items()):
+                
+                if "Baseline" in config_name:
+                    short_label = "Baseline (No Shaping)"
+                    color = 'black'
+                    linestyle = '-'
+                    linewidth = 1.5
+                    zorder = 10
+                else:
+                    rew_match = re.search(r'Rew:(.*)', config_name)
+                    rew_val = rew_match.group(1).strip() if rew_match else "Unknown"
+                    short_label = f"Shaping (Goal Reward: {rew_val})"
+                    
+                    color = cmap(idx % 9)
+                    linestyle = '-'
+                    linewidth = 1.5
+                    zorder = 5
+                
+                if len(rewards) >= window_size:
+                    moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
+                    x_axis = range(window_size - 1, len(rewards))
+                    plt.plot(x_axis, moving_avg, color=color, linestyle=linestyle, 
+                             linewidth=linewidth, zorder=zorder, label=short_label)
+                else:
+                    plt.plot(rewards, color=color, linestyle=linestyle, 
+                             linewidth=linewidth, zorder=zorder, label=short_label)
+
+            plt.legend(loc="lower right", fontsize=11, framealpha=0.9)
+            plt.tight_layout()
+            
+            gamma_str = str(gamma).replace('.', '')
+            filename = os.path.join(base_dir, f"learning_curve_{goal}_g{gamma_str}.png")
+            plt.savefig(filename, dpi=200, bbox_inches='tight')
+            plt.close() 
+            
+            print(f"   [v] Saved plot for {goal} (Gamma: {gamma}) -> {filename}")
 
 # =====================================================================
 # TRAINING LOOP
@@ -186,28 +200,31 @@ def main():
         "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
     }
     gammas = [0.99, 0.90, 0.80]
-    goal_rewards = [100.0]
+    goal_rewards = [1, 100.0]
     
     episodes_per_run = 1000
     results = {}
 
-    # --- 1. BASELINE EXECUTION (No Shaping) ---
+    # --- 1. BASELINE EXECUTION (Iterated over Gammas) ---
     print("\n--- RUNNING BASELINES (No Shaping) ---")
-    for goal_name, goal_states in goal_configurations.items():
-        config_name = f"Goal:{goal_name} | Baseline (No Shaping)"
+    baseline_combinations = list(itertools.product(goal_configurations.items(), gammas))
+    
+    for (goal_name, goal_states), gamma in baseline_combinations:
+        config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
         goal_prefix = goal_name.split('_')[0]
+        gamma_str = str(gamma).replace('.', '')
         
         print(f"\nPreparing -> {config_name}")
         env = gym.make("LunarLander-v3", continuous=False)
         
-        # Initialize abstract_mdp only to monitor goal_states and transitions
-        abstract_mdp = ConfigurableDiagonalMDP(gamma=0.99, goal_states=goal_states, goal_reward=1.0)
+        # Initialize abstract_mdp to pass gamma and map goals
+        abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=1.0)
         abstract_mdp.value_iteration()
         
         agent = HierarchicalDQNLearner(
             env, abstract_mdp, phi_mapping_grid, 
             max_episodes=episodes_per_run, use_ddqn=True, 
-            policy_name=f"p_{goal_prefix}_baseline.pth"
+            policy_name=f"p_{goal_prefix}_{gamma_str}_baseline.pth"
         )
         
         print(">>> Training Baseline in progress...")
@@ -263,7 +280,7 @@ def main():
     best_score = np.mean(results[best_config][-100:])
     print(f"\nBEST CONFIGURATION: {best_config} (Final Avg: {best_score:.2f})")
     
-    save_grid_search_learning_curves(results, window_size=100)
+    save_grid_search_learning_curves(results, window_size=200)
     print(f">>> All plots successfully saved in the 'img/grid_search_plots' directory.")
 
 
