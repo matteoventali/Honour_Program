@@ -87,7 +87,7 @@ def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plo
         for idx, (config_name, rewards) in enumerate(goal_results.items()):
             short_label = config_name.split('|', 1)[1].strip()
             
-            # Formattazione dedicata per la baseline
+            # Dedicated formatting for the baseline
             if "Baseline" in short_label:
                 color = 'black'
                 linestyle = '-'
@@ -147,7 +147,7 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
                 
             episode_true_reward += env_goal_reward
                 
-            # Calcolo del segnale di shaping
+            # Shaping signal calculation
             if use_shaping:
                 phi_s = abstract_mdp.v_star[abstract_s]
                 phi_ns = abstract_mdp.v_star[abstract_ns]
@@ -191,7 +191,7 @@ def main():
     episodes_per_run = 1000
     results = {}
 
-    # --- 1. ESECUZIONE BASELINE (Senza Shaping) ---
+    # --- 1. BASELINE EXECUTION (No Shaping) ---
     print("\n--- RUNNING BASELINES (No Shaping) ---")
     for goal_name, goal_states in goal_configurations.items():
         config_name = f"Goal:{goal_name} | Baseline (No Shaping)"
@@ -200,7 +200,7 @@ def main():
         print(f"\nPreparing -> {config_name}")
         env = gym.make("LunarLander-v3", continuous=False)
         
-        # Inizializziamo l'abstract_mdp solo per monitorare i goal_states e le transizioni
+        # Initialize abstract_mdp only to monitor goal_states and transitions
         abstract_mdp = ConfigurableDiagonalMDP(gamma=0.99, goal_states=goal_states, goal_reward=1.0)
         abstract_mdp.value_iteration()
         
@@ -215,7 +215,7 @@ def main():
         results[config_name] = learning_curve
         env.close()
 
-    # --- 2. ESECUZIONE GRID SEARCH (Con Shaping) ---
+    # --- 2. GRID SEARCH EXECUTION (With Shaping) ---
     print("\n--- STARTING SHAPING GRID SEARCH ---")
     combinations = list(itertools.product(goal_configurations.items(), gammas, goal_rewards))
     
@@ -249,7 +249,7 @@ def main():
         )
         
         print(">>> Training in progress...")
-        # L'argomento use_shaping=True è il valore predefinito
+        # The argument use_shaping=True is the default value
         learning_curve = run_grid_search_training(env, agent, abstract_mdp, episodes_per_run, use_shaping=True)
         results[config_name] = learning_curve
         
