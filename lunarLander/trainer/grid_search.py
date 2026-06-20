@@ -257,7 +257,7 @@ def main():
     }
     gammas = [0.99, 0.90, 0.80]
     goal_rewards = [1, 100.0]
-    
+
     episodes_per_run = 1000
     results = {}
 
