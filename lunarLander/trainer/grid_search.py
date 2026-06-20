@@ -8,7 +8,7 @@ import re
 
 # Import the configurable diagonal MDP and agent components
 from abstract_mdps import ConfigurableDiagonalMDP
-from utils import phi_mapping_grid
+from utils import phi_mapping_grid, get_continuous_grid_coords, get_bilinear_potential
 from agent import HierarchicalDQNLearner
 
 # =====================================================================
@@ -53,6 +53,50 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     plt.savefig(filename, dpi=150, bbox_inches='tight')
     plt.close()
 
+def save_value_function_heatmap_with_bilinear_interpolation(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
+    """
+    Converts the v_star dictionary into a high-resolution 2D matrix using 
+    bilinear interpolation and saves it as a smooth Heatmap PNG.
+    """
+    print(f"   -> Generazione della mappa V* interpolata in corso...")
+    
+    # 1. Imposta la risoluzione (es. 20 punti per ogni cella logica)
+    # Per una griglia 12x12, genererà un'immagine di 240x240 pixel di dati puri
+    resolution = 20 
+    x_continuous = np.linspace(0, width, width * resolution)
+    y_continuous = np.linspace(0, height, height * resolution)
+    
+    Z = np.zeros((len(y_continuous), len(x_continuous)))
+    
+    # 2. Calcola il potenziale interpolato per ogni micro-punto
+    for i, py in enumerate(y_continuous):
+        for j, px in enumerate(x_continuous):
+            Z[i, j] = get_bilinear_potential(px, py, abstract_mdp.v_star, width, height)
+            
+    # 3. Disegna e salva l'immagine
+    plt.figure(figsize=(10, 9))
+    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
+    
+    plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*) Interpolato")
+    plt.title(title, fontsize=15, fontweight='bold')
+    plt.xlabel("X (Horizontal Position)", fontsize=13)
+    plt.ylabel("Y (Altitude / Distance from ground)", fontsize=13)
+    
+    # --- Disegna la griglia fisica (bordi delle celle) ---
+    plt.xticks(np.arange(0, width + 1, 1))
+    plt.yticks(np.arange(0, height + 1, 1))
+    plt.grid(color='white', linestyle='-', linewidth=1, alpha=0.3)
+    
+    # --- Segna i centri delle celle (i veri valori V*) ---
+    cx = [x + 0.5 for x in range(width) for _ in range(height)]
+    cy = [y + 0.5 for _ in range(width) for y in range(height)]
+    plt.scatter(cx, cy, color='black', s=8, alpha=0.6, label="Centri delle celle (V*)")
+    
+    plt.legend(loc="upper right", fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150, bbox_inches='tight')
+    plt.close() # Libera la RAM
 
 def save_grid_search_learning_curves(results_dict, base_dir="img/grid_search_plots", window_size=50):
     """
@@ -162,9 +206,21 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             episode_true_reward += env_goal_reward
                 
             # Shaping signal calculation
+            #if use_shaping:
+            #    phi_s = abstract_mdp.v_star[abstract_s]
+            #    phi_ns = abstract_mdp.v_star[abstract_ns]
+            #    shaping_signal = K * (agent.gamma * phi_ns - phi_s)
+            #else:
+            #    shaping_signal = 0.0
+
+            # Shaping signal calculation
             if use_shaping:
-                phi_s = abstract_mdp.v_star[abstract_s]
-                phi_ns = abstract_mdp.v_star[abstract_ns]
+                px_s, py_s = get_continuous_grid_coords(s_raw, abstract_mdp.width, abstract_mdp.height)
+                px_ns, py_ns = get_continuous_grid_coords(ns_raw, abstract_mdp.width, abstract_mdp.height)
+                
+                phi_s = get_bilinear_potential(px_s, py_s, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
+                phi_ns = get_bilinear_potential(px_ns, py_ns, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
+                
                 shaping_signal = K * (agent.gamma * phi_ns - phi_s)
             else:
                 shaping_signal = 0.0
@@ -257,7 +313,7 @@ def main():
         abstract_mdp.value_iteration()
         
         print(f">>> Saving V* map to: {heatmap_filename}")
-        save_value_function_heatmap(abstract_mdp, filename=heatmap_filename, title=f"V* | {config_name}")
+        save_value_function_heatmap_with_bilinear_interpolation(abstract_mdp, filename=heatmap_filename, title=f"V* | {config_name}")
         
         agent = HierarchicalDQNLearner(
             env, abstract_mdp, phi_mapping_grid, 

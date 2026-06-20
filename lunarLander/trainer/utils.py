@@ -57,3 +57,53 @@ def phi_mapping_kinematic(obs, grid_w=12, grid_h=12):
     else: abstract_angle = 1              # Straight
         
     return (abstract_x, abstract_y, abstract_vy, abstract_angle)
+
+
+def get_continuous_grid_coords(obs, grid_w=12, grid_h=12):
+    x, y = obs[0], obs[1]
+    px = (x + 1) / 2 * (grid_w - 1)
+    py = y / 1.5 * (grid_h - 1)
+    return px, py
+
+def get_bilinear_potential(px, py, v_star_dict, grid_w=12, grid_h=12):
+    """
+    Calcola il potenziale interpolato bilinearmente.
+    Usa direttamente il dizionario v_star_dict dell'abstract MDP.
+    """
+    # 1. Trasliamo per allinearci ai centri delle celle (situati a 0.5, 0.5)
+    x_base = px - 0.5
+    y_base = py - 0.5
+    
+    # 2. Indici interi del centro in basso a sinistra
+    x1 = int(np.floor(x_base))
+    y1 = int(np.floor(y_base))
+    
+    # 3. Indici del centro in alto a destra
+    x2 = x1 + 1
+    y2 = y1 + 1
+    
+    # 4. Pesi (distanze dal centro in basso a sinistra)
+    u = x_base - x1
+    v = y_base - y1
+    
+    # 5. Clamping per i bordi: impedisce di cercare fuori dalla griglia
+    x1_c = int(np.clip(x1, 0, grid_w - 1))
+    x2_c = int(np.clip(x2, 0, grid_w - 1))
+    y1_c = int(np.clip(y1, 0, grid_h - 1))
+    y2_c = int(np.clip(y2, 0, grid_h - 1))
+    
+    # 6. Estraiamo i 4 valori dai vertici (v_star_dict restituisce 0.0 di default se manca)
+    Q11 = v_star_dict[(x1_c, y1_c)]
+    Q21 = v_star_dict[(x2_c, y1_c)]
+    Q12 = v_star_dict[(x1_c, y2_c)]
+    Q22 = v_star_dict[(x2_c, y2_c)]
+    
+    # 7. Formula matematica dell'interpolazione
+    interpolated_value = (
+        Q11 * (1 - u) * (1 - v) +
+        Q21 * u * (1 - v) +
+        Q12 * (1 - u) * v +
+        Q22 * u * v
+    )
+    
+    return interpolated_value
