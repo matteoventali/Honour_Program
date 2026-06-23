@@ -163,13 +163,13 @@ def main():
     os.makedirs("img/shaded_plots", exist_ok=True)
     
     # --- IPERPARAMETRI GLOBALI ---
-    NUM_SEEDS = 10
+    NUM_SEEDS = 5
     EPISODES = 1000
     
     goal_configs = {
         "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
     }
-    gammas = [0.90]
+    gammas = [0.99]
     goal_rewards = [100.0]
     
     results = {}
