@@ -193,16 +193,18 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
         while not (terminated or truncated):
             a = agent.select_action(s_raw)
             ns_raw, _, terminated, truncated, _ = env.step(a)
-            done = terminated or truncated
             
             abstract_s = phi_mapping_grid(s_raw)
             abstract_ns = phi_mapping_grid(ns_raw)
             
             env_goal_reward = 0.0
             
-            if terminated and abstract_ns in abstract_mdp.goal_states:
+            if abstract_ns in abstract_mdp.goal_states:
                 env_goal_reward = 100.0
-                
+                terminated = True
+
+            done = terminated or truncated
+
             episode_true_reward += env_goal_reward
                 
             # Shaping signal calculation
@@ -250,10 +252,14 @@ def main():
     
     os.makedirs("img/grid_search_plots", exist_ok=True)
     
+    #goal_configurations = {
+    #    "1x1_Strict": [(0,0)],
+    #    "2x1_Base": [(0,0), (1,0)],
+    #    "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
+    #}
+
     goal_configurations = {
-        "1x1_Strict": [(0,0)],
-        "2x1_Base": [(0,0), (1,0)],
-        "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
+        "1x1_Strict": [(1,8)]
     }
     gammas = [0.99, 0.90, 0.80]
     goal_rewards = [1, 100.0]

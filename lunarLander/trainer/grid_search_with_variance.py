@@ -126,7 +126,16 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             done = terminated or truncated
             
             abstract_ns = phi_mapping_grid(ns_raw)
-            env_goal_reward = 100.0 if (terminated and abstract_ns in abstract_mdp.goal_states) else 0.0
+            #env_goal_reward = 100.0 if (terminated and abstract_ns in abstract_mdp.goal_states) else 0.0
+            
+            env_goal_reward = 0.0
+
+            if abstract_ns in abstract_mdp.goal_states:
+                env_goal_reward = 100.0
+                terminated = True
+
+            done = terminated or truncated
+
             episode_true_reward += env_goal_reward
                 
             if use_shaping:
@@ -166,11 +175,17 @@ def main():
     NUM_SEEDS = 5
     EPISODES = 1000
     
+    #goal_configs = {
+    #    "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
+    #}
+    #gammas = [0.99]
+    #goal_rewards = [100.0]
+
     goal_configs = {
-        "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
+        "1x1_Strict": [(1,8)]
     }
-    gammas = [0.99]
-    goal_rewards = [100.0]
+    gammas = [0.99, 0.90, 0.80]
+    goal_rewards = [1.0]
     
     results = {}
     combinations = list(itertools.product(goal_configs.items(), gammas, goal_rewards))
