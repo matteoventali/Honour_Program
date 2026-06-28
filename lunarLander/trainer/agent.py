@@ -35,7 +35,7 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class HierarchicalDQNLearner:
-    def __init__(self, env, abstract_mdp, mapping_fn, max_episodes=1000, gamma=0.99, policy_name="policy", use_ddqn=False):
+    def __init__(self, env, abstract_mdp=None, mapping_fn=None, max_episodes=1000, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
         self.env = env
         self.abstract_mdp = abstract_mdp
         self.mapping_fn = mapping_fn
@@ -52,7 +52,8 @@ class HierarchicalDQNLearner:
         self.eps_min = 0.01
         self.eps_decay = 0.995 
         
-        state_dim = self.env.observation_space.shape[0]
+        # MODIFICA: Permettiamo di aggiungere dimensioni extra allo stato (es. la variabile 'q')
+        state_dim = self.env.observation_space.shape[0] + extra_state_dims
         action_dim = self.env.action_space.n
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -243,3 +243,57 @@ class KinematicAbstractMDP:
             self.v_star = new_v
             if delta < theta: break
         self.v_star[self.goal_state] = 1.0
+
+
+class SequentialWaypointMDP:
+    """
+    MDP for sequential tasks.
+    The abstract state is 3D: (x, y, q)
+    q = 0: searching for the waypoint (1, 8)
+    q = 1: searching for the final goal (8, 8)
+    """
+    def __init__(self, width=12, height=12, gamma=0.99):
+        self.width = width
+        self.height = height
+        self.gamma = gamma
+        self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
+        self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
+        self.waypoint = (1, 8)
+        self.goal_state = (3, 8, 1) 
+        self.v_star = defaultdict(float)
+
+    def get_transitions(self, state, action):
+        x, y, q = state
+        next_y = y
+        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
+        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
+            
+        next_x = x
+        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
+        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
+        
+        next_q = q
+        if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
+            next_q = 1
+            
+        next_state = (next_x, next_y, next_q)
+        reward = 100.0 if next_state == self.goal_state else 0.0
+        return next_state, reward
+
+    def value_iteration(self, theta=0.001):
+        print("Solving Sequential MDP with Value Iteration...")
+        while True:
+            delta = 0
+            new_v = self.v_star.copy()
+            for s in self.states:
+                if s == self.goal_state: 
+                    continue
+                v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                best_v = max(v_actions)
+                delta = max(delta, abs(best_v - self.v_star[s]))
+                new_v[s] = best_v
+            self.v_star = new_v
+            if delta < theta: break
+        
+        self.v_star[self.goal_state] = 100.0
+        

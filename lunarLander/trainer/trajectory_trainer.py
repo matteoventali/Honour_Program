@@ -1,86 +1,12 @@
 import gymnasium as gym
 import numpy as np
-import random as ran
 import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from collections import defaultdict, deque
 import matplotlib.pyplot as plt
+from abstract_mdps import SequentialWaypointMDP
+from agent import HierarchicalDQNLearner
 
 # =====================================================================
-# SECTION 1: SEQUENTIAL ABSTRACT MDP
-# =====================================================================
-
-class SequentialWaypointMDP:
-    """
-    MDP for sequential tasks.
-    The abstract state is 3D: (x, y, q)
-    q = 0: searching for the waypoint (1, 8)
-    q = 1: searching for the final goal (8, 8)
-    """
-    def __init__(self, width=12, height=12, gamma=0.99):
-        self.width = width
-        self.height = height
-        self.gamma = gamma
-        # 8-way diagonal movement
-        self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
-        
-        # 3D State: adding the sequence variable 'q' (0 or 1)
-        self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
-        
-        self.waypoint = (1, 8)
-        self.goal_state = (3, 8, 1) # Final goal is only valid when q=1
-        
-        self.v_star = defaultdict(float)
-
-    def get_transitions(self, state, action):
-        x, y, q = state
-        
-        # Base movement calculation
-        next_y = y
-        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
-        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
-            
-        next_x = x
-        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
-        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
-        
-        next_q = q
-        
-        # THE SEQUENTIAL LOGIC: If we touch the waypoint during q=0, we transition to q=1
-        if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
-            next_q = 1
-            
-        next_state = (next_x, next_y, next_q)
-        reward = 100.0 if next_state == self.goal_state else 0.0
-        
-        return next_state, reward
-
-    def value_iteration(self, theta=0.001):
-        print("Solving Sequential MDP with Value Iteration...")
-        
-        while True:
-            delta = 0
-            new_v = self.v_star.copy()
-            for s in self.states:
-                if s == self.goal_state: 
-                    continue
-                v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
-                best_v = max(v_actions)
-                delta = max(delta, abs(best_v - self.v_star[s]))
-                new_v[s] = best_v
-            self.v_star = new_v
-            if delta < theta: break
-        
-        #self.v_star[self.goal_state] = 100.0
-
-        print("Value Iteration Complete.")
-
-
-# =====================================================================
-# SECTION 2: UTILS (MAPPING & INTERPOLATION)
+# SECTION 1: UTILS (MAPPING & INTERPOLATION)
 # =====================================================================
 
 def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
@@ -269,113 +195,9 @@ def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star"
     print(" -> Salvataggio mappa q=1...")
     plot_smooth_heatmap(Z_q1, 1, "V* Interpolata - Fase q=1 (Cerca Goal)", f"{filename_prefix}_q1_smooth")
 
-# =====================================================================
-# SECTION 3: REINFORCEMENT LEARNING AGENT
-# =====================================================================
-
-class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_dim, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, action_dim)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
-
-class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-
-    def push(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
-
-    def sample(self, batch_size):
-        batch = ran.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = map(np.array, zip(*batch))
-        return state, action, reward, next_state, done
-
-    def __len__(self):
-        return len(self.buffer)
-
-class HierarchicalDQNLearner:
-    def __init__(self, env, max_episodes=1000, gamma=0.99, policy_name="policy", use_ddqn=True):
-        self.env = env
-        self.max_episodes = max_episodes
-        self.gamma = gamma
-        self.policy_name = policy_name
-        self.use_ddqn = use_ddqn
-        
-        self.batch_size = 64
-        self.lr = 1e-3
-        self.tau = 0.005 
-        self.eps = 1.0
-        self.eps_min = 0.01
-        self.eps_decay = 0.995
-        
-        # INCREASING STATE DIMENSION BY 1 TO ACCOMMODATE 'q'
-        state_dim = self.env.observation_space.shape[0] + 1
-        action_dim = self.env.action_space.n
-        
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
-        
-        if self.use_ddqn:
-            self.target_net = QNetwork(state_dim, action_dim).to(self.device)
-            self.target_net.load_state_dict(self.policy_net.state_dict())
-        
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
-        self.memory = ReplayBuffer(capacity=100000)
-
-    def select_action(self, state):
-        if ran.random() < self.eps:
-            return self.env.action_space.sample()
-        else:
-            with torch.no_grad():
-                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-                q_values = self.policy_net(state_tensor)
-                return q_values.argmax(dim=1).item()
-
-    def optimize_model(self):
-        if len(self.memory) < self.batch_size: return
-            
-        states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
-        
-        states = torch.FloatTensor(states).to(self.device)
-        actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
-        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
-        dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
-        
-        q_values = self.policy_net(states).gather(1, actions)
-        
-        with torch.no_grad():
-            if self.use_ddqn:
-                best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
-                next_q_values = self.target_net(next_states).gather(1, best_actions)
-            else:
-                next_q_values = self.policy_net(next_states).max(1)[0].unsqueeze(1)
-                
-            target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
-            
-        loss = F.mse_loss(q_values, target_q_values)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        
-        if self.use_ddqn:
-            for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
-                target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
-
-    def save_policy(self):
-        os.makedirs("./policy", exist_ok=True)
-        torch.save(self.policy_net.state_dict(), f"./policy/{self.policy_name}")
-
 
 # =====================================================================
-# SECTION 4: MAIN TRAINING LOOP
+# SECTION 2: MAIN TRAINING LOOP
 # =====================================================================
 
 def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True):
@@ -402,7 +224,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Map continuous state to abstract state
             abstract_x_curr, abstract_y_curr, _ = phi_mapping_sequential(ns_raw, q)
             next_q = q
-
+            
             # STATE TRANSITION LOGIC
             if abstract_x_curr == 1 and abstract_y_curr == 8 and q == 0:
                 next_q = 1
@@ -436,7 +258,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 
                 if q == 1:
                     print(
-                        f"real=({ns_raw[0]:.3f},{ns_raw[1]:.3f}) | abstract={abstract_ns}"
+                        f"action={a} | "
+                        f"real=({ns_raw[0]:.3f},{ns_raw[1]:.3f}) | "
+                        f"abstract={abstract_ns} | "
+                        f"phi={phi_ns:.2f} | "
+                        f"shape={shaping_signal:.2f}"
                     )
             else:
                 shaping_signal = 0.0
@@ -460,13 +286,13 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
             print(f"-> Progress: Episode {n_episode + 1}/{episodes} | 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
-            agent.save_policy()
+            agent._save_policy()
             
     return np.array(true_episode_rewards)
 
 def main():
     print("=== STARTING SEQUENTIAL TASK EXPERIMENT ===")
-    episodes = 10000
+    episodes = 2000
     gamma = 0.8
     
     print("\n1. Initializing Environment and Abstract MDP...")
@@ -485,7 +311,8 @@ def main():
         max_episodes=episodes,
         gamma=gamma,
         use_ddqn=True,
-        policy_name="sequential_policy.pth"
+        policy_name="sequential_policy.pth",
+        extra_state_dims=1
     )
     
     print("\n3. Starting Training Loop...")
