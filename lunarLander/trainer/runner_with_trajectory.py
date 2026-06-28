@@ -42,6 +42,9 @@ def run_single_episode(env, policy_net, device, grid_w=12, grid_h=12, render_del
             q = 1
             waypoint_reached = True
             print("   >>> Waypoint (1,8) reached! Transitioning to phase q=1.")
+
+        if abs_x == 8 and abs_y == 8 and q == 1:
+            print("   >>> Final point reached!")
             
         s_aug = np.append(ns_raw, q)
         total_reward += reward

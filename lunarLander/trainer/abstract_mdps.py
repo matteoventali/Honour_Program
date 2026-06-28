@@ -259,7 +259,7 @@ class SequentialWaypointMDP:
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
         self.waypoint = (1, 8)
-        self.goal_state = (3, 8, 1) 
+        self.goal_state = (8, 8, 1) 
         self.v_star = defaultdict(float)
 
     def get_transitions(self, state, action):

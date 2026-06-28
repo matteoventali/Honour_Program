@@ -28,6 +28,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Agent acts based on the augmented state
             a = agent.select_action(s_aug)
             ns_raw, _, terminated, truncated, _ = env.step(a)
+
+            env_goal_reward = 0.0
             
             # Map continuous state to abstract state
             abstract_x_curr, abstract_y_curr, _ = phi_mapping_sequential(ns_raw, q)
@@ -35,21 +37,21 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             
             # STATE TRANSITION LOGIC
             if abstract_x_curr == 1 and abstract_y_curr == 8 and q == 0:
+                env_goal_reward = 50
                 next_q = 1
             
             ns_aug = np.append(ns_raw, next_q)
             abstract_ns = (abstract_x_curr, abstract_y_curr, next_q)
 
-            # Final Goal Check
-            env_goal_reward = 0.0
-
-            if (abstract_ns[0], abstract_ns[1]) == abstract_mdp.waypoint and q == 0:
-                print("Waypoint reached")
-            
+            #if (abstract_ns[0], abstract_ns[1]) == abstract_mdp.waypoint and q == 0:
+            #    print("Waypoint reached")
+                
             if abstract_ns == abstract_mdp.goal_state:
                 env_goal_reward = 100.0
-                print("Final point reached")
+                #print("Final point reached")
                 terminated = True
+            elif terminated or truncated:
+                env_goal_reward = -100.0
             
             done = terminated or truncated
             episode_true_reward += env_goal_reward
@@ -100,12 +102,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 
 def main():
     print("=== STARTING SEQUENTIAL TASK EXPERIMENT ===")
-    episodes = 5000
-    gamma = 0.8
+    episodes = 10000
+    gamma = 0.99
     eps_decay = 0.9995
     
     print("\n1. Initializing Environment and Abstract MDP...")
-    env = gym.make("LunarLander-v3", continuous=False)
+    env = gym.make("LunarLander-v3", continuous=False, max_episode_steps=100000)
     
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()
