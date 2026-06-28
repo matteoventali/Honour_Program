@@ -64,14 +64,14 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 
                 shaping_signal = K * (agent.gamma * phi_ns - phi_s)
 
-                if q == 1:
-                    print(
-                        f"action={a} | "
-                        f"real=({ns_raw[0]:.3f},{ns_raw[1]:.3f}) | "
-                        f"abstract={abstract_ns} | "
-                        f"phi={phi_ns:.2f} | "
-                        f"shape={shaping_signal:.2f}"
-                    )
+                #if q == 1:
+                #    print(
+                #        f"action={a} | "
+                #        f"real=({ns_raw[0]:.3f},{ns_raw[1]:.3f}) | "
+                #        f"abstract={abstract_ns} | "
+                #        f"phi={phi_ns:.2f} | "
+                #        f"shape={shaping_signal:.2f}"
+                #    )
             else:
                 shaping_signal = 0.0
             
@@ -100,8 +100,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 
 def main():
     print("=== STARTING SEQUENTIAL TASK EXPERIMENT ===")
-    episodes = 2000
+    episodes = 5000
     gamma = 0.8
+    eps_decay = 0.9995
     
     print("\n1. Initializing Environment and Abstract MDP...")
     env = gym.make("LunarLander-v3", continuous=False)
@@ -118,6 +119,7 @@ def main():
         env=env,
         max_episodes=episodes,
         gamma=gamma,
+        eps_decay=eps_decay,
         use_ddqn=True,
         policy_name="sequential_policy.pth",
         extra_state_dims=1
