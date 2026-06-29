@@ -150,10 +150,10 @@ def main():
     print("=== STARTING SEQUENTIAL TASK EXPERIMENT: BASELINE VS SHAPING ===")
     
     # HYPERPARAMETERS
-    episodes = 1          
+    episodes = 5000          
     gamma = 0.99
     eps_decay = 0.9995       
-    K_scaling = 1.0          
+    K_scaling = 1.0        
     
     print("\n1. Initializing Environment and Abstract MDP...")
     env = gym.make("LunarLander-v3", continuous=False, max_episode_steps=100000)
@@ -222,7 +222,7 @@ def main():
     plot_comparison_curves(
         baseline_learning_curve, 
         shaping_learning_curve, 
-        window_size=100, 
+        window_size=500, 
         filename="img/baseline_vs_shaping_comparison.png"
     )
     

@@ -102,4 +102,4 @@ def evaluate_policy(policy_path, num_episodes=100, env_name="LunarLander-v3", gr
     print("======================================")
 
 if __name__ == "__main__":
-    evaluate_policy("./policy/sequential_policy.pth", num_episodes=100)
+    evaluate_policy("./policy/shaping_sequential_policy.pth", num_episodes=100)
