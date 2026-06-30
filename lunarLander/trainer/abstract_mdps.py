@@ -261,6 +261,7 @@ class SequentialWaypointMDP:
         self.waypoint = (1, 8)
         self.goal_state = (8, 8, 1) 
         self.v_star = defaultdict(float)
+        self.waypoint_reached = False
 
     def get_transitions(self, state, action):
         x, y, q = state
@@ -273,9 +274,15 @@ class SequentialWaypointMDP:
         elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
         
         next_q = q
-        if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
+        #if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
+        #    self.waypoint_reached = True
+        #elif self.waypoint_reached and q == 0:
+        #    self.waypoint_reached = False
+        #    next_q = 1
+
+        if x == self.waypoint[0] and y == self.waypoint[1] and next_q == 0:
             next_q = 1
-            
+
         next_state = (next_x, next_y, next_q)
         reward = 100.0 if next_state == self.goal_state else 0.0
         return next_state, reward
