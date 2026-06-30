@@ -274,6 +274,7 @@ class SequentialWaypointMDP:
         elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
         
         next_q = q
+        
         #if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
         #    self.waypoint_reached = True
         #elif self.waypoint_reached and q == 0:
