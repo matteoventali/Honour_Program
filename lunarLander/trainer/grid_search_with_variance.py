@@ -1,6 +1,5 @@
 import os
 import re
-import pickle
 import itertools
 import numpy as np
 import torch
@@ -90,19 +89,52 @@ def plot_shaded_comparisons(results_dict, window_size=150, base_dir="img/shaded_
             plt.savefig(filename, dpi=200, bbox_inches='tight')
             plt.close() 
 
+def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
+    print(f"   -> Generazione della mappa V* discreta: {filename}")
+    Z = np.zeros((height, width))
+    
+    # Costruiamo la matrice discreta dai valori esatti del dizionario V*
+    for y in range(height):
+        for x in range(width):
+            Z[y, x] = abstract_mdp.v_star.get((x, y), 0.0)
+            
+    plt.figure(figsize=(10, 9))
+    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
+    plt.colorbar(im, label="Potential Value (V*) Discreto")
+    plt.title(title, fontsize=15, fontweight='bold')
+    plt.xlabel("X (Horizontal Position)", fontsize=13)
+    plt.ylabel("Y (Altitude)", fontsize=13)
+    plt.xticks(np.arange(0, width + 1, 1))
+    plt.yticks(np.arange(0, height + 1, 1))
+    plt.grid(color='white', linestyle='-', linewidth=2, alpha=0.5)
+    
+    # Scrive i valori numerici al centro di ogni cella (se maggiori di 0)
+    for y in range(height):
+        for x in range(width):
+            val = Z[y, x]
+            if val > 0.01:
+                # Usa testo nero per sfondi chiari e bianco per sfondi scuri
+                text_color = 'white' if val < np.max(Z) * 0.7 else 'black'
+                plt.text(x + 0.5, y + 0.5, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150, bbox_inches='tight')
+    plt.close()
 
 # =====================================================================
 # PARTE 2: CORE TRAINING LOOP
 # =====================================================================
 
 def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=True):
-    true_episode_rewards = []
+    true_episode_rewards = [] # Ricompensa sparsa del goal (0 o 100)
+    total_episode_rewards = [] # Ricompensa che l'agente "vede" (goal + shaping)
     K = 100.0 / abstract_mdp.goal_reward if abstract_mdp.goal_reward > 0 else 1.0
 
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
         terminated = truncated = False
         episode_true_reward = 0.0
+        episode_total_reward = 0.0
         
         while not (terminated or truncated):
             a = agent.select_action(s_raw)
@@ -132,14 +164,29 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             else:
                 shaping_signal = 0.0
             
-            agent.memory.push(s_raw, a, env_goal_reward + shaping_signal, ns_raw, done)
+            total_reward = env_goal_reward + shaping_signal
+            episode_total_reward += total_reward
+            agent.memory.push(s_raw, a, total_reward, ns_raw, done)
             agent.optimize_model()
             s_raw = ns_raw
+        
+        if (n_episode + 1) % 100 == 0:
+            recent_avg = np.mean(true_episode_rewards[-100:])
+            mode_str = "SHAPING" if use_shaping else "BASELINE"
+
+            #print(f"[{mode_str}] Progress: Episode {n_episode + 1}/{episodes} | 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
+            print(
+                f"[{mode_str}] Episode {n_episode + 1}/{episodes} | "
+                f"Avg Reward : {recent_avg:.6f} | "
+                f"Epsilon: {agent.eps:.6f}\n"
+            )
+            agent._save_policy()
 
         agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
         true_episode_rewards.append(episode_true_reward)
+        total_episode_rewards.append(episode_total_reward)
         
-    return np.array(true_episode_rewards)
+    return np.array(true_episode_rewards), np.array(total_episode_rewards)
 
 # =====================================================================
 # PARTE 3: PIPELINE ORCHESTRATOR (MAIN)
@@ -151,7 +198,7 @@ def main():
     os.makedirs("img/shaded_plots", exist_ok=True)
     
     # --- IPERPARAMETRI GLOBALI ---
-    NUM_SEEDS = 5
+    NUM_SEEDS = 1
     EPISODES = 1000
     
     #goal_configs = {
@@ -163,7 +210,7 @@ def main():
     goal_configs = {
         "1x1_Strict": [(1,8)]
     }
-    gammas = [0.99]
+    gammas = [0.8, 0.9, 0.99]
     goal_rewards = [100.0]
     
     results = {}
@@ -173,6 +220,7 @@ def main():
     print("\n--- FASE 1: ADDESTRAMENTO BASELINES ---")
     for (goal_name, goal_states), gamma in list(itertools.product(goal_configs.items(), gammas)):
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
+        policy_name = f"baseline_{goal_name}_g{str(gamma).replace('.','')}"
         print(f"\n[Config] {config_name}")
         
         runs_data = []
@@ -184,8 +232,8 @@ def main():
             abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=1.0)
             abstract_mdp.value_iteration()
             
-            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True)
-            curve = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
+            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
+            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
             runs_data.append(curve)
             env.close()
         results[config_name] = np.array(runs_data)
@@ -195,12 +243,15 @@ def main():
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
         
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Rew:{g_rew}"
-        heatmap_file = f"img/heatmaps/v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}.png"
+        heatmap_file = f"img/heatmaps/v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
+        discrete_heatmap_file = f"img/heatmaps/discrete_v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
+        policy_name = f"shaping_{goal_name}_g{str(gamma).replace('.','')}_r{g_rew}"
         print(f"\n[{idx+1}/{len(combinations)}] {config_name}")
         
         # Salva la heatmap
         abstract_mdp_temp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=g_rew)
         abstract_mdp_temp.value_iteration()
+        save_discrete_value_function_heatmap(abstract_mdp_temp, filename=discrete_heatmap_file, title=f"Discrete V* | {goal_name} | G:{gamma}")
         save_value_function_heatmap(abstract_mdp_temp, filename=heatmap_file, title=f"V* | {goal_name} | G:{gamma}")
 
         runs_data = []
@@ -212,8 +263,8 @@ def main():
             abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=g_rew)
             abstract_mdp.value_iteration()
             
-            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True)
-            curve = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
+            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
+            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
             runs_data.append(curve)
             env.close()
             

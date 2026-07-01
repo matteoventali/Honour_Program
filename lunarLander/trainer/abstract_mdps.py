@@ -255,7 +255,7 @@ class SequentialWaypointMDP:
     def __init__(self, width=12, height=12, gamma=0.99):
         self.width = width
         self.height = height
-        self.gamma = 0.9
+        self.gamma = gamma
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
         self.waypoint = (1, 8)

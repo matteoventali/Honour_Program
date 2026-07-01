@@ -71,6 +71,7 @@ class HierarchicalDQNLearner:
         action_dim = self.env.action_space.n
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(self.device)
         self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
         
         if self.use_ddqn:
