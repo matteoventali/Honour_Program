@@ -7,7 +7,6 @@ import torch
 import gymnasium as gym
 import matplotlib.pyplot as plt
 
-# Importa i moduli del tuo progetto
 from abstract_mdps import ConfigurableDiagonalMDP
 from agent import HierarchicalDQNLearner
 from utils import phi_mapping_grid, get_continuous_grid_coords, get_bilinear_potential
@@ -91,21 +90,6 @@ def plot_shaded_comparisons(results_dict, window_size=150, base_dir="img/shaded_
             plt.savefig(filename, dpi=200, bbox_inches='tight')
             plt.close() 
 
-def print_leaderboard(results_dict):
-    print("\n" + "="*80)
-    print(f"{'🏆 LEADERBOARD FINALE (Media ultimi 100 eps, mediata sui seed)':^80}")
-    print("="*80)
-    ranked = []
-    for name, runs in results_dict.items():
-        # Calcola la media degli ultimi 100 ep per ogni seed, poi fa la media totale
-        mean_score = np.mean([np.mean(run[-100:]) for run in runs])
-        ranked.append((name, mean_score))
-    ranked.sort(key=lambda x: x[1], reverse=True)
-    
-    for idx, (name, score) in enumerate(ranked):
-        star = "⭐" if idx == 0 else "  "
-        print(f"{idx+1:<3} | {score:>7.2f} {star} | {name}")
-    print("="*80 + "\n")
 
 # =====================================================================
 # PARTE 2: CORE TRAINING LOOP
@@ -126,7 +110,6 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             done = terminated or truncated
             
             abstract_ns = phi_mapping_grid(ns_raw)
-            #env_goal_reward = 100.0 if (terminated and abstract_ns in abstract_mdp.goal_states) else 0.0
             
             env_goal_reward = 0.0
 
@@ -145,13 +128,9 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
                 phi_s = get_bilinear_potential(px_s, py_s, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
                 phi_ns = get_bilinear_potential(px_ns, py_ns, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
                 
-                # --- SOLO SHAPING CLASSICO ---
                 shaping_signal = K * (agent.gamma * phi_ns - phi_s)
             else:
                 shaping_signal = 0.0
-            
-            # Clip del shaping per evitare esplosioni del gradiente
-            shaping_signal = np.clip(shaping_signal, -20.0, 20.0) 
             
             agent.memory.push(s_raw, a, env_goal_reward + shaping_signal, ns_raw, done)
             agent.optimize_model()
@@ -184,8 +163,8 @@ def main():
     goal_configs = {
         "1x1_Strict": [(1,8)]
     }
-    gammas = [0.99, 0.90, 0.80]
-    goal_rewards = [1.0]
+    gammas = [0.99]
+    goal_rewards = [100.0]
     
     results = {}
     combinations = list(itertools.product(goal_configs.items(), gammas, goal_rewards))
@@ -240,12 +219,7 @@ def main():
             
         results[config_name] = np.array(runs_data)
 
-    # 3. SALVATAGGIO E ANALISI
-    print("\n--- FASE 3: SALVATAGGIO E GENERAZIONE GRAFICI ---")
-    with open('grid_search_results_shaded.pkl', 'wb') as f:
-        pickle.dump(results, f)
-        
-    print_leaderboard(results)
+    # 3. PLOTTING
     plot_shaded_comparisons(results, window_size=150)
     print(">>> TUTTO COMPLETATO! Controlla le immagini nella cartella 'img/'")
 
