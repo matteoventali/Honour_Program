@@ -33,6 +33,20 @@ class ReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
+    
+    def q0_fraction(self):
+        if len(self.buffer) == 0:
+            return 0.0
+        
+        q0 = sum(state[-1] == 0 for state, _, _, _, _ in self.buffer)
+        return q0 / len(self.buffer)
+    
+    def q1_fraction(self):
+        if len(self.buffer) == 0:
+            return 0.0
+        
+        q1 = sum(state[-1] == 1 for state, _, _, _, _ in self.buffer)
+        return q1 / len(self.buffer)
 
 class HierarchicalDQNLearner:
     def __init__(self, env, abstract_mdp=None, mapping_fn=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):

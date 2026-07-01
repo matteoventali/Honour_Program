@@ -158,7 +158,7 @@ def plot_training_results(rewards, window_size=100, title="Training Results", yl
         plt.show()
     plt.close()
 
-def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12):
+def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = 0, vmax = 100):
     """
     Generates and saves TWO separate heatmaps for V*: 
     One for q=0 (searching waypoint) and one for q=1 (searching final goal).
@@ -176,9 +176,18 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, h
             elif q == 1:
                 v_matrix_q1[y, x] = value
 
+    all_values = np.concatenate([
+        v_matrix_q0.flatten(), 
+        v_matrix_q1.flatten()
+    ])
+
+    # Calcola i limiti globali
+    computed_vmin = all_values.min()
+    computed_vmax = all_values.max()
+
     def plot_single_heatmap(matrix, q_val, title, filename):
         plt.figure(figsize=(9, 8))
-        im = plt.imshow(matrix, cmap='viridis', origin='lower')
+        im = plt.imshow(matrix, cmap='viridis', origin='lower', vmin=vmin, vmax=vmax)
         
         # Overlay numerical values on cells
         for y in range(height):
@@ -223,7 +232,7 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, h
     print(" -> Generating V* Heatmap for Q=1...")
     plot_single_heatmap(v_matrix_q1, 1, "Potential Map (V*) - Phase q=1 (Seek Goal)", f"{filename_prefix}_q1")
 
-def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12):
+def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = 0, vmax = 100):
     """
     Generates TWO high-resolution heatmaps using bilinear interpolation:
     One for q=0 and one for q=1.
@@ -244,9 +253,18 @@ def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star"
             Z_q0[i, j] = get_bilinear_potential_sequential(px, py, 0, abstract_mdp.v_star, width, height)
             Z_q1[i, j] = get_bilinear_potential_sequential(px, py, 1, abstract_mdp.v_star, width, height)
 
+    all_values = np.concatenate([
+        Z_q0.flatten(), 
+        Z_q1.flatten()
+    ])
+
+    # Calcola i limiti globali
+    computed_vmin = all_values.min()
+    computed_vmax = all_values.max()
+
     def plot_smooth_heatmap(Z_matrix, q_val, title, filename):
         plt.figure(figsize=(10, 9))
-        im = plt.imshow(Z_matrix, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
+        im = plt.imshow(Z_matrix, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=vmin, vmax=vmax)
         
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Interpolated Potential Value (V*)")
         plt.title(title, fontsize=15, fontweight='bold')

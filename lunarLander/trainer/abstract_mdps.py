@@ -255,11 +255,11 @@ class SequentialWaypointMDP:
     def __init__(self, width=12, height=12, gamma=0.99):
         self.width = width
         self.height = height
-        self.gamma = gamma
+        self.gamma = 0.9
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
         self.waypoint = (1, 8)
-        self.goal_state = (8, 8, 1) 
+        self.goal_state = (8,8,1) 
         self.v_star = defaultdict(float)
         self.waypoint_reached = False
 
@@ -285,7 +285,7 @@ class SequentialWaypointMDP:
             next_q = 1
 
         next_state = (next_x, next_y, next_q)
-        reward = 100.0 if next_state == self.goal_state else 0.0
+        reward = 100 if next_state == self.goal_state else 0.0
         return next_state, reward
 
     def value_iteration(self, theta=0.001):
@@ -303,5 +303,5 @@ class SequentialWaypointMDP:
             self.v_star = new_v
             if delta < theta: break
         
-        self.v_star[self.goal_state] = 100.0
+        self.v_star[self.goal_state] = 100
         
