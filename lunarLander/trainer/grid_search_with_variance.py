@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import gymnasium as gym
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from abstract_mdps import ConfigurableDiagonalMDP
 from agent import HierarchicalDQNLearner
@@ -24,7 +25,7 @@ def get_smoothed_mean_and_std(runs_data, window_size):
     smoothed = np.array([moving_average(run, window_size) for run in runs_data])
     return np.mean(smoothed, axis=0), np.std(smoothed, axis=0)
 
-def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
+def save_value_function_heatmap_old(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
     print(f"   -> Generazione della mappa V* interpolata: {filename}")
     resolution = 20 
     x_c = np.linspace(0, width, width * resolution)
@@ -89,7 +90,7 @@ def plot_shaded_comparisons(results_dict, window_size=150, base_dir="img/shaded_
             plt.savefig(filename, dpi=200, bbox_inches='tight')
             plt.close() 
 
-def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
+def save_discrete_value_function_heatmap_old(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
     print(f"   -> Generazione della mappa V* discreta: {filename}")
     Z = np.zeros((height, width))
     
@@ -121,6 +122,101 @@ def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, heigh
     plt.savefig(filename, dpi=150, bbox_inches='tight')
     plt.close()
 
+
+
+def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
+    print(f"   -> Generazione della mappa V* interpolata: {filename}")
+    resolution = 20 
+    x_c = np.linspace(0, width, width * resolution)
+    y_c = np.linspace(0, height, height * resolution)
+    Z = np.zeros((len(y_c), len(x_c)))
+    
+    for i, py in enumerate(y_c):
+        for j, px in enumerate(x_c):
+            Z[i, j] = get_bilinear_potential(px, py, abstract_mdp.v_star, width, height)
+            
+    plt.figure(figsize=(10, 9))
+    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=0, vmax=100)
+    plt.colorbar(im, label="Potential Value (V*) Interpolato")
+    plt.title(title, fontsize=15, fontweight='bold')
+    plt.xlabel("X (Horizontal Position)", fontsize=13)
+    plt.ylabel("Y (Altitude)", fontsize=13)
+    plt.xticks(np.arange(0, width + 1, 1)); plt.yticks(np.arange(0, height + 1, 1))
+    plt.grid(color='white', linestyle='-', linewidth=1, alpha=0.3)
+    
+    # Disegna i punti di controllo (centri delle celle)
+    cx = [x + 0.5 for x in range(width) for _ in range(height)]
+    cy = [y + 0.5 for _ in range(width) for y in range(height)]
+    plt.scatter(cx, cy, color='black', s=8, alpha=0.6, label="Centri (V* vera)")
+    
+    # --- BOX DINAMICO AREA VISIBILE ---
+    # Definiamo i confini dello schermo di gioco (x: -1.0 a 1.0, y: 0.0 a 1.5)
+    obs_bl = np.array([-1.0, 0.0, 0, 0, 0, 0, 0, 0])
+    obs_tr = np.array([1.0, 1.5, 0, 0, 0, 0, 0, 0])
+    
+    px_min, py_min = get_continuous_grid_coords(obs_bl, width, height)
+    px_max, py_max = get_continuous_grid_coords(obs_tr, width, height)
+    
+    screen_rect = patches.Rectangle(
+        (px_min, py_min), px_max - px_min, py_max - py_min, 
+        linewidth=3, edgecolor='red', facecolor='none', linestyle='--', 
+        label="Schermo Visibile"
+    )
+    plt.gca().add_patch(screen_rect)
+    # -----------------------------------
+
+    plt.legend(loc="upper right", fontsize=10)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150, bbox_inches='tight')
+    plt.close()
+
+def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
+    print(f"   -> Generazione della mappa V* discreta: {filename}")
+    Z = np.zeros((height, width))
+    
+    for y in range(height):
+        for x in range(width):
+            Z[y, x] = abstract_mdp.v_star.get((x, y), 0.0)
+            
+    plt.figure(figsize=(10, 9))
+    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=0, vmax=0)
+    plt.colorbar(im, label="Potential Value (V*) Discreto")
+    plt.title(title, fontsize=15, fontweight='bold')
+    plt.xlabel("X (Horizontal Position)", fontsize=13)
+    plt.ylabel("Y (Altitude)", fontsize=13)
+    plt.xticks(np.arange(0, width + 1, 1))
+    plt.yticks(np.arange(0, height + 1, 1))
+    plt.grid(color='white', linestyle='-', linewidth=2, alpha=0.5)
+    
+    for y in range(height):
+        for x in range(width):
+            val = Z[y, x]
+            if val > 0.01:
+                text_color = 'white' if val < np.max(Z) * 0.7 else 'black'
+                plt.text(x + 0.5, y + 0.5, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=8)
+
+    # --- BOX DINAMICO AREA VISIBILE ---
+    obs_bl = np.array([-1.0, 0.0, 0, 0, 0, 0, 0, 0])
+    obs_tr = np.array([1.0, 1.5, 0, 0, 0, 0, 0, 0])
+    
+    px_min, py_min = get_continuous_grid_coords(obs_bl, width, height)
+    px_max, py_max = get_continuous_grid_coords(obs_tr, width, height)
+    
+    screen_rect = patches.Rectangle(
+        (px_min, py_min), px_max - px_min, py_max - py_min, 
+        linewidth=3, edgecolor='red', facecolor='none', linestyle='--', 
+        label="Schermo Visibile"
+    )
+    plt.gca().add_patch(screen_rect)
+    plt.legend(loc="upper right", fontsize=10)
+    # -----------------------------------
+
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+
 # =====================================================================
 # PARTE 2: CORE TRAINING LOOP
 # =====================================================================
@@ -129,7 +225,7 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
     true_episode_rewards = [] # Ricompensa sparsa del goal (0 o 100)
     total_episode_rewards = [] # Ricompensa che l'agente "vede" (goal + shaping)
     K = 100.0 / abstract_mdp.goal_reward if abstract_mdp.goal_reward > 0 else 1.0
-
+    
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
         terminated = truncated = False
@@ -146,23 +242,32 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             env_goal_reward = 0.0
 
             if abstract_ns in abstract_mdp.goal_states:
+                print("Goal raggiunto")
                 env_goal_reward = 100.0
                 terminated = True
 
             done = terminated or truncated
 
             episode_true_reward += env_goal_reward
-                
+
+            shaping_signal = 0
+
             if use_shaping:
-                px_s, py_s = get_continuous_grid_coords(s_raw, abstract_mdp.width, abstract_mdp.height)
-                px_ns, py_ns = get_continuous_grid_coords(ns_raw, abstract_mdp.width, abstract_mdp.height)
+                #px_s, py_s = get_continuous_grid_coords(s_raw, abstract_mdp.width, abstract_mdp.height)
+                #px_ns, py_ns = get_continuous_grid_coords(ns_raw, abstract_mdp.width, abstract_mdp.height)
+                #
+                #phi_s = get_bilinear_potential(px_s, py_s, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
+                #phi_ns = get_bilinear_potential(px_ns, py_ns, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
                 
-                phi_s = get_bilinear_potential(px_s, py_s, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
-                phi_ns = get_bilinear_potential(px_ns, py_ns, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
-                
-                shaping_signal = K * (agent.gamma * phi_ns - phi_s)
-            else:
-                shaping_signal = 0.0
+                abstract_s = phi_mapping_grid(s_raw, abstract_mdp.width, abstract_mdp.height)
+                abstract_ns = phi_mapping_grid(ns_raw, abstract_mdp.width, abstract_mdp.height)
+
+                if abstract_ns != abstract_s:
+                    phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
+                    phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
+                    shaping_signal = K * (agent.gamma * phi_ns - phi_s)
+                    shaping_signal_nogamma = K * (phi_ns - phi_s)
+                    #print(f"abstract s {abstract_s} abstract_ns {abstract_ns} shaping {shaping_signal} shaping no gamma {shaping_signal_nogamma}")
             
             total_reward = env_goal_reward + shaping_signal
             episode_total_reward += total_reward
@@ -198,7 +303,7 @@ def main():
     os.makedirs("img/shaded_plots", exist_ok=True)
     
     # --- IPERPARAMETRI GLOBALI ---
-    NUM_SEEDS = 5
+    NUM_SEEDS = 1
     EPISODES = 1000
     
     #goal_configs = {

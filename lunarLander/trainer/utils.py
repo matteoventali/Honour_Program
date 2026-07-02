@@ -59,6 +59,45 @@ def get_continuous_grid_coords(obs, grid_w=12, grid_h=12):
     py = y / 1.5 * (grid_h - 1)
     return px, py
 
+# Backup old
+def get_continuous_grid_coords_old(obs, grid_w=12, grid_h=12):
+    """
+    Mappa l'intero spazio giocabile nativo di LunarLander su coordinate continue.
+    X copre il range orizzontale [-2.5, 2.5]. 
+    Y copre il range verticale dal suolo [0.0] al tetto [2.5].
+    """
+    x, y = obs[0], obs[1]
+    
+    # Normalizzazione Asse X:
+    # (x + 2.5) trasla il range da [-2.5, 2.5] a [0.0, 5.0].
+    # Dividendo per 5.0 otteniamo una percentuale [0, 1], poi moltiplicata per grid_w.
+    px = ((x + 2.5) / 5.0) * grid_w
+    
+    # Normalizzazione Asse Y:
+    # y traslato da [0.0, 2.5] a una percentuale [0, 1], moltiplicata per grid_h.
+    py = (y / 2.5) * grid_h
+    
+    # Clipping di Sicurezza:
+    # Previene errori matematici (es. out-of-bounds nell'interpolazione) se il 
+    # motore fisico di Gym genera collisioni che spingono il Lander fuori mappa.
+    px = np.clip(px, 0.0, grid_w - 0.001)
+    py = np.clip(py, 0.0, grid_h - 0.001)
+    
+    return px, py
+
+def phi_mapping_grid_old(obs, grid_w=12, grid_h=12):
+    """
+    Converte le coordinate continue della griglia nel rispettivo stato astratto discreto.
+    """
+    px, py = get_continuous_grid_coords(obs, grid_w, grid_h)
+    
+    # Estraiamo l'indice della cella arrotondando per difetto.
+    # Grazie al clipping precedente, questi valori non supereranno mai (grid_w - 1).
+    abstract_x = int(np.floor(px))
+    abstract_y = int(np.floor(py))
+    
+    return abstract_x, abstract_y
+
 # =====================================================================
 # SECTION 2: POTENTIAL & INTERPOLATION FUNCTIONS
 # =====================================================================
