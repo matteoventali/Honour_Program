@@ -23,6 +23,16 @@ def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
     abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
     return abstract_x, abstract_y, q
 
+def get_continuous_grid_coords(obs, grid_w=12, grid_h=12):
+    """
+    Converts raw observation coordinates into continuous grid coordinates.
+    """
+    x, y = obs[0], obs[1]
+    px = (x + 1) / 2 * (grid_w - 1)
+    py = y / 1.5 * (grid_h - 1)
+    return px, py
+
+# Backup old
 def phi_mapping_kinematic(obs, grid_w=12, grid_h=12):
     """
     Maps the continuous LunarLander state to a 4D Abstract State: (x, y, vy, angle)
@@ -50,17 +60,7 @@ def phi_mapping_kinematic(obs, grid_w=12, grid_h=12):
         
     return abstract_x, abstract_y, abstract_vy, abstract_angle
 
-def get_continuous_grid_coords(obs, grid_w=12, grid_h=12):
-    """
-    Converts raw observation coordinates into continuous grid coordinates.
-    """
-    x, y = obs[0], obs[1]
-    px = (x + 1) / 2 * (grid_w - 1)
-    py = y / 1.5 * (grid_h - 1)
-    return px, py
-
-# Backup old
-def get_continuous_grid_coords_old(obs, grid_w=12, grid_h=12):
+def get_continuous_grid_coords_alternative(obs, grid_w=12, grid_h=12):
     """
     Mappa l'intero spazio giocabile nativo di LunarLander su coordinate continue.
     X copre il range orizzontale [-2.5, 2.5]. 
@@ -85,7 +85,7 @@ def get_continuous_grid_coords_old(obs, grid_w=12, grid_h=12):
     
     return px, py
 
-def phi_mapping_grid_old(obs, grid_w=12, grid_h=12):
+def phi_mapping_grid_alternative(obs, grid_w=12, grid_h=12):
     """
     Converte le coordinate continue della griglia nel rispettivo stato astratto discreto.
     """

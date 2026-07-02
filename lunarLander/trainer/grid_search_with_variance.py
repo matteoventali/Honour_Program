@@ -2,250 +2,270 @@ import os
 import re
 import itertools
 import numpy as np
+import pandas as pd
 import torch
 import gymnasium as gym
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 from abstract_mdps import ConfigurableDiagonalMDP
 from agent import HierarchicalDQNLearner
-from utils import phi_mapping_grid, get_continuous_grid_coords, get_bilinear_potential
+from utils import phi_mapping_grid
 
 # =====================================================================
-# PARTE 1: UTILS & PLOTTING STATISTICO
+# PART 1: STATISTICAL UTILS & PLOTTING
 # =====================================================================
+
+def moving_average_old(data, window_size):
+    """
+    Computes a centered moving average with the same length as the input.
+    """
+    kernel = np.ones(window_size) / window_size
+    return np.convolve(data, kernel, mode="same")
 
 def moving_average(data, window_size):
-    if len(data) < window_size: return data
-    return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+    """
+    Calcola una media mobile centrata della stessa lunghezza dell'input,
+    usando Pandas per gestire dinamicamente i bordi.
+    """
+    return pd.Series(data).rolling(window=window_size, min_periods=1, center=True).mean().to_numpy()
 
 def get_smoothed_mean_and_std(runs_data, window_size):
-    if isinstance(runs_data, list) or len(runs_data.shape) == 1:
-        runs_data = np.array([runs_data])
-    smoothed = np.array([moving_average(run, window_size) for run in runs_data])
-    return np.mean(smoothed, axis=0), np.std(smoothed, axis=0)
+    """
+    Computes the mean and standard deviation across multiple runs after
+    applying a moving average.
+    """
 
-def save_value_function_heatmap_old(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
-    print(f"   -> Generazione della mappa V* interpolata: {filename}")
-    resolution = 20 
-    x_c = np.linspace(0, width, width * resolution)
-    y_c = np.linspace(0, height, height * resolution)
-    Z = np.zeros((len(y_c), len(x_c)))
+    runs_data = np.asarray(runs_data)
+
+    if runs_data.ndim == 1:
+        runs_data = runs_data[np.newaxis, :]
+
+    smoothed = np.array(
+        [moving_average(run, window_size) for run in runs_data]
+    )
+
+    return (
+        np.mean(smoothed, axis=0),
+        np.std(smoothed, axis=0),
+    )
+
+def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
+    print(f"   -> Generating discrete V* map: {filename}")
+    Z = np.zeros((height, width))
     
-    for i, py in enumerate(y_c):
-        for j, px in enumerate(x_c):
-            Z[i, j] = get_bilinear_potential(px, py, abstract_mdp.v_star, width, height)
+    # Build the discrete matrix from the exact values of the V* dictionary
+    for y in range(height):
+        for x in range(width):
+            Z[y, x] = abstract_mdp.v_star.get((x, y), 0.0)
             
     plt.figure(figsize=(10, 9))
     im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
-    plt.colorbar(im, label="Potential Value (V*) Interpolato")
+    plt.colorbar(im, label="Potential Value (V*) Discreto")
     plt.title(title, fontsize=15, fontweight='bold')
     plt.xlabel("X (Horizontal Position)", fontsize=13)
     plt.ylabel("Y (Altitude)", fontsize=13)
-    plt.xticks(np.arange(0, width + 1, 1)); plt.yticks(np.arange(0, height + 1, 1))
-    plt.grid(color='white', linestyle='-', linewidth=1, alpha=0.3)
+    plt.xticks(np.arange(0, width + 1, 1))
+    plt.yticks(np.arange(0, height + 1, 1))
+    plt.grid(color='white', linestyle='-', linewidth=2, alpha=0.5)
     
-    cx = [x + 0.5 for x in range(width) for _ in range(height)]
-    cy = [y + 0.5 for _ in range(width) for y in range(height)]
-    plt.scatter(cx, cy, color='black', s=8, alpha=0.6, label="Centri (V* vera)")
-    plt.legend(loc="upper right", fontsize=10)
+    # Write numerical values in the center of each cell (if greater than 0)
+    for y in range(height):
+        for x in range(width):
+            val = Z[y, x]
+            if val > 0.01:
+                # Use black text for light backgrounds and white for dark backgrounds
+                text_color = 'white' if val < np.max(Z) * 0.7 else 'black'
+                plt.text(x + 0.5, y + 0.5, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=8)
+
     plt.tight_layout()
     plt.savefig(filename, dpi=150, bbox_inches='tight')
     plt.close()
 
-def plot_shaded_comparisons(results_dict, window_size=150, base_dir="img/shaded_plots"):
+def plot_shaded_comparisons(results_dict, epsilon_dict, window_size=100, base_dir="img/shaded_plots"):
+
     os.makedirs(base_dir, exist_ok=True)
-    goals = sorted(list(set([re.search(r'Goal:(.*?)\s\|', k).group(1) for k in results_dict.keys() if 'Goal:' in k])))
-    gammas = sorted(list(set([re.search(r'Gamma:(.*?)\s\|', k).group(1) for k in results_dict.keys() if 'Gamma:' in k])))
-    cmap = plt.get_cmap('Set1')
+
+    goals = sorted(
+        set(
+            re.search(r"Goal:(.*?)\s\|", k).group(1)
+            for k in results_dict
+            if "Goal:" in k
+        )
+    )
+
+    gammas = sorted(
+        set(
+            re.search(r"Gamma:(.*?)\s\|", k).group(1)
+            for k in results_dict
+            if "Gamma:" in k
+        )
+    )
+
+    cmap = plt.get_cmap("Set1")
 
     for goal in goals:
         for gamma in gammas:
-            plot_results = {k: v for k, v in results_dict.items() if f"Goal:{goal} |" in k and f"Gamma:{gamma} |" in k}
-            if not plot_results: continue
 
-            plt.figure(figsize=(11, 7))
-            plt.title(f"Performance: {goal} | Gamma: {gamma}", fontsize=16, fontweight='bold')
-            plt.axhline(y=100, color='black', linestyle=':', alpha=0.5, label='Win Threshold')
-            plt.ylabel('Smoothed Episode Reward (Mean ± Std)', fontsize=12)
-            plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
-            plt.grid(True, linestyle='--', alpha=0.4)
-            
+            plot_results = {
+                k: v
+                for k, v in results_dict.items()
+                if f"Goal:{goal} |" in k
+                and f"Gamma:{gamma} |" in k
+            }
+
+            if len(plot_results) == 0:
+                continue
+
+            fig, ax1 = plt.subplots(figsize=(10, 6))
+
+            ax1.set_title(
+                f"Learning Curves ({goal}, γ={gamma})",
+                fontsize=15,
+                fontweight="bold",
+            )
+
+            ax1.set_xlabel("Training Episode", fontsize=12)
+            ax1.set_ylabel("Episode Return", fontsize=12)
+
+            ax1.grid(True, linestyle="--", alpha=0.3)
+
+            ax1.axhline(
+                100,
+                color="black",
+                linestyle=":",
+                linewidth=1.4,
+                alpha=0.7,
+                label="Goal reward",
+            )
+
             for idx, (config_name, runs_data) in enumerate(plot_results.items()):
+
                 if "Baseline" in config_name:
-                    short_label, color, zorder = "Baseline (No Shaping)", 'black', 10
+                    color = "black"
+                    label = "Baseline"
+                    zorder = 10
                 else:
-                    rew_val = re.search(r'Rew:(.*?)$', config_name).group(1) if 'Rew:' in config_name else "Unknown"
-                    short_label, color, zorder = f"Shaping (Goal Reward: {rew_val})", cmap(idx % 9), 5
-                
-                mean, std = get_smoothed_mean_and_std(runs_data, window_size)
-                x_axis = range(window_size - 1, window_size - 1 + len(mean))
-                
-                plt.fill_between(x_axis, mean - std, mean + std, color=color, alpha=0.15, zorder=zorder-1)
-                plt.plot(x_axis, mean, color=color, linewidth=2.0, zorder=zorder, label=short_label)
+                    reward = re.search(r"Rew:(.*?)$", config_name).group(1)
+                    color = cmap(idx % 9)
+                    label = f"PBRS (Goal={reward})"
+                    zorder = 5
 
-            plt.legend(loc="lower right", fontsize=11, framealpha=0.9)
-            plt.tight_layout()
-            filename = os.path.join(base_dir, f"shaded_{goal}_g{str(gamma).replace('.','')}.png")
-            plt.savefig(filename, dpi=200, bbox_inches='tight')
-            plt.close() 
+                mean, std = get_smoothed_mean_and_std(
+                    runs_data,
+                    window_size,
+                )
 
-def save_discrete_value_function_heatmap_old(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
-    print(f"   -> Generazione della mappa V* discreta: {filename}")
-    Z = np.zeros((height, width))
-    
-    # Costruiamo la matrice discreta dai valori esatti del dizionario V*
-    for y in range(height):
-        for x in range(width):
-            Z[y, x] = abstract_mdp.v_star.get((x, y), 0.0)
-            
-    plt.figure(figsize=(10, 9))
-    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
-    plt.colorbar(im, label="Potential Value (V*) Discreto")
-    plt.title(title, fontsize=15, fontweight='bold')
-    plt.xlabel("X (Horizontal Position)", fontsize=13)
-    plt.ylabel("Y (Altitude)", fontsize=13)
-    plt.xticks(np.arange(0, width + 1, 1))
-    plt.yticks(np.arange(0, height + 1, 1))
-    plt.grid(color='white', linestyle='-', linewidth=2, alpha=0.5)
-    
-    # Scrive i valori numerici al centro di ogni cella (se maggiori di 0)
-    for y in range(height):
-        for x in range(width):
-            val = Z[y, x]
-            if val > 0.01:
-                # Usa testo nero per sfondi chiari e bianco per sfondi scuri
-                text_color = 'white' if val < np.max(Z) * 0.7 else 'black'
-                plt.text(x + 0.5, y + 0.5, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=8)
+                x = np.arange(len(mean))
 
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150, bbox_inches='tight')
-    plt.close()
+                ax1.fill_between(
+                    x,
+                    mean - std,
+                    mean + std,
+                    alpha=0.18,
+                    color=color,
+                    zorder=zorder - 1,
+                )
 
+                ax1.plot(
+                    x,
+                    mean,
+                    color=color,
+                    linewidth=2.2,
+                    label=label,
+                    zorder=zorder,
+                )
 
+            # -------------------------------
+            # Secondary axis (epsilon)
+            # -------------------------------
 
-def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Potential Map V*"):
-    print(f"   -> Generazione della mappa V* interpolata: {filename}")
-    resolution = 20 
-    x_c = np.linspace(0, width, width * resolution)
-    y_c = np.linspace(0, height, height * resolution)
-    Z = np.zeros((len(y_c), len(x_c)))
-    
-    for i, py in enumerate(y_c):
-        for j, px in enumerate(x_c):
-            Z[i, j] = get_bilinear_potential(px, py, abstract_mdp.v_star, width, height)
-            
-    plt.figure(figsize=(10, 9))
-    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=0, vmax=100)
-    plt.colorbar(im, label="Potential Value (V*) Interpolato")
-    plt.title(title, fontsize=15, fontweight='bold')
-    plt.xlabel("X (Horizontal Position)", fontsize=13)
-    plt.ylabel("Y (Altitude)", fontsize=13)
-    plt.xticks(np.arange(0, width + 1, 1)); plt.yticks(np.arange(0, height + 1, 1))
-    plt.grid(color='white', linestyle='-', linewidth=1, alpha=0.3)
-    
-    # Disegna i punti di controllo (centri delle celle)
-    cx = [x + 0.5 for x in range(width) for _ in range(height)]
-    cy = [y + 0.5 for _ in range(width) for y in range(height)]
-    plt.scatter(cx, cy, color='black', s=8, alpha=0.6, label="Centri (V* vera)")
-    
-    # --- BOX DINAMICO AREA VISIBILE ---
-    # Definiamo i confini dello schermo di gioco (x: -1.0 a 1.0, y: 0.0 a 1.5)
-    obs_bl = np.array([-1.0, 0.0, 0, 0, 0, 0, 0, 0])
-    obs_tr = np.array([1.0, 1.5, 0, 0, 0, 0, 0, 0])
-    
-    px_min, py_min = get_continuous_grid_coords(obs_bl, width, height)
-    px_max, py_max = get_continuous_grid_coords(obs_tr, width, height)
-    
-    screen_rect = patches.Rectangle(
-        (px_min, py_min), px_max - px_min, py_max - py_min, 
-        linewidth=3, edgecolor='red', facecolor='none', linestyle='--', 
-        label="Schermo Visibile"
-    )
-    plt.gca().add_patch(screen_rect)
-    # -----------------------------------
+            ax2 = ax1.twinx()
 
-    plt.legend(loc="upper right", fontsize=10)
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150, bbox_inches='tight')
-    plt.close()
+            ax2.set_ylabel(
+                "Exploration rate (ε)",
+                color="orange",
+                fontsize=12,
+            )
 
-def save_discrete_value_function_heatmap(abstract_mdp, filename, width=12, height=12, title="Discrete Potential Map V*"):
-    print(f"   -> Generazione della mappa V* discreta: {filename}")
-    Z = np.zeros((height, width))
-    
-    for y in range(height):
-        for x in range(width):
-            Z[y, x] = abstract_mdp.v_star.get((x, y), 0.0)
-            
-    plt.figure(figsize=(10, 9))
-    im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=0, vmax=0)
-    plt.colorbar(im, label="Potential Value (V*) Discreto")
-    plt.title(title, fontsize=15, fontweight='bold')
-    plt.xlabel("X (Horizontal Position)", fontsize=13)
-    plt.ylabel("Y (Altitude)", fontsize=13)
-    plt.xticks(np.arange(0, width + 1, 1))
-    plt.yticks(np.arange(0, height + 1, 1))
-    plt.grid(color='white', linestyle='-', linewidth=2, alpha=0.5)
-    
-    for y in range(height):
-        for x in range(width):
-            val = Z[y, x]
-            if val > 0.01:
-                text_color = 'white' if val < np.max(Z) * 0.7 else 'black'
-                plt.text(x + 0.5, y + 0.5, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=8)
+            first_config = next(iter(plot_results))
 
-    # --- BOX DINAMICO AREA VISIBILE ---
-    obs_bl = np.array([-1.0, 0.0, 0, 0, 0, 0, 0, 0])
-    obs_tr = np.array([1.0, 1.5, 0, 0, 0, 0, 0, 0])
-    
-    px_min, py_min = get_continuous_grid_coords(obs_bl, width, height)
-    px_max, py_max = get_continuous_grid_coords(obs_tr, width, height)
-    
-    screen_rect = patches.Rectangle(
-        (px_min, py_min), px_max - px_min, py_max - py_min, 
-        linewidth=3, edgecolor='red', facecolor='none', linestyle='--', 
-        label="Schermo Visibile"
-    )
-    plt.gca().add_patch(screen_rect)
-    plt.legend(loc="upper right", fontsize=10)
-    # -----------------------------------
+            eps = np.asarray(epsilon_dict[first_config])
 
-    plt.tight_layout()
-    plt.savefig(filename, dpi=150, bbox_inches='tight')
-    plt.close()
+            ax2.plot(
+                np.arange(len(eps)),
+                eps,
+                linestyle="--",
+                linewidth=1.6,
+                color="orange",
+                label="ε",
+            )
 
+            ax2.set_ylim(0, 1.05)
+            ax2.tick_params(axis="y", labelcolor="orange")
 
+            # -------------------------------
+            # Merge legends
+            # -------------------------------
+
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+
+            ax1.legend(
+                lines1 + lines2,
+                labels1 + labels2,
+                loc="lower right",
+                framealpha=0.95,
+                fontsize=10,
+            )
+
+            fig.tight_layout()
+
+            filename = os.path.join(
+                base_dir,
+                f"comparison_{goal}_gamma_{str(gamma).replace('.', '_')}.png",
+            )
+
+            plt.savefig(
+                filename,
+                dpi=300,
+                bbox_inches="tight",
+            )
+
+            plt.close(fig)
 
 # =====================================================================
-# PARTE 2: CORE TRAINING LOOP
+# PART 2: CORE TRAINING LOOP
 # =====================================================================
 
 def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=True):
-    true_episode_rewards = [] # Ricompensa sparsa del goal (0 o 100)
-    total_episode_rewards = [] # Ricompensa che l'agente "vede" (goal + shaping)
+    true_episode_rewards = []
+    total_episode_rewards = []
+    eps_history = []
     K = 100.0 / abstract_mdp.goal_reward if abstract_mdp.goal_reward > 0 else 1.0
     
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
         terminated = truncated = False
-        episode_true_reward = 0.0
-        episode_total_reward = 0.0
+        episode_true_reward = 0.0 # Environment reward
+        episode_total_reward = 0.0 # Environment reward + shaping reward
         
+        # Loop for a single episode
         while not (terminated or truncated):
             a = agent.select_action(s_raw)
             ns_raw, _, terminated, truncated, _ = env.step(a)
             done = terminated or truncated
             
-            abstract_ns = phi_mapping_grid(ns_raw)
+            # Computing the abstractions
+            abstract_s = phi_mapping_grid(s_raw, abstract_mdp.width, abstract_mdp.height)
+            abstract_ns = phi_mapping_grid(ns_raw, abstract_mdp.width, abstract_mdp.height)
             
+            # Environment reward
             env_goal_reward = 0.0
 
+            # If the agent has reached the goal state
             if abstract_ns in abstract_mdp.goal_states:
-                print("Goal raggiunto")
                 env_goal_reward = 100.0
-                terminated = True
-
+                terminated = True # End the current episode
             done = terminated or truncated
 
             episode_true_reward += env_goal_reward
@@ -259,16 +279,12 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
                 #phi_s = get_bilinear_potential(px_s, py_s, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
                 #phi_ns = get_bilinear_potential(px_ns, py_ns, abstract_mdp.v_star, abstract_mdp.width, abstract_mdp.height)
                 
-                abstract_s = phi_mapping_grid(s_raw, abstract_mdp.width, abstract_mdp.height)
-                abstract_ns = phi_mapping_grid(ns_raw, abstract_mdp.width, abstract_mdp.height)
-
+                # Giving shaping only when the 2 abstract cells are different
                 if abstract_ns != abstract_s:
                     phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
                     phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
-                    shaping_signal = K * (agent.gamma * phi_ns - phi_s)
-                    shaping_signal_nogamma = K * (phi_ns - phi_s)
-                    #print(f"abstract s {abstract_s} abstract_ns {abstract_ns} shaping {shaping_signal} shaping no gamma {shaping_signal_nogamma}")
-            
+                    shaping_signal = K * (agent.gamma * phi_ns - phi_s) # F(s,a,s') = gamma * phi(s') - phi(s)
+                    
             total_reward = env_goal_reward + shaping_signal
             episode_total_reward += total_reward
             agent.memory.push(s_raw, a, total_reward, ns_raw, done)
@@ -278,8 +294,6 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
             mode_str = "SHAPING" if use_shaping else "BASELINE"
-
-            #print(f"[{mode_str}] Progress: Episode {n_episode + 1}/{episodes} | 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
             print(
                 f"[{mode_str}] Episode {n_episode + 1}/{episodes} | "
                 f"Avg Reward : {recent_avg:.6f} | "
@@ -287,31 +301,26 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             )
             agent._save_policy()
 
+        eps_history.append(agent.eps)
         agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
         true_episode_rewards.append(episode_true_reward)
         total_episode_rewards.append(episode_total_reward)
         
-    return np.array(true_episode_rewards), np.array(total_episode_rewards)
+    return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(eps_history)
 
 # =====================================================================
-# PARTE 3: PIPELINE ORCHESTRATOR (MAIN)
+# PART 3: PIPELINE ORCHESTRATOR (MAIN)
 # =====================================================================
 
 def main():
     print("=== STARTING UNIFIED EXPERIMENT PIPELINE ===")
     os.makedirs("img/heatmaps", exist_ok=True)
     os.makedirs("img/shaded_plots", exist_ok=True)
-    
-    # --- IPERPARAMETRI GLOBALI ---
-    NUM_SEEDS = 1
-    EPISODES = 1000
-    
-    #goal_configs = {
-    #    "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
-    #}
-    #gammas = [0.99]
-    #goal_rewards = [100.0]
 
+    # --- GLOBAL HYPERPARAMETERS ---
+    NUM_SEEDS = 5
+    EPISODES = 1500
+    
     goal_configs = {
         "1x1_Strict": [(1,8)]
     }
@@ -319,10 +328,11 @@ def main():
     goal_rewards = [100.0]
     
     results = {}
+    epsilon_values = {}
     combinations = list(itertools.product(goal_configs.items(), gammas, goal_rewards))
 
-    # 1. RUN BASELINES (No Shaping)
-    print("\n--- FASE 1: ADDESTRAMENTO BASELINES ---")
+    # 1. RUN BASELINE EXPERIMENTS (No Shaping)
+    print("\n--- PHASE 1: TRAINING BASELINES ---")
     for (goal_name, goal_states), gamma in list(itertools.product(goal_configs.items(), gammas)):
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
         policy_name = f"baseline_{goal_name}_g{str(gamma).replace('.','')}"
@@ -338,27 +348,26 @@ def main():
             abstract_mdp.value_iteration()
             
             agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
-            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
+            curve, _, eps_history = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
             runs_data.append(curve)
             env.close()
+        epsilon_values[config_name] = eps_history
         results[config_name] = np.array(runs_data)
 
     # 2. RUN SHAPING EXPERIMENTS
-    print("\n--- FASE 2: ADDESTRAMENTO CON SHAPING CONTINUO ---")
+    print("\n--- PHASE 2: TRAINING WITH CONTINUOUS SHAPING ---")
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
-        
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Rew:{g_rew}"
-        heatmap_file = f"img/heatmaps/v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
+        #heatmap_file = f"img/heatmaps/v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
         discrete_heatmap_file = f"img/heatmaps/discrete_v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
         policy_name = f"shaping_{goal_name}_g{str(gamma).replace('.','')}_r{g_rew}"
         print(f"\n[{idx+1}/{len(combinations)}] {config_name}")
         
-        # Salva la heatmap
+        # Save the heatmap
         abstract_mdp_temp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=g_rew)
         abstract_mdp_temp.value_iteration()
         save_discrete_value_function_heatmap(abstract_mdp_temp, filename=discrete_heatmap_file, title=f"Discrete V* | {goal_name} | G:{gamma}")
-        save_value_function_heatmap(abstract_mdp_temp, filename=heatmap_file, title=f"V* | {goal_name} | G:{gamma}")
-
+        
         runs_data = []
         for seed in range(NUM_SEEDS):
             print(f"   -> Seed {seed+1}/{NUM_SEEDS}")
@@ -369,15 +378,16 @@ def main():
             abstract_mdp.value_iteration()
             
             agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
-            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
+            curve, _, eps_history = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
             runs_data.append(curve)
             env.close()
-            
+        
+        epsilon_values[config_name] = eps_history
         results[config_name] = np.array(runs_data)
 
     # 3. PLOTTING
-    plot_shaded_comparisons(results, window_size=150)
-    print(">>> TUTTO COMPLETATO! Controlla le immagini nella cartella 'img/'")
+    plot_shaded_comparisons(results, epsilon_values, window_size=150)
+    print(">>> ALL DONE! Check the images in the 'img/' folder.")
 
 if __name__ == "__main__":
     main()

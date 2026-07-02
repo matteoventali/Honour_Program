@@ -1,36 +1,22 @@
 import os
 import sys
-import pickle
 import numpy as np
 import gymnasium as gym
 import time
 import argparse
 import multiprocessing
 import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# Modular imports to reuse existing components
+from utils import phi_mapping_grid
+from agent import QNetwork
 
 # =====================================================================
 # UTILITY FUNCTIONS
 # =====================================================================
-
-def discretize(obs):
-    """
-    Discretizes the continuous observations into a tuple of integers.
-    This must exactly match the discretization used during training.
-    """
-    x_intervals     = [-0.5, 0.5]
-    y_intervals     = [-0.1, 0.1, 1.5]
-    vx_intervals    = [-7.5, -5, -0.3, -0.1, 0.1, 0.3, 5, 7.5]
-    vy_intervals    = [-7.5, -5, -0.3, -0.1, 0.1, 0.3, 5, 7.5]
-    theta_intervals = [-1.25663706,  -0.1, 0.1, 1.25663706]
-    omega_intervals = [-7.5, -5, -0.1, 0.1, 5, 7.5]
-    
-    res = [
-        np.digitize(obs[0], x_intervals), np.digitize(obs[1], y_intervals),
-        np.digitize(obs[2], vx_intervals), np.digitize(obs[3], vy_intervals),
-        np.digitize(obs[4], theta_intervals), np.digitize(obs[5], omega_intervals),
-        int(obs[6]), int(obs[7])
-    ]
-    return tuple(res)
 
 def moving_average(data, window_size):
     """
@@ -40,58 +26,89 @@ def moving_average(data, window_size):
         return data # Not enough data to smooth
     return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
 
-
 # =====================================================================
 # WORKER FUNCTION FOR MULTIPROCESSING
 # =====================================================================
 
-def evaluate_policy_worker(policy_filename, episodes, render):
+def evaluate_policy_worker(policy_filename, episodes, render, goal_state, goal_reward, grid_w, grid_h, extra_dims):
     """
-    Worker function to load and evaluate a single policy.
+    Worker function to load and evaluate a single PyTorch DQN policy.
     Returns the policy name and the list of episode rewards.
     """
     policy_path = os.path.join("./policy/", policy_filename)
     
     if not os.path.exists(policy_path):
         print(f"[{policy_filename}] Error: Could not find the file '{policy_path}'")
-        return policy_filename, []
+        return policy_filename, [], 0
         
     print(f"[{policy_filename}] Loading and starting evaluation...")
-    try:
-        with open(policy_path, 'rb') as f:
-            q_table = pickle.load(f)
-    except Exception as e:
-        print(f"[{policy_filename}] Error loading the pickle file: {e}")
-        return policy_filename, []
-
+    
+    # Initialize Environment
     mode = "human" if render else None
     env = gym.make("LunarLander-v3", continuous=False, render_mode=mode)
     
+    # The state_dim must match the one used during training (it might have extra dimensions)
+    state_dim = env.observation_space.shape[0] + extra_dims
+    action_dim = env.action_space.n
+    
+    # Initialize Device and Network
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    q_network = QNetwork(state_dim, action_dim).to(device)
+    
+    try:
+        # Load the PyTorch model weights
+        q_network.load_state_dict(torch.load(policy_path, map_location=device, weights_only=True))
+        q_network.eval() # Set the network to evaluation mode (disables dropout/batchnorm updates)
+    except Exception as e:
+        print(f"[{policy_filename}] Error loading the PyTorch model: {e}")
+        env.close()
+        return policy_filename, [], 0
+
     rewards = []
+    success_count = 0
     for ep in range(episodes):
         obs, _ = env.reset()
-        state = discretize(obs)
         terminated = truncated = False
         total_reward = 0
         
         while not (terminated or truncated):
-            action_values = q_table.get(state, np.zeros(env.action_space.n))
-            action = np.argmax(action_values)
+            # Prepare the state for the network. If necessary, add extra dimensions (e.g., the 'q' state)
+            if extra_dims > 0:
+                # For now, the only extra dimension we handle is 'q', which starts at 0.
+                state_aug = np.append(obs, np.zeros(extra_dims))
+                state_tensor = torch.FloatTensor(state_aug).unsqueeze(0).to(device)
+            else:
+                state_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
+
+            # Convert observation to PyTorch tensor
+            # Forward pass to get Q-values and select the best action
+            with torch.no_grad():
+                action = q_network(state_tensor).argmax(dim=1).item()
             
-            next_obs, reward, terminated, truncated, _ = env.step(action)
-            state = discretize(next_obs)
-            total_reward += reward
+            obs, reward, terminated, truncated, _ = env.step(action)
+            
+            # --- Goal MDP Reward Logic ---
+            # If a goal_state is specified, we ONLY reward the agent for reaching that goal.
+            # The intermediate rewards from the environment are ignored.
+            if goal_state:
+                step_reward = 0.0 # Default reward is 0
+                abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
+                if (abstract_x, abstract_y) == goal_state:
+                    step_reward = goal_reward # Override the reward
+                    success_count += 1
+                    terminated = True # End the episode successfully
+            else:
+                # If no goal is specified, use the standard environment reward
+                step_reward = reward
+                
+            total_reward += step_reward
             
             if render:
                 time.sleep(0.02)
                 
         rewards.append(total_reward)
         
-    env.close()
-    print(f"[{policy_filename}] Evaluation complete. Avg Reward: {np.mean(rewards):.2f}")
-    
-    return policy_filename, rewards
-
+    return policy_filename, rewards, success_count
 
 # =====================================================================
 # PLOTTING FUNCTIONS
@@ -118,7 +135,7 @@ def plot_individual_policy(rewards, name, window_size):
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.7)
     
-    filename = f"./img/eval_{name.replace('.pkl', '')}.png"
+    filename = f"./img/eval_{name.replace('.pth', '')}.png"
     plt.savefig(filename)
     plt.close()
     print(f"Saved individual plot: {filename}")
@@ -153,18 +170,24 @@ def plot_combined_comparison(results_dict, window_size, episodes):
     plt.close()
     print(f"Saved combined comparison plot: {filename}")
 
-
 # =====================================================================
 # MAIN FUNCTION
 # =====================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate and compare multiple trained policies for LunarLander.")
-    parser.add_argument("policies", nargs='+', type=str, help="List of policy files to evaluate (e.g., modelA.pkl modelB.pkl modelC.pkl)")
+    parser = argparse.ArgumentParser(description="Evaluate and compare multiple trained DQN policies for LunarLander.")
+    parser.add_argument("policies", nargs='+', type=str, help="List of PyTorch model files to evaluate (e.g., dqn_normally.pth dqn_shaping.pth)")
     parser.add_argument("--episodes", type=int, default=100, help="Number of episodes to run per policy (default: 100)")
     parser.add_argument("--render", action="store_true", help="Enable graphical rendering of the environment")
     parser.add_argument("--window", type=int, default=10, help="Window size for the moving average (default: 10)")
     parser.add_argument("--parallel", action="store_true", help="Run evaluations concurrently using multiprocessing")
+    # Arguments for evaluation with an abstract goal state
+    parser.add_argument("--goal-x", type=int, default=None, help="X coordinate of the abstract goal state")
+    parser.add_argument("--goal-y", type=int, default=None, help="Y coordinate of the abstract goal state")
+    parser.add_argument("--goal-reward", type=float, default=100.0, help="Reward for reaching the abstract goal state")
+    parser.add_argument("--grid-w", type=int, default=12, help="Grid width for abstract state mapping")
+    parser.add_argument("--grid-h", type=int, default=12, help="Grid height for abstract state mapping")
+    parser.add_argument("--extra-dims", type=int, default=0, help="Number of extra dimensions for the state space (e.g., 1 for sequential tasks)")
     
     args = parser.parse_args()
     
@@ -177,20 +200,35 @@ def main():
         # Use Pool to map the worker function across all policies
         with multiprocessing.Pool(processes=len(args.policies)) as pool:
             # Prepare arguments for starmap
-            tasks = [(p, args.episodes, args.render) for p in args.policies]
+            goal_state = (args.goal_x, args.goal_y) if args.goal_x is not None and args.goal_y is not None else None
+            tasks = [(p, args.episodes, args.render, goal_state, args.goal_reward, args.grid_w, args.grid_h, args.extra_dims) for p in args.policies]
             results_list = pool.starmap(evaluate_policy_worker, tasks)
             
         # Collect results
-        for name, rewards in results_list:
+        for name, rewards, successes in results_list:
             results_dict[name] = rewards
+            print(f"[{name}] Evaluation complete. Avg Reward: {np.mean(rewards):.2f} | Successes: {successes}/{args.episodes}")
             
         print("--- Parallel evaluation finished ---\n")
         
     else:
         print(f"--- Starting SEQUENTIAL evaluation for {len(args.policies)} policies ---")
+        goal_state = (args.goal_x, args.goal_y) if args.goal_x is not None and args.goal_y is not None else None
+
         for p in args.policies:
-            name, rewards = evaluate_policy_worker(p, args.episodes, args.render)
+            name, rewards, successes = evaluate_policy_worker(
+                p, 
+                args.episodes, 
+                args.render,
+                goal_state,
+                args.goal_reward,
+                args.grid_w,
+                args.grid_h,
+                args.extra_dims
+            )
             results_dict[name] = rewards
+            print(f"[{name}] Evaluation complete. Avg Reward: {np.mean(rewards):.2f} | Successes: {successes}/{args.episodes}")
+
         print("--- Sequential evaluation finished ---\n")
 
     # Generating the plots
