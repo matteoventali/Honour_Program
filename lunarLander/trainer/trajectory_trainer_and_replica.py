@@ -107,7 +107,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
 # TRAINING LOOP
 # =====================================================================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
+def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, use_replication=False, K=1.0, log_file=None):
     """
     Executes the training loop for the sequential task.
     """
@@ -144,13 +144,15 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         while not (terminated or truncated):
             env_goal_reward = 0.0
 
+            q_before_transition = q
+
             # STATE TRANSITION LOGIC
             # If the agent reaches the waypoint during phase q=0
             abstract_x, abstract_y, _ = phi_mapping_sequential(s_raw, q)
             if abstract_x == 1 and abstract_y == 8 and q == 0:
                 passed_trough_waypoint = True
                 waypoint_hits += 1
-                q = 1
+                q = 1 # transizione di stato
                 natural_q_updates += 1
                 
             # Building the current state augmented: environment state + q state
@@ -198,6 +200,21 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             agent.memory.push(s_aug, a, total_step_reward, ns_aug, done)
             agent.optimize_model()
 
+            # --- EXPERIENCE REPLICATION ---
+            # Se la replica è attiva e siamo in q=0 (e non c'è stata una transizione a q=1)
+            if use_replication and (n_episode < episodes // 2) and q_before_transition == 0 and q == 0:
+                # Crea la transizione replicata per q=1
+                s_aug_rep = np.append(s_raw, 1)
+                ns_aug_rep = np.append(ns_raw, 1)
+
+                # Calcola lo shaping per la transizione replicata in q=1
+                abstract_s_rep = phi_mapping_sequential(s_raw, 1)
+                abstract_ns_rep = phi_mapping_sequential(ns_raw, 1)
+                phi_s_rep = abstract_mdp.v_star.get(abstract_s_rep, 0.0)
+                phi_ns_rep = abstract_mdp.v_star.get(abstract_ns_rep, 0.0)
+                shaping_signal_rep = K * (agent.gamma * phi_ns_rep - phi_s_rep)
+                agent.memory.push(s_aug_rep, a, shaping_signal_rep, ns_aug_rep, done)
+
             s_raw = ns_raw
             s_aug = ns_aug
             
@@ -211,7 +228,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
             recent_avg_with_shaping = np.mean(total_episode_rewards[-100:])
-            mode_str = "SHAPING" if use_shaping else "BASELINE"
+            
+            # Aggiungiamo un indicatore per sapere se la replica è attiva in questo blocco di episodi
+            replication_status = "ON" if use_replication and (n_episode < episodes // 2) else "OFF"
+            
+            mode_str = f"SHAPING (Replica: {replication_status})" if use_shaping else "BASELINE"
 
             log_string = (
                 f"[{mode_str}] Episode {n_episode + 1}/{episodes}\n" +
@@ -245,13 +266,13 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 15000 
+    episodes = 15000
     gamma = 0.99
-    eps_decay = 0.9995
+    eps_decay = 0.9995 # Decadimento più lento per epsilon
     K_scaling = 1
     
     print("\n1. Initializing Environment and Abstract MDP...")
-    env = gym.make("LunarLander-v3", continuous=False, max_episode_steps=10000)
+    env = gym.make("LunarLander-v3", continuous=False)
     
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()
@@ -260,62 +281,40 @@ def main():
     save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
     
     # -----------------------------------------------------------------
-    # EXPERIMENT 1: BASELINE AGENT (NO SHAPING)
-    # -----------------------------------------------------------------
-    #print("\n=======================================================")
-    #print("TRAINING: BASELINE AGENT (NO SHAPING)")
-    #print("=======================================================")
-    #agent_baseline = HierarchicalDQNLearner(
-    #    env=env,
-    #    max_episodes=episodes,
-    #    gamma=gamma,
-    #    eps_decay=eps_decay,
-    #    use_ddqn=True,
-    #    policy_name="baseline_sequential_policy.pth",
-    #    extra_state_dims=1
-    #)
-    #
-    #baseline_learning_curve, _, baseline_eps_history = run_sequential_training(
-    #    env, 
-    #    agent_baseline, 
-    #    abstract_mdp, 
-    #    episodes, 
-    #    use_shaping=False,
-    #    log_file="logs/baseline_training.log"
-    #)
-
-    # -----------------------------------------------------------------
-    # EXPERIMENT 2: SHAPING AGENT
+    # EXPERIMENTO UNIFICATO:
+    # Metà episodi con REPLICA, metà senza.
     # -----------------------------------------------------------------
     print("\n=======================================================")
-    print("TRAINING: SHAPING AGENT")
+    print("TRAINING: AGENT CON REPLICA PER LA PRIMA META' DEGLI EPISODI")
     print("=======================================================")
-    agent_shaping = HierarchicalDQNLearner(
+    agent_unified = HierarchicalDQNLearner(
         env=env,
         max_episodes=episodes,
         gamma=gamma,
         eps_decay=eps_decay,
         use_ddqn=True,
-        policy_name="shaping_sequential_policy.pth",
+        policy_name="shaping_half_replication_policy.pth",
         extra_state_dims=1
     )
     
-    shaping_learning_curve, shaping_total_rewards, shaping_eps_history = run_sequential_training(
-        env, 
-        agent_shaping, 
-        abstract_mdp, 
-        episodes, 
-        use_shaping=True, 
+    # Eseguiamo un singolo addestramento. La logica interna di run_sequential_training
+    # gestirà l'attivazione/disattivazione della replica a metà del percorso.
+    learning_curve, total_rewards, eps_history = run_sequential_training(
+        env,
+        agent_unified,
+        abstract_mdp,
+        episodes,
+        use_shaping=True,
+        use_replication=True, # <-- REPLICA ATTIVATA
         K=K_scaling,
-        log_file="logs/shaping_training.log"
+        log_file="logs/shaping_half_replication.log"
     )
     
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
-    #plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, baseline_eps_history, window_size=500)
-    plot_shaping_reward_breakdown(shaping_learning_curve, shaping_total_rewards, shaping_eps_history, window_size=500, filename="img/shaping_reward_breakdown.png")
+    plot_shaping_reward_breakdown(learning_curve, total_rewards, eps_history, window_size=500, filename="img/shaping_half_replication_breakdown.png")
 
     env.close()
 

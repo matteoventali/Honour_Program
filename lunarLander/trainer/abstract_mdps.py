@@ -259,10 +259,9 @@ class SequentialWaypointMDP:
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
         self.waypoint = (1, 8)
-        self.goal_state = (8,8,1) 
+        self.goal_state = (8,8,1)
         self.v_star = defaultdict(float)
-        self.waypoint_reached = False
-
+        
     def get_transitions(self, state, action):
         x, y, q = state
         next_y = y
@@ -275,12 +274,6 @@ class SequentialWaypointMDP:
         
         next_q = q
         
-        #if next_x == self.waypoint[0] and next_y == self.waypoint[1] and q == 0:
-        #    self.waypoint_reached = True
-        #elif self.waypoint_reached and q == 0:
-        #    self.waypoint_reached = False
-        #    next_q = 1
-
         if x == self.waypoint[0] and y == self.waypoint[1] and next_q == 0:
             next_q = 1
 
