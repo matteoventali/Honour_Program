@@ -128,6 +128,89 @@ def get_bilinear_potential_sequential(px, py, q, v_star_dict, grid_w=12, grid_h=
     )
     return interpolated_value
 
+def get_idw_potential(px, py, v_star_dict, grid_w=12, grid_h=12, p=2.0):
+    """
+    Calcola il potenziale continuo usando l'Inverse Distance Weighting (IDW) 
+    basandosi sui centri delle 4 celle adiacenti. 
+    Garantisce la restituzione del valore V* esatto se calcolato al centro di una cella.
+    """
+    # 1. Spostiamo il sistema di riferimento per ancorarci ai centri geometrici
+    x_base, y_base = px - 0.5, py - 0.5
+    
+    # 2. Troviamo gli indici interi delle 4 celle adiacenti
+    x1, y1 = int(np.floor(x_base)), int(np.floor(y_base))
+    x2, y2 = x1 + 1, y1 + 1
+    
+    # 3. Applichiamo il clipping per gestire i margini della mappa (evita errori out-of-bounds)
+    x1_c, x2_c = int(np.clip(x1, 0, grid_w - 1)), int(np.clip(x2, 0, grid_w - 1))
+    y1_c, y2_c = int(np.clip(y1, 0, grid_h - 1)), int(np.clip(y2, 0, grid_h - 1))
+    
+    # 4. Definiamo le coordinate fisiche (continue) dei 4 centri e i rispettivi valori V*
+    centers = [
+        (x1_c + 0.5, y1_c + 0.5, v_star_dict.get((x1_c, y1_c), 0.0)), # In basso a sinistra
+        (x2_c + 0.5, y1_c + 0.5, v_star_dict.get((x2_c, y1_c), 0.0)), # In basso a destra
+        (x1_c + 0.5, y2_c + 0.5, v_star_dict.get((x1_c, y2_c), 0.0)), # In alto a sinistra
+        (x2_c + 0.5, y2_c + 0.5, v_star_dict.get((x2_c, y2_c), 0.0))  # In alto a destra
+    ]
+    
+    numerator = 0.0
+    denominator = 0.0
+    epsilon = 1e-8 # Tolleranza vitale per evitare la divisione per zero
+    
+    # 5. Applichiamo la formula IDW
+    for cx, cy, v in centers:
+        # Calcolo distanza euclidea tra il Lander e il centro corrente
+        dist = np.sqrt((px - cx)**2 + (py - cy)**2)
+        
+        # Se il Lander è esattamente (o quasi) sul centro, bypassa la formula 
+        # e restituisci il valore discreto puro.
+        if dist < epsilon:
+            return v
+            
+        # Calcolo del peso (inversamente proporzionale alla distanza elevata a p)
+        weight = 1.0 / (dist ** p)
+        
+        numerator += weight * v
+        denominator += weight
+        
+    return numerator / denominator
+
+def get_idw_potential_sequential(px, py, q, v_star_dict, grid_w=12, grid_h=12, p=2.0):
+    """
+    Calcola il potenziale continuo IDW per uno stato sequenziale 3D (x, y, q).
+    Mantiene l'identificatore di sequenza 'q' bloccato durante l'interpolazione spaziale.
+    """
+    x_base, y_base = px - 0.5, py - 0.5
+    
+    x1, y1 = int(np.floor(x_base)), int(np.floor(y_base))
+    x2, y2 = x1 + 1, y1 + 1
+    
+    x1_c, x2_c = int(np.clip(x1, 0, grid_w - 1)), int(np.clip(x2, 0, grid_w - 1))
+    y1_c, y2_c = int(np.clip(y1, 0, grid_h - 1)), int(np.clip(y2, 0, grid_h - 1))
+    
+    # Nota l'uso di (..., q) per l'estrazione dal dizionario V*
+    centers = [
+        (x1_c + 0.5, y1_c + 0.5, v_star_dict.get((x1_c, y1_c, q), 0.0)),
+        (x2_c + 0.5, y1_c + 0.5, v_star_dict.get((x2_c, y1_c, q), 0.0)),
+        (x1_c + 0.5, y2_c + 0.5, v_star_dict.get((x1_c, y2_c, q), 0.0)),
+        (x2_c + 0.5, y2_c + 0.5, v_star_dict.get((x2_c, y2_c, q), 0.0))
+    ]
+    
+    numerator = 0.0
+    denominator = 0.0
+    epsilon = 1e-8
+    
+    for cx, cy, v in centers:
+        dist = np.sqrt((px - cx)**2 + (py - cy)**2)
+        if dist < epsilon:
+            return v
+            
+        weight = 1.0 / (dist ** p)
+        numerator += weight * v
+        denominator += weight
+        
+    return numerator / denominator
+
 # =====================================================================
 # SECTION 3: VISUALIZATION & PLOTTING
 # =====================================================================
@@ -231,6 +314,65 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, h
     
     print(" -> Generating V* Heatmap for Q=1...")
     plot_single_heatmap(v_matrix_q1, 1, "Potential Map (V*) - Phase q=1 (Seek Goal)", f"{filename_prefix}_q1")
+
+def save_sequential_idw_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin=0, vmax=100, p=2.0):
+    """
+    Genera DUE heatmap ad alta risoluzione usando l'Inverse Distance Weighting (IDW):
+    Una per q=0 (Seek Waypoint) e una per q=1 (Seek Goal).
+    """
+    os.makedirs("img/heatmaps", exist_ok=True)
+    
+    # Alta risoluzione per una visualizzazione fluida (20 punti per cella)
+    resolution = 20 
+    x_continuous = np.linspace(0, width, width * resolution)
+    y_continuous = np.linspace(0, height, height * resolution)
+    
+    Z_q0 = np.zeros((len(y_continuous), len(x_continuous)))
+    Z_q1 = np.zeros((len(y_continuous), len(x_continuous)))
+    
+    print(f" -> Generazione matrici IDW interpolate (p={p})...")
+    for i, py in enumerate(y_continuous):
+        for j, px in enumerate(x_continuous):
+            Z_q0[i, j] = get_idw_potential_sequential(px, py, 0, abstract_mdp.v_star, width, height, p=p)
+            Z_q1[i, j] = get_idw_potential_sequential(px, py, 1, abstract_mdp.v_star, width, height, p=p)
+
+    def plot_smooth_heatmap(Z_matrix, q_val, title, filename):
+        plt.figure(figsize=(10, 9))
+        im = plt.imshow(Z_matrix, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none', vmin=vmin, vmax=vmax)
+        
+        plt.colorbar(im, fraction=0.046, pad=0.04, label="IDW Interpolated Potential Value (V*)")
+        plt.title(title, fontsize=15, fontweight='bold')
+        plt.xlabel("X (Horizontal Position)", fontsize=13)
+        plt.ylabel("Y (Altitude)", fontsize=13)
+        
+        # Griglia fisica
+        plt.xticks(np.arange(0, width + 1, 1))
+        plt.yticks(np.arange(0, height + 1, 1))
+        plt.grid(color='white', linestyle='-', linewidth=1, alpha=0.3)
+        
+        # Centri logici delle celle (che ora fungono da ancoraggi esatti per l'IDW)
+        cx = [x + 0.5 for x in range(width) for _ in range(height)]
+        cy = [y + 0.5 for _ in range(width) for y in range(height)]
+        plt.scatter(cx, cy, color='black', s=8, alpha=0.4, label="Cell Centers (Anchors)")
+        
+        # Highlight Waypoint e Goal
+        if q_val == 0:
+            way_x, way_y = abstract_mdp.waypoint
+            plt.plot(way_x + 0.5, way_y + 0.5, 'ro', markersize=18, alpha=0.8, markeredgecolor='white', label="Waypoint (q=0)")
+        elif q_val == 1:
+            goal_x, goal_y, _ = abstract_mdp.goal_state
+            plt.plot(goal_x + 0.5, goal_y + 0.5, 'go', markersize=18, alpha=0.8, markeredgecolor='white', label="Final Goal (q=1)")
+            
+        plt.legend(loc="upper right", fontsize=11)
+        plt.tight_layout()
+        plt.savefig(f"img/heatmaps/{filename}.png", dpi=150, bbox_inches='tight')
+        plt.close()
+
+    print(" -> Salvataggio heatmap IDW per q=0...")
+    plot_smooth_heatmap(Z_q0, 0, f"IDW V* - Phase q=0 (Seek Waypoint) | p={p}", f"{filename_prefix}_q0_idw")
+    
+    print(" -> Salvataggio heatmap IDW per q=1...")
+    plot_smooth_heatmap(Z_q1, 1, f"IDW V* - Phase q=1 (Seek Goal) | p={p}", f"{filename_prefix}_q1_idw")
 
 def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = 0, vmax = 100):
     """

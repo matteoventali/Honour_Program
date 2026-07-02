@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from abstract_mdps import ConfigurableDiagonalMDP
 from agent import HierarchicalDQNLearner
-from utils import phi_mapping_grid, get_continuous_grid_coords, get_bilinear_potential
+from utils import phi_mapping_grid, get_continuous_grid_coords, get_bilinear_potential, get_idw_potential
 
 # =====================================================================
 # PARTE 1: UTILS & PLOTTING STATISTICO
@@ -33,7 +33,7 @@ def save_value_function_heatmap(abstract_mdp, filename, width=12, height=12, tit
     
     for i, py in enumerate(y_c):
         for j, px in enumerate(x_c):
-            Z[i, j] = get_bilinear_potential(px, py, abstract_mdp.v_star, width, height)
+            Z[i, j] = get_idw_potential(px, py, abstract_mdp.v_star, width, height, p=1)
             
     plt.figure(figsize=(10, 9))
     im = plt.imshow(Z, cmap='viridis', origin='lower', extent=[0, width, 0, height], interpolation='none')
@@ -66,7 +66,7 @@ def plot_shaded_comparisons(results_dict, window_size=150, base_dir="img/shaded_
             plt.figure(figsize=(11, 7))
             plt.title(f"Performance: {goal} | Gamma: {gamma}", fontsize=16, fontweight='bold')
             plt.axhline(y=100, color='black', linestyle=':', alpha=0.5, label='Win Threshold')
-            plt.ylabel('Smoothed Episode Reward (Mean ± Std)', fontsize=12)
+            plt.ylabel('Accumulated Shaping signal (Mean ± Std)', fontsize=12)
             plt.xlabel(f'Episode # (Moving Avg Window = {window_size})', fontsize=12)
             plt.grid(True, linestyle='--', alpha=0.4)
             
@@ -146,9 +146,9 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             env_goal_reward = 0.0
 
             if abstract_ns in abstract_mdp.goal_states:
-                env_goal_reward = 100.0
-                terminated = True
-
+                env_goal_reward = 0
+                # NOTA: La terminazione è stata rimossa per isolare il segnale di shaping.
+                # L'episodio continuerà fino alla sua fine naturale (es. atterraggio/crash).
             done = terminated or truncated
 
             episode_true_reward += env_goal_reward
@@ -171,13 +171,13 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
             s_raw = ns_raw
         
         if (n_episode + 1) % 100 == 0:
-            recent_avg = np.mean(true_episode_rewards[-100:])
+            recent_avg_shaping = np.mean(total_episode_rewards[-100:])
             mode_str = "SHAPING" if use_shaping else "BASELINE"
 
             #print(f"[{mode_str}] Progress: Episode {n_episode + 1}/{episodes} | 100-eps Avg Reward: {recent_avg:6.2f} | Epsilon: {agent.eps:.3f}")
             print(
                 f"[{mode_str}] Episode {n_episode + 1}/{episodes} | "
-                f"Avg Reward : {recent_avg:.6f} | "
+                f"Avg Reward (with shaping) : {recent_avg_shaping:.6f} | "
                 f"Epsilon: {agent.eps:.6f}\n"
             )
             agent._save_policy()
@@ -199,7 +199,7 @@ def main():
     
     # --- IPERPARAMETRI GLOBALI ---
     NUM_SEEDS = 5
-    EPISODES = 1000
+    EPISODES = 5000
     
     #goal_configs = {
     #    "2x2_Wide": [(0,0), (1,0), (0,1), (1,1)]
@@ -216,29 +216,7 @@ def main():
     results = {}
     combinations = list(itertools.product(goal_configs.items(), gammas, goal_rewards))
 
-    # 1. RUN BASELINES (No Shaping)
-    print("\n--- FASE 1: ADDESTRAMENTO BASELINES ---")
-    for (goal_name, goal_states), gamma in list(itertools.product(goal_configs.items(), gammas)):
-        config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
-        policy_name = f"baseline_{goal_name}_g{str(gamma).replace('.','')}"
-        print(f"\n[Config] {config_name}")
-        
-        runs_data = []
-        for seed in range(NUM_SEEDS):
-            print(f"   -> Seed {seed+1}/{NUM_SEEDS}")
-            env = gym.make("LunarLander-v3", continuous=False)
-            np.random.seed(seed); torch.manual_seed(seed); env.reset(seed=seed)
-            
-            abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=1.0)
-            abstract_mdp.value_iteration()
-            
-            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
-            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
-            runs_data.append(curve)
-            env.close()
-        results[config_name] = np.array(runs_data)
-
-    # 2. RUN SHAPING EXPERIMENTS
+    # 1. RUN SHAPING EXPERIMENTS
     print("\n--- FASE 2: ADDESTRAMENTO CON SHAPING CONTINUO ---")
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
         
@@ -264,7 +242,7 @@ def main():
             abstract_mdp.value_iteration()
             
             agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
-            curve, _ = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
+            _, curve = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=True)
             runs_data.append(curve)
             env.close()
             
