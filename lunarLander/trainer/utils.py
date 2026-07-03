@@ -280,7 +280,7 @@ def plot_training_results(rewards, window_size=100, title="Training Results", yl
         plt.show()
     plt.close()
 
-def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = 0, vmax = 100):
+def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = None, vmax = None):
     """
     Generates and saves TWO separate heatmaps for V*: 
     One for q=0 (searching waypoint) and one for q=1 (searching final goal).

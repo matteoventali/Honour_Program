@@ -168,7 +168,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Check if the final goal is reached (and waypoint was passed)
             if abstract_ns == abstract_mdp.goal_state and q==1 and passed_trough_waypoint:
                 goal_hits += 1
-                env_goal_reward = 100
+                env_goal_reward = 10000
                 terminated = True
             
             done = terminated or truncated
@@ -245,13 +245,13 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 15000 
+    episodes = 2000 
     gamma = 0.99
-    eps_decay = 0.9995
+    eps_decay = 0.995
     K_scaling = 1
     
     print("\n1. Initializing Environment and Abstract MDP...")
-    env = gym.make("LunarLander-v3", continuous=False, max_episode_steps=10000)
+    env = gym.make("LunarLander-v3", continuous=False)
     
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()

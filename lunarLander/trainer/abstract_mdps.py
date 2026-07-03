@@ -260,6 +260,7 @@ class SequentialWaypointMDP:
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
         self.waypoint = (1, 8)
         self.goal_state = (8,8,1)
+        self.reward_goal = 10000
         self.v_star = defaultdict(float)
         
     def get_transitions(self, state, action):
@@ -278,23 +279,22 @@ class SequentialWaypointMDP:
             next_q = 1
 
         next_state = (next_x, next_y, next_q)
-        reward = 100 if next_state == self.goal_state else 0.0
+        reward = 0 if next_state == self.goal_state else 0.0
         return next_state, reward
 
     def value_iteration(self, theta=0.001):
         print("Solving Sequential MDP with Value Iteration...")
+        
+        self.v_star[self.goal_state] = self.reward_goal
+        
         while True:
             delta = 0
             new_v = self.v_star.copy()
             for s in self.states:
-                if s == self.goal_state: 
-                    continue
-                v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
-                best_v = max(v_actions)
-                delta = max(delta, abs(best_v - self.v_star[s]))
-                new_v[s] = best_v
-            self.v_star = new_v
+                if s != self.goal_state: 
+                    v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                    best_v = max(v_actions)
+                    delta = max(delta, abs(best_v - self.v_star[s]))
+                    new_v[s] = best_v
+                    self.v_star = new_v
             if delta < theta: break
-        
-        self.v_star[self.goal_state] = 100
-        

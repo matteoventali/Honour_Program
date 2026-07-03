@@ -79,7 +79,7 @@ class HierarchicalDQNLearner:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
-        self.memory = ReplayBuffer(capacity=100000)
+        self.memory = ReplayBuffer(capacity=200000)
 
     def select_action(self, state):
         if ran.random() < self.eps:

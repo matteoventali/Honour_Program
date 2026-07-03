@@ -124,6 +124,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     # Counters
     natural_q_updates = 0
     waypoint_hits = 0
+    artificial_goal_hits = 0
     goal_hits = 0
 
     for n_episode in range(episodes):
@@ -154,6 +155,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 waypoint_hits += 1
                 q = 1 # transizione di stato
                 natural_q_updates += 1
+                env_goal_reward = 10000
                 
             # Building the current state augmented: environment state + q state
             s_aug = np.append(s_raw, q)
@@ -170,7 +172,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Check if the final goal is reached (and waypoint was passed)
             if abstract_ns == abstract_mdp.goal_state and q==1 and passed_trough_waypoint:
                 goal_hits += 1
-                env_goal_reward = 100
+                env_goal_reward = 100000
                 terminated = True
             
             done = terminated or truncated
@@ -206,6 +208,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 # Crea la transizione replicata per q=1
                 s_aug_rep = np.append(s_raw, 1)
                 ns_aug_rep = np.append(ns_raw, 1)
+
+                if phi_mapping_sequential(ns_raw, 1) == abstract_mdp.goal_state:
+                    artificial_goal_hits += 1
 
                 # Calcola lo shaping per la transizione replicata in q=1
                 abstract_s_rep = phi_mapping_sequential(s_raw, 1)
@@ -243,6 +248,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 f"  Natural q→1 updates     : {natural_q_updates}\n" +
                 f"  Waypoint hits           : {waypoint_hits}\n" +
                 f"  Goal hits               : {goal_hits}\n"
+                f"  Artificial Goal hits    : {artificial_goal_hits}\n"
             )
 
             print(log_string)
@@ -305,7 +311,7 @@ def main():
         abstract_mdp,
         episodes,
         use_shaping=True,
-        use_replication=True, # <-- REPLICA ATTIVATA
+        use_replication=False, # <-- REPLICA ATTIVATA
         K=K_scaling,
         log_file="logs/shaping_half_replication.log"
     )
