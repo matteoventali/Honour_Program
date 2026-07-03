@@ -250,16 +250,16 @@ class SequentialWaypointMDP:
     MDP for sequential tasks.
     The abstract state is 3D: (x, y, q)
     q = 0: searching for the waypoint (1, 8)
-    q = 1: searching for the final goal (8, 8)
+    q = 10: searching for the final goal (8, 8)
     """
     def __init__(self, width=12, height=12, gamma=0.99):
         self.width = width
         self.height = height
         self.gamma = gamma
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
-        self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1)]
+        self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 10)]
         self.waypoint = (1, 8)
-        self.goal_state = (8,8,1)
+        self.goal_state = (8,8,10)
         self.reward_goal = 10000
         self.v_star = defaultdict(float)
         
@@ -276,7 +276,7 @@ class SequentialWaypointMDP:
         next_q = q
         
         if x == self.waypoint[0] and y == self.waypoint[1] and next_q == 0:
-            next_q = 1
+            next_q = 10
 
         next_state = (next_x, next_y, next_q)
         reward = 0 if next_state == self.goal_state else 0.0

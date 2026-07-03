@@ -87,14 +87,14 @@ def evaluate_policy_worker(policy_filename, episodes, render, goal_state, goal_r
             if q == 0:
                 abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
                 if (abstract_x, abstract_y) == (1, 8): # Waypoint
-                    q = 1
-                    print(f"[{policy_filename}] Waypoint (1,8) reached! Transitioning to q=1.")
+                    q = 10
+                    print(f"[{policy_filename}] Waypoint (1,8) reached! Transitioning to q=10.")
 
             # --- Goal MDP Reward Logic ---
             if goal_state:
                 step_reward = 0.0
                 abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
-                # The goal is reached only if we are in phase q=1
+                # The goal is reached only if we are in phase q=10
                 if (abstract_x, abstract_y) == goal_state and q == 1:
                     step_reward = goal_reward
                     success_count += 1

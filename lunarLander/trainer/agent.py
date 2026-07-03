@@ -45,7 +45,7 @@ class ReplayBuffer:
         if len(self.buffer) == 0:
             return 0.0
         
-        q1 = sum(state[-1] == 1 for state, _, _, _, _ in self.buffer)
+        q1 = sum(state[-1] == 10 for state, _, _, _, _ in self.buffer)
         return q1 / len(self.buffer)
 
 class HierarchicalDQNLearner:

@@ -112,11 +112,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     Executes the training loop for the sequential task.
     """
     true_episode_rewards = []
-    total_episode_rewards = [] # Include la ricompensa di shaping
+    total_episode_rewards = []
     epsilon_history = []
 
-    # Se è stato fornito un file di log, lo apriamo in modalità append.
-    # Se il file non esiste, verrà creato.
     log_handle = open(log_file, 'a') if log_file else None
     if log_handle:
         log_handle.write("="*50 + f"\nSTARTING NEW TRAINING RUN\n" + "="*50 + "\n")
@@ -129,7 +127,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
         
-        # Initialize sequence variable 'q' (0 = seek waypoint, 1 = seek goal)
+        # Initialize sequence variable 'q' (0 = seek waypoint, 10 = seek goal)
         q = 0 
         passed_trough_waypoint = False
         
@@ -150,8 +148,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             if abstract_x == 1 and abstract_y == 8 and q == 0:
                 passed_trough_waypoint = True
                 waypoint_hits += 1
-                q = 1
+                q = 10
                 natural_q_updates += 1
+                env_goal_reward = 10000
                 
             # Building the current state augmented: environment state + q state
             s_aug = np.append(s_raw, q)
@@ -166,7 +165,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             abstract_ns = (abstract_x_ns, abstract_y_ns, q)
 
             # Check if the final goal is reached (and waypoint was passed)
-            if abstract_ns == abstract_mdp.goal_state and q==1 and passed_trough_waypoint:
+            if abstract_ns == abstract_mdp.goal_state and q==10 and passed_trough_waypoint:
                 goal_hits += 1
                 env_goal_reward = 10000
                 terminated = True
@@ -178,16 +177,13 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             if use_shaping:
                 # Calcola lo stato astratto corrente e successivo
                 abstract_s = phi_mapping_sequential(s_raw, q)
-                
                 shaping_signal = 0.0
+                
                 # Applica lo shaping solo se l'agente cambia cella astratta
                 if abstract_s != abstract_ns:
                     phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
                     phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
                     shaping_signal = K * (agent.gamma * phi_ns - phi_s)
-
-                    #if shaping_signal == 0:
-                    #    print(f"abstract_s = {abstract_s}, phi_s = {phi_s}, abstract_ns = {abstract_ns}, phi_ns = {phi_ns}, shaping_signal = {shaping_signal}")
             else:
                 shaping_signal = 0.0
             
@@ -227,7 +223,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             print(log_string)
             if log_handle:
                 log_handle.write(log_string + "\n")
-                log_handle.flush() # Assicura che i dati siano scritti subito
+                log_handle.flush()
 
             agent._save_policy()
     
@@ -245,7 +241,7 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 2000 
+    episodes = 10000
     gamma = 0.99
     eps_decay = 0.995
     K_scaling = 1

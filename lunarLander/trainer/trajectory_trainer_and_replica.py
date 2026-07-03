@@ -153,7 +153,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             if abstract_x == 1 and abstract_y == 8 and q == 0:
                 passed_trough_waypoint = True
                 waypoint_hits += 1
-                q = 1 # transizione di stato
+                q = 10 # transizione di stato
                 natural_q_updates += 1
                 env_goal_reward = 10000
                 
@@ -170,7 +170,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             abstract_ns = (abstract_x_ns, abstract_y_ns, q)
 
             # Check if the final goal is reached (and waypoint was passed)
-            if abstract_ns == abstract_mdp.goal_state and q==1 and passed_trough_waypoint:
+            if abstract_ns == abstract_mdp.goal_state and q==10 and passed_trough_waypoint:
                 goal_hits += 1
                 env_goal_reward = 100000
                 terminated = True
@@ -206,15 +206,15 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Se la replica è attiva e siamo in q=0 (e non c'è stata una transizione a q=1)
             if use_replication and (n_episode < episodes // 2) and q_before_transition == 0 and q == 0:
                 # Crea la transizione replicata per q=1
-                s_aug_rep = np.append(s_raw, 1)
-                ns_aug_rep = np.append(ns_raw, 1)
+                s_aug_rep = np.append(s_raw, 10)
+                ns_aug_rep = np.append(ns_raw, 10)
 
-                if phi_mapping_sequential(ns_raw, 1) == abstract_mdp.goal_state:
+                if phi_mapping_sequential(ns_raw, 10) == abstract_mdp.goal_state:
                     artificial_goal_hits += 1
 
                 # Calcola lo shaping per la transizione replicata in q=1
-                abstract_s_rep = phi_mapping_sequential(s_raw, 1)
-                abstract_ns_rep = phi_mapping_sequential(ns_raw, 1)
+                abstract_s_rep = phi_mapping_sequential(s_raw, 10)
+                abstract_ns_rep = phi_mapping_sequential(ns_raw, 10)
                 phi_s_rep = abstract_mdp.v_star.get(abstract_s_rep, 0.0)
                 phi_ns_rep = abstract_mdp.v_star.get(abstract_ns_rep, 0.0)
                 shaping_signal_rep = K * (agent.gamma * phi_ns_rep - phi_s_rep)

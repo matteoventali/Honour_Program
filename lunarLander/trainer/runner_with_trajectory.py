@@ -39,11 +39,11 @@ def run_single_episode(env, policy_net, device, grid_w=12, grid_h=12, render_del
         abs_x, abs_y = phi_mapping_grid(ns_raw, grid_w, grid_h)
         
         if q == 0 and abs_x == 1 and abs_y == 8:
-            q = 1
+            q = 10
             waypoint_reached = True
-            print("   >>> Waypoint (1,8) reached! Transitioning to phase q=1.")
+            print("   >>> Waypoint (1,8) reached! Transitioning to phase q=10.")
 
-        if abs_x == 8 and abs_y == 8 and q == 1:
+        if abs_x == 8 and abs_y == 8 and q == 10:
             print("   >>> Final point reached!")
             
         s_aug = np.append(ns_raw, q)

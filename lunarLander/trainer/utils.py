@@ -283,24 +283,24 @@ def plot_training_results(rewards, window_size=100, title="Training Results", yl
 def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = None, vmax = None):
     """
     Generates and saves TWO separate heatmaps for V*: 
-    One for q=0 (searching waypoint) and one for q=1 (searching final goal).
+    One for q=0 (searching waypoint) and one for q=10 (searching final goal).
     """
     os.makedirs("img/heatmaps", exist_ok=True)
     
     v_matrix_q0 = np.zeros((height, width))
-    v_matrix_q1 = np.zeros((height, width))
+    v_matrix_q10 = np.zeros((height, width))
     
     # Populate matrices from the 3D dictionary
     for (x, y, q), value in abstract_mdp.v_star.items():
         if 0 <= x < width and 0 <= y < height:
             if q == 0:
                 v_matrix_q0[y, x] = value
-            elif q == 1:
-                v_matrix_q1[y, x] = value
+            elif q == 10:
+                v_matrix_q10[y, x] = value
 
     all_values = np.concatenate([
         v_matrix_q0.flatten(), 
-        v_matrix_q1.flatten()
+        v_matrix_q10.flatten()
     ])
 
     # Calcola i limiti globali
@@ -339,9 +339,9 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, h
             way_x, way_y = abstract_mdp.waypoint
             plt.plot(way_x, way_y, 'ro', markersize=15, alpha=0.6, label="Waypoint (Target Q0)")
             plt.legend(loc="upper right")
-        elif q_val == 1:
+        elif q_val == 10:
             goal_x, goal_y, _ = abstract_mdp.goal_state
-            plt.plot(goal_x, goal_y, 'go', markersize=15, alpha=0.6, label="Final Goal (Target Q1)")
+            plt.plot(goal_x, goal_y, 'go', markersize=15, alpha=0.6, label="Final Goal (Target Q10)")
             plt.legend(loc="upper right")
             
         plt.tight_layout()
@@ -351,8 +351,8 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, h
     print(" -> Generating V* Heatmap for Q=0...")
     plot_single_heatmap(v_matrix_q0, 0, "Potential Map (V*) - Phase q=0 (Seek Waypoint)", f"{filename_prefix}_q0")
     
-    print(" -> Generating V* Heatmap for Q=1...")
-    plot_single_heatmap(v_matrix_q1, 1, "Potential Map (V*) - Phase q=1 (Seek Goal)", f"{filename_prefix}_q1")
+    print(" -> Generating V* Heatmap for Q=10...")
+    plot_single_heatmap(v_matrix_q10, 10, "Potential Map (V*) - Phase q=10 (Seek Goal)", f"{filename_prefix}_q10")
 
 def save_sequential_idw_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin=0, vmax=100, p=2.0):
     """
@@ -373,7 +373,7 @@ def save_sequential_idw_heatmaps(abstract_mdp, filename_prefix="v_star", width=1
     for i, py in enumerate(y_continuous):
         for j, px in enumerate(x_continuous):
             Z_q0[i, j] = get_idw_potential_sequential(px, py, 0, abstract_mdp.v_star, width, height, p=p)
-            Z_q1[i, j] = get_idw_potential_sequential(px, py, 1, abstract_mdp.v_star, width, height, p=p)
+            Z_q1[i, j] = get_idw_potential_sequential(px, py, 10, abstract_mdp.v_star, width, height, p=p)
 
     def plot_smooth_heatmap(Z_matrix, q_val, title, filename):
         plt.figure(figsize=(10, 9))
@@ -398,7 +398,7 @@ def save_sequential_idw_heatmaps(abstract_mdp, filename_prefix="v_star", width=1
         if q_val == 0:
             way_x, way_y = abstract_mdp.waypoint
             plt.plot(way_x + 0.5, way_y + 0.5, 'ro', markersize=18, alpha=0.8, markeredgecolor='white', label="Waypoint (q=0)")
-        elif q_val == 1:
+        elif q_val == 10:
             goal_x, goal_y, _ = abstract_mdp.goal_state
             plt.plot(goal_x + 0.5, goal_y + 0.5, 'go', markersize=18, alpha=0.8, markeredgecolor='white', label="Final Goal (q=1)")
             
@@ -411,7 +411,7 @@ def save_sequential_idw_heatmaps(abstract_mdp, filename_prefix="v_star", width=1
     plot_smooth_heatmap(Z_q0, 0, f"IDW V* - Phase q=0 (Seek Waypoint) | p={p}", f"{filename_prefix}_q0_idw")
     
     print(" -> Salvataggio heatmap IDW per q=1...")
-    plot_smooth_heatmap(Z_q1, 1, f"IDW V* - Phase q=1 (Seek Goal) | p={p}", f"{filename_prefix}_q1_idw")
+    plot_smooth_heatmap(Z_q1, 10, f"IDW V* - Phase q=1 (Seek Goal) | p={p}", f"{filename_prefix}_q1_idw")
 
 def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star", width=12, height=12, vmin = 0, vmax = 100):
     """
@@ -432,7 +432,7 @@ def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star"
     for i, py in enumerate(y_continuous):
         for j, px in enumerate(x_continuous):
             Z_q0[i, j] = get_bilinear_potential_sequential(px, py, 0, abstract_mdp.v_star, width, height)
-            Z_q1[i, j] = get_bilinear_potential_sequential(px, py, 1, abstract_mdp.v_star, width, height)
+            Z_q1[i, j] = get_bilinear_potential_sequential(px, py, 10, abstract_mdp.v_star, width, height)
 
     all_values = np.concatenate([
         Z_q0.flatten(), 
@@ -466,7 +466,7 @@ def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star"
         if q_val == 0:
             way_x, way_y = abstract_mdp.waypoint
             plt.plot(way_x + 0.5, way_y + 0.5, 'ro', markersize=18, alpha=0.8, markeredgecolor='white', label="Waypoint (q=0)")
-        elif q_val == 1:
+        elif q_val == 10:
             goal_x, goal_y, _ = abstract_mdp.goal_state
             plt.plot(goal_x + 0.5, goal_y + 0.5, 'go', markersize=18, alpha=0.8, markeredgecolor='white', label="Final Goal (q=1)")
             
@@ -479,4 +479,4 @@ def save_sequential_interpolated_heatmaps(abstract_mdp, filename_prefix="v_star"
     plot_smooth_heatmap(Z_q0, 0, "Interpolated V* - Phase q=0 (Seek Waypoint)", f"{filename_prefix}_q0_smooth")
     
     print(" -> Saving heatmap for q=1...")
-    plot_smooth_heatmap(Z_q1, 1, "Interpolated V* - Phase q=1 (Seek Goal)", f"{filename_prefix}_q1_smooth")
+    plot_smooth_heatmap(Z_q1, 10, "Interpolated V* - Phase q=1 (Seek Goal)", f"{filename_prefix}_q1_smooth")
