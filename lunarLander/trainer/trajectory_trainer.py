@@ -87,11 +87,23 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
     ax1.grid(True, linestyle='--', alpha=0.5)
     
     # Secondary axis for Epsilon
+    #ax2 = ax1.twinx()
+    #ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+    #ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
+    #ax2.tick_params(axis='y', labelcolor='orange')
+    #ax2.set_ylim(0, 1.05)
+
+    # Secondary axis for Epsilon
     ax2 = ax1.twinx()
-    ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+    
+    # Estraiamo i due array degli epsilon dalla tupla
+    eps_q0_history, eps_q10_history = epsilon_history
+    
+    # Plottiamo due linee separate
+    ax2.plot(x_axis, eps_q0_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (q=0)')
+    ax2.plot(x_axis, eps_q10_history, color='red', linestyle=':', linewidth=1.8, label='Epsilon Decay (q=10)')
+    
     ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
-    ax2.tick_params(axis='y', labelcolor='orange')
-    ax2.set_ylim(0, 1.05)
 
     # Merge legends from both axes
     lines1, labels1 = ax1.get_legend_handles_labels()
@@ -405,7 +417,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         reached_q10_this_episode = False
         
         # Augment state for the Neural Network: environment state + q state
-        s_aug = np.append(s_raw, q) 
+        #s_aug = np.append(s_raw, q) 
+        q_one_hot = np.array([1.0, 0.0]) if q == 0 else np.array([0.0, 1.0])
+        s_aug = np.concatenate((s_raw, q_one_hot)).astype(np.float32)
         
         terminated = truncated = False
         episode_true_reward = 0.0
@@ -451,7 +465,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             episode_true_reward += env_goal_reward
             
             # Build the NEXT augmented state
-            ns_aug = np.append(ns_raw, next_q)
+            #ns_aug = np.append(ns_raw, next_q)
+            next_q_one_hot = np.array([1.0, 0.0]) if next_q == 0 else np.array([0.0, 1.0])
+            ns_aug = np.concatenate((ns_raw, next_q_one_hot)).astype(np.float32)
 
             # 4. Shaping Signal Calculation (Senza Gamma)
             if use_shaping:
@@ -504,7 +520,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 f"  Avg Reward              : {recent_avg:.6f}\n" +
                 f"  Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" +
                 f"  Epsilon (q0, q10)       : {eps_q0:.6f}, {eps_q10:.6f}\n" +                
-                f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction():.6f}, {agent.memory.q1_fraction():.6f}\n" +
+                f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction_onehot():.6f}, {agent.memory.q1_fraction_onehot():.6f}\n" +
                 f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
                 f"  Waypoint hits           : {waypoint_hits}\n" +
                 f"  Goal hits               : {goal_hits}\n" +
@@ -584,8 +600,8 @@ def main():
         gamma=gamma,
         eps_decay=eps_decay,
         use_ddqn=True,
-        policy_name="shaping_sequential_policy.pth",
-        extra_state_dims=1
+        policy_name="shaping_sequential_policy_onehot.pth",
+        extra_state_dims=2
     )
     
     shaping_learning_curve, shaping_total_rewards, shaping_eps_history = run_sequential_training(
@@ -595,7 +611,7 @@ def main():
         episodes, 
         use_shaping=True, 
         K=K_scaling,
-        log_file="logs/shaping_training.log"
+        log_file="logs/shaping_training_onehot.log"
     )
     
     # -----------------------------------------------------------------

@@ -47,6 +47,22 @@ class ReplayBuffer:
         
         q1 = sum(state[-1] == 10 for state, _, _, _, _ in self.buffer)
         return q1 / len(self.buffer)
+    
+    def q0_fraction_onehot(self):
+        if len(self.buffer) == 0:
+            return 0.0
+        
+        # NUOVO CODICE: controlla se il penultimo elemento è 1.0 (corrisponde a [1.0, 0.0])
+        q0 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q0 / len(self.buffer)
+    
+    def q1_fraction_onehot(self):
+        if len(self.buffer) == 0:
+            return 0.0
+        
+        # NUOVO CODICE: controlla se l'ultimo elemento è 1.0 (corrisponde a [0.0, 1.0])
+        q1 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q1 / len(self.buffer)
 
 class HierarchicalDQNLearner:
     def __init__(self, env, abstract_mdp=None, mapping_fn=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
