@@ -95,9 +95,10 @@ def evaluate_policy_worker(policy_filename, episodes, render, goal_state, goal_r
                 step_reward = 0.0
                 abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
                 # The goal is reached only if we are in phase q=10
-                if (abstract_x, abstract_y) == goal_state and q == 1:
+                if (abstract_x, abstract_y) == goal_state and q == 10:
                     step_reward = goal_reward
                     success_count += 1
+                    print(f"[{policy_filename}] Final goal (8,8) reached!")
                     terminated = True
             else:
                 step_reward = reward

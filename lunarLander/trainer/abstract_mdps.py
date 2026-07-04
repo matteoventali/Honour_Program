@@ -99,10 +99,10 @@ class ConfigurableDiagonalMDP(DiagonalAbstractGridMDP):
         next_state, _ = super().get_transitions(state, action)
         
         # Reward is granted if the agent enters ANY of the designated goal cells
-        reward = self.goal_reward if next_state in self.goal_states else 0.0
+        reward = 0 if next_state in self.goal_states else 0.0
         return next_state, reward
 
-    def value_iteration(self, theta=0.001):
+    def value_iteration_old(self, theta=0.001):
         """Updated Value Iteration to support multiple goal states and variable rewards."""
         while True:
             delta = 0
@@ -122,6 +122,24 @@ class ConfigurableDiagonalMDP(DiagonalAbstractGridMDP):
         # Ensure all goal states strictly hold their maximum reward value
         for g in self.goal_states:
             self.v_star[g] = self.goal_reward
+
+    def value_iteration(self, theta=0.001):
+        print("Solving Configurable MDP with Value Iteration...")
+        
+        for g in self.goal_states:
+            self.v_star[g] = self.goal_reward
+        
+        while True:
+            delta = 0
+            new_v = self.v_star.copy()
+            for s  in self.states:
+                if s not in self.goal_states:
+                    v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                    best_v = max(v_actions)
+                    delta = max(delta, abs(best_v - self.v_star[s]))
+                    new_v[s] = best_v
+                    self.v_star = new_v
+            if delta < theta: break
 
 
 class ValleyDiagonalAbstractMDP(DiagonalAbstractGridMDP):
@@ -260,12 +278,13 @@ class SequentialWaypointMDP:
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 10)]
         self.waypoint = (1, 8)
         self.goal_state = (8,8,10)
-        self.reward_goal = 10000
+        self.goal_reward = 10000
         self.v_star = defaultdict(float)
         
     def get_transitions(self, state, action):
         x, y, q = state
         next_y = y
+        reward = 0
         if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
         elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
             
@@ -276,16 +295,16 @@ class SequentialWaypointMDP:
         next_q = q
         
         if x == self.waypoint[0] and y == self.waypoint[1] and next_q == 0:
+            #reward = self.goal_reward
             next_q = 10
 
         next_state = (next_x, next_y, next_q)
-        reward = 0 if next_state == self.goal_state else 0.0
         return next_state, reward
 
     def value_iteration(self, theta=0.001):
         print("Solving Sequential MDP with Value Iteration...")
         
-        self.v_star[self.goal_state] = self.reward_goal
+        self.v_star[self.goal_state] = self.goal_reward
         
         while True:
             delta = 0

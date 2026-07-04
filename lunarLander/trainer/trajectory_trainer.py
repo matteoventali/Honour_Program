@@ -107,7 +107,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
 # TRAINING LOOP
 # =====================================================================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
+def run_sequential_training_old(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
     """
     Executes the training loop for the sequential task.
     """
@@ -123,6 +123,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     natural_q_updates = 0
     waypoint_hits = 0
     goal_hits = 0
+    truncated_episodes = 0
 
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
@@ -158,6 +159,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # Agent selects action based on the augmented state
             a = agent.select_action(s_aug)
             ns_raw, _, terminated, truncated, _ = env.step(a)
+
+            if truncated:
+                truncated_episodes += 1
 
             # Map continuous state to 3D abstract state (x, y, q)
             abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, q)
@@ -218,6 +222,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
                 f"  Waypoint hits           : {waypoint_hits}\n" +
                 f"  Goal hits               : {goal_hits}\n"
+                f"  Truncated episodes      : {truncated_episodes}\n"
             )
 
             print(log_string)
@@ -232,6 +237,293 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 
     return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(epsilon_history)
 
+def run_sequential_training_single_eps(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
+    """
+    Executes the training loop for the sequential task.
+    """
+    true_episode_rewards = []
+    total_episode_rewards = []
+    epsilon_history = []
+
+    log_handle = open(log_file, 'a') if log_file else None
+    if log_handle:
+        log_handle.write("="*50 + f"\nSTARTING NEW TRAINING RUN\n" + "="*50 + "\n")
+
+    # Counters
+    natural_q_updates = 0
+    waypoint_hits = 0
+    goal_hits = 0
+    truncated_episodes = 0
+
+    for n_episode in range(episodes):
+        s_raw, _ = env.reset()
+        
+        # Initialize sequence variable 'q' (0 = seek waypoint, 10 = seek goal)
+        q = 0 
+        passed_trough_waypoint = False
+        
+        # Augment state for the Neural Network: environment state + q state
+        s_aug = np.append(s_raw, q) 
+        
+        terminated = truncated = False
+        episode_true_reward = 0.0
+        episode_total_reward = 0.0
+
+        # Episode loop
+        while not (terminated or truncated):
+            env_goal_reward = 0.0
+
+            # 1. Agent selects action based on the augmented state
+            a = agent.select_action(s_aug)
+            ns_raw, _, terminated, truncated, _ = env.step(a)
+
+            if truncated:
+                truncated_episodes += 1
+
+            # 2. Map continuous next state to 2D abstract state coordinates
+            abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, q)
+            
+            next_q = q
+
+            # 3. STATE TRANSITION LOGIC: Check if the NEXT state is the waypoint
+            if abstract_x_ns == 1 and abstract_y_ns == 8 and q == 0:
+                passed_trough_waypoint = True
+                waypoint_hits += 1
+                next_q = 10
+                natural_q_updates += 1
+                env_goal_reward = 0
+                
+            # Build the abstract next state using next_q
+            abstract_ns = (abstract_x_ns, abstract_y_ns, next_q)
+
+            # 4. Check if the final goal is reached (and waypoint was passed)
+            if abstract_ns == abstract_mdp.goal_state and next_q == 10 and passed_trough_waypoint:
+                goal_hits += 1
+                env_goal_reward = 10000
+                terminated = True
+            
+            done = terminated or truncated
+            episode_true_reward += env_goal_reward
+            
+            # 5. Build the NEXT augmented state
+            ns_aug = np.append(ns_raw, next_q)
+
+            # --- Shaping Signal Calculation (Discrete) ---
+            if use_shaping:
+                # Calcola lo stato astratto corrente
+                abstract_s = phi_mapping_sequential(s_raw, q)
+                shaping_signal = 0.0
+                
+                # Applica lo shaping solo se l'agente cambia cella astratta o fase q
+                if abstract_s != abstract_ns:
+                    phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
+                    phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
+                    shaping_signal = K * (1 * phi_ns - phi_s)
+            else:
+                shaping_signal = 0.0
+            
+            total_step_reward = env_goal_reward + shaping_signal
+            episode_total_reward += total_step_reward
+            
+            # 6. Push AUGMENTED states to memory and optimize
+            agent.memory.push(s_aug, a, total_step_reward, ns_aug, done)
+            agent.optimize_model()
+
+            # 7. Update states for the next step
+            s_raw = ns_raw
+            s_aug = ns_aug
+            q = next_q
+            
+        # Decay epsilon at the end of the episode
+        agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
+        true_episode_rewards.append(episode_true_reward)
+        total_episode_rewards.append(episode_total_reward)
+        epsilon_history.append(agent.eps)
+
+        # Print progress every 100 episodes
+        if (n_episode + 1) % 100 == 0:
+            recent_avg = np.mean(true_episode_rewards[-100:])
+            recent_avg_with_shaping = np.mean(total_episode_rewards[-100:])
+            mode_str = "SHAPING" if use_shaping else "BASELINE"
+
+            log_string = (
+                f"[{mode_str}] Episode {n_episode + 1}/{episodes}\n" +
+                f"  Avg Reward              : {recent_avg:.6f}\n" +
+                f"  Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" +
+                f"  Epsilon                 : {agent.eps:.6f}\n" +                
+                f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction():.6f}, {agent.memory.q1_fraction():.6f}\n" +
+                f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
+                f"  Waypoint hits           : {waypoint_hits}\n" +
+                f"  Goal hits               : {goal_hits}\n" +
+                f"  Truncated episodes      : {truncated_episodes}\n"
+            )
+
+            print(log_string)
+            if log_handle:
+                log_handle.write(log_string + "\n")
+                log_handle.flush()
+
+            agent._save_policy()
+    
+    if log_handle:
+        log_handle.close()
+
+    return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(epsilon_history)
+
+def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
+    """
+    Executes the training loop for the sequential task with state-dependent Epsilon.
+    """
+    true_episode_rewards = []
+    total_episode_rewards = []
+    
+    # 1. Inizializzazione dei due Epsilon separati
+    eps_q0 = agent.eps  # Parte dal valore iniziale (es. 1.0)
+    eps_q10 = agent.eps 
+    eps_min = agent.eps_min
+    eps_decay = agent.eps_decay
+    
+    eps_q0_history = []
+    eps_q10_history = []
+
+    log_handle = open(log_file, 'a') if log_file else None
+    if log_handle:
+        log_handle.write("="*50 + f"\nSTARTING NEW TRAINING RUN\n" + "="*50 + "\n")
+
+    # Counters
+    natural_q_updates = 0
+    waypoint_hits = 0
+    goal_hits = 0
+    truncated_episodes = 0
+
+    for n_episode in range(episodes):
+        s_raw, _ = env.reset()
+        
+        # Inizializza le variabili logiche dell'episodio
+        q = 0 
+        passed_trough_waypoint = False
+        reached_q10_this_episode = False
+        
+        # Augment state for the Neural Network: environment state + q state
+        s_aug = np.append(s_raw, q) 
+        
+        terminated = truncated = False
+        episode_true_reward = 0.0
+        episode_total_reward = 0.0
+
+        # Episode loop
+        while not (terminated or truncated):
+            env_goal_reward = 0.0
+
+            # 2. Imposta dinamicamente l'Epsilon corretto in base alla fase attuale
+            agent.eps = eps_q0 if q == 0 else eps_q10
+
+            # Agent selects action based on the augmented state
+            a = agent.select_action(s_aug)
+            ns_raw, _, terminated, truncated, _ = env.step(a)
+
+            if truncated:
+                truncated_episodes += 1
+
+            # Map continuous next state to 2D abstract state coordinates
+            abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, q)
+            next_q = q
+
+            # 3. STATE TRANSITION LOGIC: Check if the NEXT state is the waypoint
+            if abstract_x_ns == 1 and abstract_y_ns == 8 and q == 0:
+                passed_trough_waypoint = True
+                waypoint_hits += 1
+                next_q = 10
+                natural_q_updates += 1
+                env_goal_reward = 0.0  # Nessun reward dall'ambiente, ci pensa lo shaping
+                reached_q10_this_episode = True
+                
+            # Build the abstract next state using next_q
+            abstract_ns = (abstract_x_ns, abstract_y_ns, next_q)
+
+            # Check if the final goal is reached (and waypoint was passed)
+            if abstract_ns == abstract_mdp.goal_state and next_q == 10 and passed_trough_waypoint:
+                goal_hits += 1
+                env_goal_reward = 10000.0
+                terminated = True
+            
+            done = terminated or truncated
+            episode_true_reward += env_goal_reward
+            
+            # Build the NEXT augmented state
+            ns_aug = np.append(ns_raw, next_q)
+
+            # 4. Shaping Signal Calculation (Senza Gamma)
+            if use_shaping:
+                abstract_s = phi_mapping_sequential(s_raw, q)
+                shaping_signal = 0.0
+                
+                # Applica lo shaping solo se l'agente cambia cella astratta o fase q
+                if abstract_s != abstract_ns:
+                    phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
+                    phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
+                    # Rimossa la moltiplicazione per agent.gamma per avere un gradiente positivo
+                    shaping_signal = K * (phi_ns - phi_s)
+            else:
+                shaping_signal = 0.0
+            
+            total_step_reward = env_goal_reward + shaping_signal
+            episode_total_reward += total_step_reward
+            
+            # Push AUGMENTED states to memory and optimize
+            agent.memory.push(s_aug, a, total_step_reward, ns_aug, done)
+            agent.optimize_model()
+
+            # Update states for the next step
+            s_raw = ns_raw
+            s_aug = ns_aug
+            q = next_q
+            
+        # 5. DECAY DEGLI EPSILON A FINE EPISODIO
+        
+        # eps_q0 decade SEMPRE per stabilizzare la prima fase
+        eps_q0 = max(eps_min, eps_q0 * eps_decay)
+        
+        # eps_q10 decade SOLO SE l'agente è entrato in q=10 durante questo episodio
+        if reached_q10_this_episode and eps_q0 < 0.05:
+            eps_q10 = max(eps_min, eps_q10 * eps_decay)
+
+        true_episode_rewards.append(episode_true_reward)
+        total_episode_rewards.append(episode_total_reward)
+        eps_q0_history.append(eps_q0)
+        eps_q10_history.append(eps_q10)
+
+        # Print progress every 100 episodes
+        if (n_episode + 1) % 100 == 0:
+            recent_avg = np.mean(true_episode_rewards[-100:])
+            recent_avg_with_shaping = np.mean(total_episode_rewards[-100:])
+            mode_str = "SHAPING" if use_shaping else "BASELINE"
+
+            log_string = (
+                f"[{mode_str}] Episode {n_episode + 1}/{episodes}\n" +
+                f"  Avg Reward              : {recent_avg:.6f}\n" +
+                f"  Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" +
+                f"  Epsilon (q0, q10)       : {eps_q0:.6f}, {eps_q10:.6f}\n" +                
+                f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction():.6f}, {agent.memory.q1_fraction():.6f}\n" +
+                f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
+                f"  Waypoint hits           : {waypoint_hits}\n" +
+                f"  Goal hits               : {goal_hits}\n" +
+                f"  Truncated episodes      : {truncated_episodes}\n"
+            )
+
+            print(log_string)
+            if log_handle:
+                log_handle.write(log_string + "\n")
+                log_handle.flush()
+
+            agent._save_policy()
+    
+    if log_handle:
+        log_handle.close()
+
+    # Ritorna entrambe le history degli Epsilon all'interno di una tupla
+    return np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history))
+
 # =====================================================================
 # MAIN EXPERIMENT ORCHESTRATOR
 # =====================================================================
@@ -243,7 +535,7 @@ def main():
     # HYPERPARAMETERS
     episodes = 10000
     gamma = 0.99
-    eps_decay = 0.995
+    eps_decay = 0.999
     K_scaling = 1
     
     print("\n1. Initializing Environment and Abstract MDP...")

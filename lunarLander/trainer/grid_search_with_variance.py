@@ -237,11 +237,10 @@ def plot_shaded_comparisons(results_dict, epsilon_dict, window_size=100, base_di
 # PART 2: CORE TRAINING LOOP
 # =====================================================================
 
-def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=True):
+def run_grid_search_training(env, agent, abstract_mdp, episodes, K=1, use_shaping=True):
     true_episode_rewards = []
     total_episode_rewards = []
     eps_history = []
-    K = 100.0 / abstract_mdp.goal_reward if abstract_mdp.goal_reward > 0 else 1.0
     
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
@@ -264,7 +263,7 @@ def run_grid_search_training(env, agent, abstract_mdp, episodes, use_shaping=Tru
 
             # If the agent has reached the goal state
             if abstract_ns in abstract_mdp.goal_states:
-                env_goal_reward = 100.0
+                env_goal_reward = abstract_mdp.goal_reward
                 terminated = True # End the current episode
             done = terminated or truncated
 
@@ -318,47 +317,46 @@ def main():
     os.makedirs("img/shaded_plots", exist_ok=True)
 
     # --- GLOBAL HYPERPARAMETERS ---
-    NUM_SEEDS = 5
-    EPISODES = 1500
+    NUM_SEEDS = 1
+    EPISODES = 2000
     
     goal_configs = {
         "1x1_Strict": [(1,8)]
     }
     gammas = [0.99]
-    goal_rewards = [100.0]
+    goal_rewards = [10000.0]
     
     results = {}
     epsilon_values = {}
     combinations = list(itertools.product(goal_configs.items(), gammas, goal_rewards))
 
     # 1. RUN BASELINE EXPERIMENTS (No Shaping)
-    print("\n--- PHASE 1: TRAINING BASELINES ---")
-    for (goal_name, goal_states), gamma in list(itertools.product(goal_configs.items(), gammas)):
-        config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
-        policy_name = f"baseline_{goal_name}_g{str(gamma).replace('.','')}"
-        print(f"\n[Config] {config_name}")
-        
-        runs_data = []
-        for seed in range(NUM_SEEDS):
-            print(f"   -> Seed {seed+1}/{NUM_SEEDS}")
-            env = gym.make("LunarLander-v3", continuous=False)
-            np.random.seed(seed); torch.manual_seed(seed); env.reset(seed=seed)
-            
-            abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=1.0)
-            abstract_mdp.value_iteration()
-            
-            agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
-            curve, _, eps_history = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
-            runs_data.append(curve)
-            env.close()
-        epsilon_values[config_name] = eps_history
-        results[config_name] = np.array(runs_data)
+    #print("\n--- PHASE 1: TRAINING BASELINES ---")
+    #for (goal_name, goal_states), gamma in list(itertools.product(goal_configs.items(), gammas)):
+    #    config_name = f"Goal:{goal_name} | Gamma:{gamma} | Baseline"
+    #    policy_name = f"baseline_{goal_name}_g{str(gamma).replace('.','')}"
+    #    print(f"\n[Config] {config_name}")
+    #    
+    #    runs_data = []
+    #    for seed in range(NUM_SEEDS):
+    #        print(f"   -> Seed {seed+1}/{NUM_SEEDS}")
+    #        env = gym.make("LunarLander-v3", continuous=False)
+    #        np.random.seed(seed); torch.manual_seed(seed); env.reset(seed=seed)
+    #        
+    #        abstract_mdp = ConfigurableDiagonalMDP(gamma=gamma, goal_states=goal_states, goal_reward=1.0)
+    #        abstract_mdp.value_iteration()
+    #        
+    #        agent = HierarchicalDQNLearner(env, abstract_mdp, phi_mapping_grid, max_episodes=EPISODES, use_ddqn=True, policy_name=policy_name, gamma=gamma)
+    #        curve, _, eps_history = run_grid_search_training(env, agent, abstract_mdp, EPISODES, use_shaping=False)
+    #        runs_data.append(curve)
+    #        env.close()
+    #    epsilon_values[config_name] = eps_history
+    #    results[config_name] = np.array(runs_data)
 
     # 2. RUN SHAPING EXPERIMENTS
     print("\n--- PHASE 2: TRAINING WITH CONTINUOUS SHAPING ---")
     for idx, ((goal_name, goal_states), gamma, g_rew) in enumerate(combinations):
         config_name = f"Goal:{goal_name} | Gamma:{gamma} | Rew:{g_rew}"
-        #heatmap_file = f"img/heatmaps/v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
         discrete_heatmap_file = f"img/heatmaps/discrete_v_{goal_name.split('_')[0]}_g{str(gamma).replace('.','')}_r{g_rew}.png"
         policy_name = f"shaping_{goal_name}_g{str(gamma).replace('.','')}_r{g_rew}"
         print(f"\n[{idx+1}/{len(combinations)}] {config_name}")
