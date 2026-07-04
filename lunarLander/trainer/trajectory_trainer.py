@@ -214,8 +214,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 f"  Avg Reward              : {recent_avg:.6f}\n" +
                 f"  Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" +
                 f"  Epsilon                 : {agent.eps:.6f}\n" +                
-                f"  Exp q0 % and q1 %       : {agent.memory.q0_fraction():.6f}, {agent.memory.q1_fraction():.6f}\n" +
-                f"  Natural q→1 updates     : {natural_q_updates}\n" +
+                f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction():.6f}, {agent.memory.q1_fraction():.6f}\n" +
+                f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
                 f"  Waypoint hits           : {waypoint_hits}\n" +
                 f"  Goal hits               : {goal_hits}\n"
             )
