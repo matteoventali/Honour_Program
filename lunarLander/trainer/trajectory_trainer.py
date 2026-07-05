@@ -115,6 +115,41 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
     print(f"\n>>> Shaping reward breakdown plot successfully saved to: {filename}")
     plt.close(fig)
 
+def plot_buffer_fractions(q0_history, q10_history, window_size=100, filename="img/buffer_fractions.png"):
+    """
+    Genera un grafico che mostra l'evoluzione della composizione del Replay Buffer.
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Calcolo della media mobile per smussare le linee
+    q0_ma = pd.Series(q0_history).rolling(window=window_size, min_periods=1, center=True).mean()
+    q10_ma = pd.Series(q10_history).rolling(window=window_size, min_periods=1, center=True).mean()
+    x_axis = np.arange(len(q0_history))
+    
+    # Plot delle due frazioni
+    ax.plot(x_axis, q0_ma, color='blue', linewidth=2.5, label='Fase q=0 (Waypoint)')
+    ax.plot(x_axis, q10_ma, color='green', linewidth=2.5, label='Fase q=10 (Traguardo)')
+    
+    # Formattazione
+    ax.set_title(f"Composizione del Replay Buffer (Finestra Mobile = {window_size})", fontsize=14, fontweight='bold')
+    ax.set_xlabel("Episodio", fontsize=12)
+    ax.set_ylabel("Frazione dei dati nel Buffer", fontsize=12)
+    
+    # Fissiamo l'asse Y tra 0 e 1 (0% - 100%)
+    ax.set_ylim(0, 1.05)
+    
+    # Linea di riferimento al 50%
+    ax.axhline(y=0.5, color='gray', linestyle=':', alpha=0.7, label='Equilibrio Ideale (50%)')
+    
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc="best", fontsize=11)
+    
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200)
+    print(f"\n>>> Grafico del Replay Buffer salvato in: {filename}")
+    plt.close(fig)
+
 # =====================================================================
 # TRAINING LOOP
 # =====================================================================
@@ -397,6 +432,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     
     eps_q0_history = []
     eps_q10_history = []
+    buffer_q0_history = []
+    buffer_q10_history = []
 
     log_handle = open(log_file, 'a') if log_file else None
     if log_handle:
@@ -508,6 +545,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         total_episode_rewards.append(episode_total_reward)
         eps_q0_history.append(eps_q0)
         eps_q10_history.append(eps_q10)
+        buffer_q0_history.append(agent.memory.q0_fraction())
+        buffer_q10_history.append(agent.memory.q1_fraction())
 
         # Print progress every 100 episodes
         if (n_episode + 1) % 100 == 0:
@@ -532,13 +571,16 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 log_handle.write(log_string + "\n")
                 log_handle.flush()
 
+        if (n_episode + 1) % 500 == 0:
+            agent.policy_name = f"shaping_sequential_policy_onehot_episode_{n_episode + 1}.pth"
             agent._save_policy()
-    
+
     if log_handle:
         log_handle.close()
 
     # Ritorna entrambe le history degli Epsilon all'interno di una tupla
-    return np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history))
+    return (np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history)),
+            (np.array(buffer_q0_history), np.array(buffer_q10_history)))
 
 # =====================================================================
 # MAIN EXPERIMENT ORCHESTRATOR
@@ -604,7 +646,7 @@ def main():
         extra_state_dims=2
     )
     
-    shaping_learning_curve, shaping_total_rewards, shaping_eps_history = run_sequential_training(
+    shaping_learning_curve, shaping_total_rewards, shaping_eps_history, shaping_buffer_history = run_sequential_training(
         env, 
         agent_shaping, 
         abstract_mdp, 
@@ -618,9 +660,10 @@ def main():
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
+    buf_q0, buf_q10 = shaping_buffer_history
     #plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, baseline_eps_history, window_size=500)
     plot_shaping_reward_breakdown(shaping_learning_curve, shaping_total_rewards, shaping_eps_history, window_size=500, filename="img/shaping_reward_breakdown.png")
-
+    plot_buffer_fractions(buf_q0, buf_q10, window_size=500, filename="img/buffer_fractions.png")
     env.close()
 
 if __name__ == "__main__":

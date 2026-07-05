@@ -51,16 +51,12 @@ class ReplayBuffer:
     def q0_fraction_onehot(self):
         if len(self.buffer) == 0:
             return 0.0
-        
-        # NUOVO CODICE: controlla se il penultimo elemento è 1.0 (corrisponde a [1.0, 0.0])
         q0 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
         return q0 / len(self.buffer)
     
     def q1_fraction_onehot(self):
         if len(self.buffer) == 0:
             return 0.0
-        
-        # NUOVO CODICE: controlla se l'ultimo elemento è 1.0 (corrisponde a [0.0, 1.0])
         q1 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
         return q1 / len(self.buffer)
 
