@@ -15,6 +15,13 @@ from utils import (phi_mapping_sequential, save_sequential_heatmaps)
 # PLOTTING UTILITY ADATTATE PER PPO
 # =====================================================================
 
+def log_and_print(message, file_handle):
+    """Prints a message to the console and writes it to the log file."""
+    print(message)
+    if file_handle:
+        file_handle.write(message + "\n")
+        file_handle.flush()
+
 def plot_shaping_reward_breakdown(true_rewards, total_rewards, window_size=100, filename="img/shaping_reward_breakdown_ppo.png"):
     """
     Plots the true environment reward vs the total reward (env + shaping) for PPO.
@@ -145,14 +152,9 @@ class SequentialTaskWrapper(gym.Wrapper):
         if self.use_shaping:
             abstract_s = phi_mapping_sequential(self.current_s_raw, self.q)
             if abstract_s != abstract_ns:
-                if (terminated or truncated) and not self.goal_reached:
-                    phi_ns = 0.0
-                else:
-                    phi_ns = self.abstract_mdp.v_star.get(abstract_ns, 0.0)
-
                 phi_s = self.abstract_mdp.v_star.get(abstract_s, 0.0)
-                #phi_ns = self.abstract_mdp.v_star.get(abstract_ns, 0.0)
-                shaping_signal = self.K * (self.abstract_mdp.gamma * phi_ns - phi_s)
+                phi_ns = self.abstract_mdp.v_star.get(abstract_ns, 0.0)
+                shaping_signal = self.K * (phi_ns - phi_s)
         
         total_step_reward = env_goal_reward + shaping_signal
         
@@ -184,8 +186,8 @@ class SequentialTaskWrapper(gym.Wrapper):
 # =====================================================================
 
 class RewardLoggingCallback(BaseCallback):
-    def __init__(self, use_shaping, verbose=0):
-        super().__init__(verbose)
+    def __init__(self, use_shaping, log_file=None, verbose=0):
+        super(RewardLoggingCallback, self).__init__(verbose)
         self.true_episode_rewards = []
         self.total_episode_rewards = []
         self.q0_fractions = []
@@ -195,6 +197,7 @@ class RewardLoggingCallback(BaseCallback):
         self.episodes_count = 0
         self.use_shaping = use_shaping
         self.max_episodes = 15000 # A default large number
+        self.log_file = log_file
 
     def _on_step(self) -> bool:
         # PPO runs envs vectorized internally (even if it's just one)
@@ -222,20 +225,22 @@ class RewardLoggingCallback(BaseCallback):
                         recent_avg_shaping = np.mean(self.total_episode_rewards[-100:])
                         mode_str = "SHAPING" if self.use_shaping else "BASELINE"
                         
-                        print(f"[{mode_str} PPO] Episode {self.episodes_count}")
-                        print(f"  Avg Reward              : {recent_avg:.6f}")
-                        print(f"  Avg With Shaping Reward : {recent_avg_shaping:.6f}")
-                        print(f"  Avg Time in q0 % / q10% : {np.mean(self.q0_fractions[-100:]):.4f}, {np.mean(self.q10_fractions[-100:]):.4f}")
-                        print(f"  Waypoint Hits (last 100): {np.sum(self.waypoint_hits_history[-100:])}")
-                        print(f"  Goal Hits (last 100)    : {np.sum(self.goal_hits_history[-100:])}")
-                        print("-" * 40)
+                        log_string = (
+                            f"[{mode_str} PPO] Episode {self.episodes_count}/{self.max_episodes}\n"
+                            f"  Avg Reward              : {recent_avg:.6f}\n"
+                            f"  Avg With Shaping Reward : {recent_avg_shaping:.6f}\n"
+                            f"  Avg Time in q0 % / q10% : {np.mean(self.q0_fractions[-100:]):.4f}, {np.mean(self.q10_fractions[-100:]):.4f}\n"
+                            f"  Waypoint Hits (last 100): {np.sum(self.waypoint_hits_history[-100:])}\n"
+                            f"  Goal Hits (last 100)    : {np.sum(self.goal_hits_history[-100:])}\n"
+                            f"{'-' * 40}"
+                        )
+                        log_and_print(log_string, self.log_file)
 
                     # Save intermediate model every 500 episodes
                     if self.episodes_count > 0 and self.episodes_count % 2000 == 0:
-                        os.makedirs("models", exist_ok=True)
-                        save_path = f"models/ppo_shaping_sequential_policy_episode_{self.episodes_count}.zip"
-                        self.model.save(save_path)
-                        print(f"--- Intermediate model saved to {save_path} ---")
+                        save_path = f"models/ppo_shaping_sequential_policy_episode_{self.episodes_count}.zip"                        
+                        self.model.save(save_path)                        
+                        log_and_print(f"--- Intermediate model saved to {save_path} ---", self.log_file)
         
         # Stop training if the desired number of episodes is reached
         if self.episodes_count >= self.max_episodes:
@@ -247,56 +252,60 @@ class RewardLoggingCallback(BaseCallback):
 # =====================================================================
 
 def main():
-    print("=== STARTING SEQUENTIAL TASK EXPERIMENT: SHAPING WITH PPO ===")
     os.makedirs("logs", exist_ok=True)
     os.makedirs("img", exist_ok=True)
+    os.makedirs("models", exist_ok=True)
+    
+    log_file_path = "logs/ppo_shaping_sequential.log"
+    log_file = open(log_file_path, "w")
+    
+    log_and_print("=== STARTING SEQUENTIAL TASK EXPERIMENT: SHAPING WITH PPO ===", log_file)
     
     # HYPERPARAMETERS
-    episodes = 50000
+    episodes = 20000
     gamma = 0.99
     K_scaling = 1
     
-    print("\n1. Initializing Environment and Abstract MDP...")
+    log_and_print("\n1. Initializing Environment and Abstract MDP...", log_file)
     env = gym.make("LunarLander-v3", continuous=False)
     
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()
 
-    print("   -> Plotting Value Functions (V*) Heatmaps...")
+    log_and_print("   -> Plotting Value Functions (V*) Heatmaps...", log_file)
     save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
 
-    print("\n=======================================================")
-    print("TRAINING: SHAPING AGENT (PPO)")
-    print("=======================================================")
+    log_and_print("\n=======================================================", log_file)
+    log_and_print("TRAINING: SHAPING AGENT (PPO)", log_file)
+    log_and_print("=======================================================", log_file)
     
     # Wrap the environment in the Custom Wrapper to handle Q and Shaping
     wrapped_env = SequentialTaskWrapper(env, abstract_mdp, use_shaping=True, K=K_scaling)
     
     # Initialize PPO
     model = PPO(
-        "MlpPolicy", 
-        wrapped_env, 
-        gamma=gamma, 
+        "MlpPolicy",
+        wrapped_env,
+        gamma=gamma,
         verbose=0,
-        learning_rate=3e-4, 
-        n_steps=2048, # Number of steps to run for each environment per update
+        learning_rate=3e-4,
+        n_steps=2048,
         batch_size=64,
         n_epochs=10
     )
     
     # Initialize the Callback for tracking
-    logging_callback = RewardLoggingCallback(use_shaping=True)
+    logging_callback = RewardLoggingCallback(use_shaping=True, log_file=log_file)
     logging_callback.max_episodes = episodes
     
     # Run the Training
     model.learn(total_timesteps=float('inf'), callback=logging_callback)
-    os.makedirs("models", exist_ok=True)
     model.save("models/ppo_shaping_sequential_policy_final.zip")
 
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
-    print("\n3. Generating plots...")
+    log_and_print("\n3. Generating plots...", log_file)
     plot_shaping_reward_breakdown(
         logging_callback.true_episode_rewards, 
         logging_callback.total_episode_rewards, 
@@ -312,6 +321,7 @@ def main():
     )
     
     env.close()
+    log_file.close()
 
 if __name__ == "__main__":
     main()
