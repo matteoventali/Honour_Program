@@ -545,8 +545,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         total_episode_rewards.append(episode_total_reward)
         eps_q0_history.append(eps_q0)
         eps_q10_history.append(eps_q10)
-        buffer_q0_history.append(agent.memory.q0_fraction())
-        buffer_q10_history.append(agent.memory.q1_fraction())
+        buffer_q0_history.append(agent.memory.q0_fraction_onehot())
+        buffer_q10_history.append(agent.memory.q1_fraction_onehot())
 
         # Print progress every 100 episodes
         if (n_episode + 1) % 100 == 0:
@@ -591,7 +591,7 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 10000
+    episodes = 300
     gamma = 0.99
     eps_decay = 0.999
     K_scaling = 1
