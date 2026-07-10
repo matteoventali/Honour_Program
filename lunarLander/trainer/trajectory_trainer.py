@@ -591,7 +591,7 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 300
+    episodes = 7000
     gamma = 0.99
     eps_decay = 0.999
     K_scaling = 1
@@ -608,27 +608,27 @@ def main():
     # -----------------------------------------------------------------
     # EXPERIMENT 1: BASELINE AGENT (NO SHAPING)
     # -----------------------------------------------------------------
-    #print("\n=======================================================")
-    #print("TRAINING: BASELINE AGENT (NO SHAPING)")
-    #print("=======================================================")
-    #agent_baseline = HierarchicalDQNLearner(
-    #    env=env,
-    #    max_episodes=episodes,
-    #    gamma=gamma,
-    #    eps_decay=eps_decay,
-    #    use_ddqn=True,
-    #    policy_name="baseline_sequential_policy.pth",
-    #    extra_state_dims=1
-    #)
-    #
-    #baseline_learning_curve, _, baseline_eps_history = run_sequential_training(
-    #    env, 
-    #    agent_baseline, 
-    #    abstract_mdp, 
-    #    episodes, 
-    #    use_shaping=False,
-    #    log_file="logs/baseline_training.log"
-    #)
+    print("\n=======================================================")
+    print("TRAINING: BASELINE AGENT (NO SHAPING)")
+    print("=======================================================")
+    agent_baseline = HierarchicalDQNLearner(
+        env=env,
+        max_episodes=episodes,
+        gamma=gamma,
+        eps_decay=eps_decay,
+        use_ddqn=True,
+        policy_name="baseline_sequential_policy.pth",
+        extra_state_dims=1
+    )
+    
+    baseline_learning_curve, _, baseline_eps_history = run_sequential_training(
+        env, 
+        agent_baseline, 
+        abstract_mdp, 
+        episodes, 
+        use_shaping=False,
+        log_file="logs/baseline_training.log"
+    )
 
     # -----------------------------------------------------------------
     # EXPERIMENT 2: SHAPING AGENT
@@ -661,7 +661,7 @@ def main():
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
     buf_q0, buf_q10 = shaping_buffer_history
-    #plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, baseline_eps_history, window_size=500)
+    plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, baseline_eps_history, window_size=500)
     plot_shaping_reward_breakdown(shaping_learning_curve, shaping_total_rewards, shaping_eps_history, window_size=500, filename="img/shaping_reward_breakdown.png")
     plot_buffer_fractions(buf_q0, buf_q10, window_size=500, filename="img/buffer_fractions.png")
     env.close()
