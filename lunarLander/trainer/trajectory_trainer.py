@@ -19,27 +19,34 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history, w
     including the epsilon decay on a secondary axis.
     """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax1 = plt.subplots(figsize=(12, 7))
+    fig, ax1 = plt.subplots(figsize=(12, 8))
     
     # Calcola la media mobile usando pandas per una gestione corretta dei bordi
     baseline_ma = pd.Series(baseline_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
     shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
     x_axis = np.arange(len(baseline_rewards))
         
-    # Plot curves on the primary axis (ax1)
+    # Plot delle curve di reward sull'asse primario (ax1)
     ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label='Baseline (No Shaping)')
     ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label='Shaping Agent (Potential Guided)')
     
     # Formatting
     ax1.set_title("Learning Curve Comparison: Baseline vs Shaping", fontsize=15, fontweight='bold')
     ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
-    ax1.set_ylabel("Episode Reward", fontsize=12)
+    ax1.set_ylabel("True Episode Reward", fontsize=12)
     ax1.axhline(y=100, color='green', linestyle=':', alpha=0.6, label='Goal Threshold')
     ax1.grid(True, linestyle='--', alpha=0.5)
     
-    # Secondary axis for Epsilon
+    # Asse secondario per Epsilon
     ax2 = ax1.twinx()
-    ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+    # Gestisce sia il caso di una singola history (baseline) che di una tupla (shaping)
+    if isinstance(epsilon_history, tuple):
+        eps_q0, eps_q10 = epsilon_history
+        ax2.plot(x_axis, eps_q0, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (Shaping q=0)')
+        ax2.plot(x_axis, eps_q10, color='red', linestyle=':', linewidth=1.8, label='Epsilon Decay (Shaping q=10)')
+    else:
+        ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (Baseline)')
+
     ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
     ax2.tick_params(axis='y', labelcolor='orange')
     ax2.set_ylim(0, 1.05)
@@ -51,7 +58,7 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history, w
         lines1 + lines2, 
         labels1 + labels2, 
         loc="lower right", 
-        fontsize=11
+        fontsize=10
     )
     
     fig.tight_layout()
@@ -417,7 +424,7 @@ def run_sequential_training_single_eps(env, agent, abstract_mdp, episodes, use_s
 
     return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(epsilon_history)
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None):
+def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, K=1.0, log_file=None, save_policy=True):
     """
     Executes the training loop for the sequential task with state-dependent Epsilon.
     """
@@ -427,6 +434,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     # 1. Inizializzazione dei due Epsilon separati
     eps_q0 = agent.eps  # Parte dal valore iniziale (es. 1.0)
     eps_q10 = agent.eps 
+    eps_single = agent.eps # Epsilon unico per il baseline
     eps_min = agent.eps_min
     eps_decay = agent.eps_decay
     
@@ -434,6 +442,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     eps_q10_history = []
     buffer_q0_history = []
     buffer_q10_history = []
+    eps_single_history = []
 
     log_handle = open(log_file, 'a') if log_file else None
     if log_handle:
@@ -448,7 +457,6 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
         
-        # Inizializza le variabili logiche dell'episodio
         q = 0 
         passed_trough_waypoint = False
         reached_q10_this_episode = False
@@ -467,7 +475,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             env_goal_reward = 0.0
 
             # 2. Imposta dinamicamente l'Epsilon corretto in base alla fase attuale
-            agent.eps = eps_q0 if q == 0 else eps_q10
+            if use_shaping:
+                agent.eps = eps_q0 if q == 0 else eps_q10
+            else:
+                agent.eps = eps_single
 
             # Agent selects action based on the augmented state
             a = agent.select_action(s_aug)
@@ -486,7 +497,6 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 waypoint_hits += 1
                 next_q = 10
                 natural_q_updates += 1
-                env_goal_reward = 0.0  # Nessun reward dall'ambiente, ci pensa lo shaping
                 reached_q10_this_episode = True
                 
             # Build the abstract next state using next_q
@@ -534,13 +544,17 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             
         # 5. DECAY DEGLI EPSILON A FINE EPISODIO
         
-        # eps_q0 decade SEMPRE per stabilizzare la prima fase
-        eps_q0 = max(eps_min, eps_q0 * eps_decay)
-        
-        # eps_q10 decade SOLO SE l'agente è entrato in q=10 durante questo episodio
-        if reached_q10_this_episode and eps_q0 < 0.05:
-            eps_q10 = max(eps_min, eps_q10 * eps_decay)
-
+        if use_shaping:
+            # eps_q0 decade SEMPRE per stabilizzare la prima fase
+            eps_q0 = max(eps_min, eps_q0 * eps_decay)
+            
+            # eps_q10 decade SOLO SE l'agente è entrato in q=10 durante questo episodio
+            if reached_q10_this_episode and eps_q0 < 0.05:
+                eps_q10 = max(eps_min, eps_q10 * eps_decay)
+        else:
+            # Il baseline ha un solo epsilon che decade sempre
+            eps_single = max(eps_min, eps_single * eps_decay)
+            
         true_episode_rewards.append(episode_true_reward)
         total_episode_rewards.append(episode_total_reward)
         eps_q0_history.append(eps_q0)
@@ -548,6 +562,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         buffer_q0_history.append(agent.memory.q0_fraction_onehot())
         buffer_q10_history.append(agent.memory.q1_fraction_onehot())
 
+        eps_single_history.append(eps_single)
         # Print progress every 100 episodes
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
@@ -557,8 +572,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             log_string = (
                 f"[{mode_str}] Episode {n_episode + 1}/{episodes}\n" +
                 f"  Avg Reward              : {recent_avg:.6f}\n" +
-                f"  Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" +
-                f"  Epsilon (q0, q10)       : {eps_q0:.6f}, {eps_q10:.6f}\n" +                
+                (f" Avg With Shaping Reward : {recent_avg_with_shaping:.6f}\n" if use_shaping else "") +
+                f"  Epsilon (q0, q10)       : {eps_q0:.6f}, {eps_q10:.6f}\n" +    
+                f"  Epsilon (single)        : {eps_single:.6f}\n"            
                 f"  Exp q0 % and q10 %      : {agent.memory.q0_fraction_onehot():.6f}, {agent.memory.q1_fraction_onehot():.6f}\n" +
                 f"  Natural q=0→10 updates  : {natural_q_updates}\n" +
                 f"  Waypoint hits           : {waypoint_hits}\n" +
@@ -571,16 +587,19 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 log_handle.write(log_string + "\n")
                 log_handle.flush()
 
-        if (n_episode + 1) % 500 == 0:
+        if save_policy and (n_episode + 1) % 500 == 0:
             agent.policy_name = f"shaping_sequential_policy_onehot_episode_{n_episode + 1}.pth"
             agent._save_policy()
 
     if log_handle:
         log_handle.close()
 
-    # Ritorna entrambe le history degli Epsilon all'interno di una tupla
-    return (np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history)),
-            (np.array(buffer_q0_history), np.array(buffer_q10_history)))
+    # Ritorna una tupla per lo shaping agent, un singolo array per il baseline
+    if use_shaping:
+        return (np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history)),
+                (np.array(buffer_q0_history), np.array(buffer_q10_history)))
+    else:
+        return (np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(eps_single_history), (np.array(buffer_q0_history), np.array(buffer_q10_history)))
 
 # =====================================================================
 # MAIN EXPERIMENT ORCHESTRATOR
@@ -589,7 +608,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 def main():
     print("=== STARTING SEQUENTIAL TASK EXPERIMENT: BASELINE VS SHAPING ===")
     os.makedirs("logs", exist_ok=True)
-    
+
     # HYPERPARAMETERS
     episodes = 7000
     gamma = 0.99
@@ -615,19 +634,20 @@ def main():
         env=env,
         max_episodes=episodes,
         gamma=gamma,
-        eps_decay=eps_decay,
+        eps_decay=0.9993, # For baseline a longer and single epsilon decay
         use_ddqn=True,
         policy_name="baseline_sequential_policy.pth",
-        extra_state_dims=1
+        extra_state_dims=2
     )
     
-    baseline_learning_curve, _, baseline_eps_history = run_sequential_training(
+    baseline_learning_curve, _, _, _ = run_sequential_training(
         env, 
         agent_baseline, 
         abstract_mdp, 
         episodes, 
         use_shaping=False,
-        log_file="logs/baseline_training.log"
+        log_file="logs/baseline_training.log",
+        save_policy=False
     )
 
     # -----------------------------------------------------------------
@@ -660,10 +680,12 @@ def main():
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
+    # Per il plot di comparazione, passiamo la history di epsilon dello shaping agent che è più informativa
+    plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, shaping_eps_history, window_size=500, filename="img/comparison_onehot.png")
+    
     buf_q0, buf_q10 = shaping_buffer_history
-    plot_comparison_curves(baseline_learning_curve, shaping_learning_curve, baseline_eps_history, window_size=500)
-    plot_shaping_reward_breakdown(shaping_learning_curve, shaping_total_rewards, shaping_eps_history, window_size=500, filename="img/shaping_reward_breakdown.png")
-    plot_buffer_fractions(buf_q0, buf_q10, window_size=500, filename="img/buffer_fractions.png")
+    plot_shaping_reward_breakdown(shaping_learning_curve, shaping_total_rewards, shaping_eps_history, window_size=500, filename="img/shaping_reward_breakdown_onehot.png")
+    plot_buffer_fractions(buf_q0, buf_q10, window_size=500, filename="img/buffer_fractions_onehot.png")
     env.close()
 
 if __name__ == "__main__":
