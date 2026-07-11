@@ -588,7 +588,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 log_handle.flush()
 
         if save_policy and (n_episode + 1) % 500 == 0:
-            agent.policy_name = f"shaping_sequential_policy_onehot_episode_{n_episode + 1}.pth"
+            if use_shaping:
+                agent.policy_name = f"shaping_sequential_policy_onehot_episode_{n_episode + 1}.pth"
+            else:
+                agent.policy_name = f"baseline_sequential_policy_onehot_episode_{n_episode + 1}.pth"
             agent._save_policy()
 
     if log_handle:
@@ -647,7 +650,7 @@ def main():
         episodes, 
         use_shaping=False,
         log_file="logs/baseline_training.log",
-        save_policy=False
+        save_policy=True
     )
 
     # -----------------------------------------------------------------
