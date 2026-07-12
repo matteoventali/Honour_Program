@@ -13,10 +13,6 @@ from utils import (phi_mapping_sequential, save_sequential_heatmaps,
 # PLOTTING UTILITIES
 # =====================================================================
 
-# =====================================================================
-# PLOTTING UTILITIES
-# =====================================================================
-
 def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history, window_size=100, filename="img/baseline_vs_shaping.png"):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     fig, ax1 = plt.subplots(figsize=(12, 7))
@@ -46,7 +42,7 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history, w
     ax2.tick_params(axis='y', labelcolor='orange')
     ax2.set_ylim(-0.05, 1.05)
 
-    # LEGENDA ESTERNA SOTTO IL GRAFICO
+    # EXTERNAL LEGEND
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(
@@ -56,7 +52,6 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history, w
     )
     
     fig.tight_layout()
-    # bbox_inches='tight' evita che la legenda esterna venga tagliata
     fig.savefig(filename, dpi=200, bbox_inches='tight')
     print(f"\n>>> Comparison plot successfully saved to: {filename}")
     plt.close(fig)
@@ -90,7 +85,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
     ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
     ax2.set_ylim(-0.05, 1.05)
 
-    # LEGENDA ESTERNA SOTTO IL GRAFICO
+    # EXTERNAL LEGEND
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(
@@ -124,7 +119,7 @@ def plot_buffer_fractions(q0_history, q10_history, window_size=100, filename="im
     
     ax.grid(True, linestyle='--', alpha=0.5)
     
-    # LEGENDA ESTERNA SOTTO IL GRAFICO
+    # EXTERNAL LEGEND
     ax.legend(
         loc="upper center", bbox_to_anchor=(0.5, -0.15), 
         ncol=3, fontsize=11, framealpha=1.0
@@ -135,46 +130,96 @@ def plot_buffer_fractions(q0_history, q10_history, window_size=100, filename="im
     print(f"\n>>> Replay Buffer plot saved to: {filename}")
     plt.close(fig)
 
-def plot_double_epsilon_ablation(episodes, single_eps_goals, single_eps_history, 
-                                 double_eps_goals, eps_q0_history, eps_q10_history, 
-                                 window_size=100, filename="img/double_epsilon_impact.png"):
+def plot_ablation_slide_phase1(episodes, single_eps_waypoints, single_eps_history, 
+                               double_eps_waypoints, eps_q0_history, eps_q10_history, 
+                               window_size=100, filename="img/slide_ablation_phase1_waypoint.png"):
+    """
+    Generates the plot for Slide 1: Focus on the Waypoint.
+    """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax1 = plt.subplots(figsize=(12, 7))
+    fig, ax1 = plt.subplots(figsize=(10, 6)) # Optimized 16:9 proportional format
     x_axis = np.arange(episodes)
     
-    single_ma = pd.Series(single_eps_goals).rolling(window=window_size, min_periods=1, center=True).mean()
-    double_ma = pd.Series(double_eps_goals).rolling(window=window_size, min_periods=1, center=True).mean()
+    # Moving averages for Waypoint
+    single_wp_ma = pd.Series(single_eps_waypoints).rolling(window=window_size, min_periods=1, center=True).mean()
+    double_wp_ma = pd.Series(double_eps_waypoints).rolling(window=window_size, min_periods=1, center=True).mean()
     
-    ax1.plot(x_axis, single_ma, color='red', linewidth=2.5, label='Shaping Agent (Single ε) - Success Rate')
-    ax1.plot(x_axis, double_ma, color='green', linewidth=2.5, label='Shaping Agent (Double ε) - Success Rate')
+    # Primary Axis: Waypoint Success
+    ax1.plot(x_axis, single_wp_ma, color='red', linewidth=3.0, label='Single ε - Waypoint Success')
+    ax1.plot(x_axis, double_wp_ma, color='green', linewidth=3.0, label='Double ε - Waypoint Success')
     
-    ax1.set_xlabel("Episode", fontsize=13)
-    ax1.set_ylabel(f"Goal Reached Rate (Window={window_size})", fontsize=13)
+    ax1.set_title("Phase 1: Waypoint Reached Rate vs Exploration", fontsize=16, fontweight='bold')
+    ax1.set_ylabel(f"Success Rate (Window={window_size})", fontsize=14)
+    ax1.set_xlabel("Episode", fontsize=14)
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
+    # Secondary Axis: Full Exploration Lines
     ax2 = ax1.twinx()
-    ax2.plot(x_axis, single_eps_history, color='red', linestyle=':', alpha=0.6, linewidth=2, label='Global ε Decay')
+    ax2.plot(x_axis, single_eps_history, color='red', linestyle=':', alpha=0.5, linewidth=2, label='Global ε Decay')
     ax2.plot(x_axis, eps_q0_history, color='blue', linestyle='--', alpha=0.7, linewidth=2, label='Proposed ε (q=0) Decay')
     ax2.plot(x_axis, eps_q10_history, color='darkgreen', linestyle='-.', alpha=0.8, linewidth=2.5, label='Proposed ε (q=10) Decay')
-    
-    ax2.set_ylabel("Exploration Rate (ε)", fontsize=13)
+    ax2.set_ylabel("Exploration Rate (ε)", fontsize=14)
     ax2.set_ylim(-0.05, 1.05)
     
-    plt.title("Ablation Study: Impact of the Double Epsilon Mechanism", fontsize=15, fontweight='bold')
-    
-    # LEGENDA ESTERNA SOTTO IL GRAFICO SU DUE COLONNE (Avendo 5 item è perfetto)
+    # Fixed external legend avoiding overlaps
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(
         lines1 + lines2, labels1 + labels2, 
-        loc="upper center", bbox_to_anchor=(0.5, -0.15), 
-        ncol=2, fontsize=11, framealpha=1.0
+        loc="upper center", bbox_to_anchor=(0.5, -0.18), 
+        ncol=2, fontsize=12, framealpha=1.0
     )
+
+    fig.tight_layout()
+    fig.savefig(filename, dpi=300, bbox_inches='tight') 
+    print(f"\n>>> Slide Phase 1 plot successfully saved to: {filename}")
+    plt.close(fig)
+
+def plot_ablation_slide_phase2(episodes, single_eps_goals, single_eps_history, 
+                               double_eps_goals, eps_q0_history, eps_q10_history, 
+                               window_size=100, filename="img/slide_ablation_phase2_goal.png"):
+    """
+    Generates the plot for Slide 2: Focus on the Final Goal.
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    x_axis = np.arange(episodes)
     
+    # Moving averages for Final Goals
+    single_gl_ma = pd.Series(single_eps_goals).rolling(window=window_size, min_periods=1, center=True).mean()
+    double_gl_ma = pd.Series(double_eps_goals).rolling(window=window_size, min_periods=1, center=True).mean()
+    
+    # Primary Axis: Goal Success
+    ax1.plot(x_axis, single_gl_ma, color='red', linewidth=3.0, label='Single ε - Goal Success')
+    ax1.plot(x_axis, double_gl_ma, color='green', linewidth=3.0, label='Double ε - Goal Success')
+    
+    ax1.set_title("Phase 2: Final Goal Reached Rate vs Exploration", fontsize=16, fontweight='bold')
+    ax1.set_ylabel(f"Success Rate (Window={window_size})", fontsize=14)
+    ax1.set_xlabel("Episode", fontsize=14)
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    
+    # Secondary Axis: Full Exploration Lines
+    ax2 = ax1.twinx()
+    ax2.plot(x_axis, single_eps_history, color='red', linestyle=':', alpha=0.5, linewidth=2, label='Global ε Decay')
+    ax2.plot(x_axis, eps_q0_history, color='blue', linestyle='--', alpha=0.7, linewidth=2, label='Proposed ε (q=0) Decay')
+    ax2.plot(x_axis, eps_q10_history, color='darkgreen', linestyle='-.', alpha=0.8, linewidth=2.5, label='Proposed ε (q=10) Decay')
+    ax2.set_ylabel("Exploration Rate (ε)", fontsize=14)
+    ax2.set_ylim(-0.05, 1.05)
+    
+    # Fixed external legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(
+        lines1 + lines2, labels1 + labels2, 
+        loc="upper center", bbox_to_anchor=(0.5, -0.18), 
+        ncol=2, fontsize=12, framealpha=1.0
+    )
+
     fig.tight_layout()
     fig.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"\n>>> Ablation plot successfully saved to: {filename}")
+    print(f"\n>>> Slide Phase 2 plot successfully saved to: {filename}")
     plt.close(fig)
 
 # =====================================================================
@@ -201,7 +246,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     buffer_q0_history = []
     buffer_q10_history = []
     eps_single_history = []
+    
+    # Track hits per episode
     episode_goal_hit_history = [] 
+    episode_waypoint_hit_history = []
 
     log_handle = open(log_file, 'a') if log_file else None
     if log_handle:
@@ -226,7 +274,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         terminated = truncated = False
         episode_true_reward = 0.0
         episode_total_reward = 0.0
-        episode_goal_hit = 0 # Local flag for this episode
+        episode_goal_hit = 0 # Local flag for goal
+        episode_waypoint_hit = 0 # Local flag for waypoint
 
         while not (terminated or truncated):
             env_goal_reward = 0.0
@@ -255,6 +304,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 next_q = 10
                 natural_q_updates += 1
                 reached_q10_this_episode = True
+                episode_waypoint_hit = 1 # Update waypoint flag
                 
             abstract_ns = (abstract_x_ns, abstract_y_ns, next_q)
 
@@ -263,7 +313,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 goal_hits += 1
                 env_goal_reward = 10000.0
                 terminated = True
-                episode_goal_hit = 1 # Record the success
+                episode_goal_hit = 1 # Record the goal success
             
             done = terminated or truncated
             episode_true_reward += env_goal_reward
@@ -314,7 +364,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         buffer_q0_history.append(agent.memory.q0_fraction_onehot())
         buffer_q10_history.append(agent.memory.q1_fraction_onehot())
         eps_single_history.append(eps_single)
+        
+        # Save episode results
         episode_goal_hit_history.append(episode_goal_hit)
+        episode_waypoint_hit_history.append(episode_waypoint_hit)
 
         # Print progress every 100 episodes
         if (n_episode + 1) % 100 == 0:
@@ -350,10 +403,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     # Return the correct values based on use_double_epsilon flag
     if use_double_epsilon:
         return (np.array(true_episode_rewards), np.array(total_episode_rewards), (np.array(eps_q0_history), np.array(eps_q10_history)),
-                (np.array(buffer_q0_history), np.array(buffer_q10_history)), np.array(episode_goal_hit_history))
+                (np.array(buffer_q0_history), np.array(buffer_q10_history)), np.array(episode_waypoint_hit_history), np.array(episode_goal_hit_history))
     else:
         return (np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(eps_single_history), 
-                (np.array(buffer_q0_history), np.array(buffer_q10_history)), np.array(episode_goal_hit_history))
+                (np.array(buffer_q0_history), np.array(buffer_q10_history)), np.array(episode_waypoint_hit_history), np.array(episode_goal_hit_history))
 
 # =====================================================================
 # MAIN EXPERIMENT ORCHESTRATOR
@@ -364,7 +417,7 @@ def main():
     os.makedirs("logs", exist_ok=True)
 
     # HYPERPARAMETERS
-    episodes = 7000
+    episodes = 6500
     gamma = 0.99
     eps_decay = 0.999
     K_scaling = 1
@@ -388,13 +441,13 @@ def main():
         env=env,
         max_episodes=episodes,
         gamma=gamma,
-        eps_decay=eps_decay, # Uses the same decay rate as the double epsilon setup
+        eps_decay=0.9996, # Slower decay for the baseline to give it a fair chance at q=10
         use_ddqn=True,
         policy_name="shaping_single_eps_policy.pth",
         extra_state_dims=2
     )
     
-    single_learning_curve, _, single_eps_history, _, single_goals = run_sequential_training(
+    single_learning_curve, _, single_eps_history, _, single_waypoints, single_goals = run_sequential_training(
         env, 
         agent_shaping_single, 
         abstract_mdp, 
@@ -416,13 +469,13 @@ def main():
         env=env,
         max_episodes=episodes,
         gamma=gamma,
-        eps_decay=eps_decay,
+        eps_decay=eps_decay, # Normal decay rate (0.999)
         use_ddqn=True,
         policy_name="shaping_double_eps_policy.pth",
         extra_state_dims=2
     )
     
-    double_learning_curve, double_total_rewards, double_eps_history, double_buffer_history, double_goals = run_sequential_training(
+    double_learning_curve, double_total_rewards, double_eps_history, double_buffer_history, double_waypoints, double_goals = run_sequential_training(
         env, 
         agent_shaping_double, 
         abstract_mdp, 
@@ -436,19 +489,33 @@ def main():
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
-    print("\n3. Generating plots...")
+    print("\n3. Generating plots for slides...")
     
-    # Ablation Plot (The core comparison for the thesis)
+    # Extract arrays from the tuple
     eps_q0_history, eps_q10_history = double_eps_history
-    plot_double_epsilon_ablation(
+    
+    # 1. Slide plot for Phase 1 (Waypoint)
+    plot_ablation_slide_phase1(
         episodes=episodes, 
-        single_eps_goals=single_goals, 
+        single_eps_waypoints=single_waypoints, 
         single_eps_history=single_eps_history, 
+        double_eps_waypoints=double_waypoints, 
+        eps_q0_history=eps_q0_history, 
+        eps_q10_history=eps_q10_history,
+        window_size=500, 
+        filename="img/slide_ablation_phase1_waypoint.png"
+    )
+
+    # 2. Slide plot for Phase 2 (Goal)
+    plot_ablation_slide_phase2(
+        episodes=episodes,  
+        single_eps_goals=single_goals, 
+        single_eps_history=single_eps_history,  
         double_eps_goals=double_goals, 
         eps_q0_history=eps_q0_history, 
         eps_q10_history=eps_q10_history,
         window_size=500, 
-        filename="img/double_epsilon_ablation.png"
+        filename="img/slide_ablation_phase2_goal.png"
     )
     
     # Standard metrics for the proposed Double Epsilon agent
