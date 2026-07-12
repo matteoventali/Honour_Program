@@ -1,0 +1,643 @@
+==================================================
+STARTING NEW TRAINING RUN (Shaping: True, Double Eps: False)
+==================================================
+[SHAPING | SINGLE EPS] Episode 100/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -361.065175
+  Epsilon (single)        : 0.960782
+  Exp q0 % and q10 %      : 0.997126, 0.002874
+  Waypoint hits           : 1
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 200/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -314.257808
+  Epsilon (single)        : 0.923102
+  Exp q0 % and q10 %      : 0.994134, 0.005866
+  Waypoint hits           : 5
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 300/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -331.317092
+  Epsilon (single)        : 0.886899
+  Exp q0 % and q10 %      : 0.994485, 0.005515
+  Waypoint hits           : 7
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 400/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -296.647489
+  Epsilon (single)        : 0.852117
+  Exp q0 % and q10 %      : 0.993570, 0.006430
+  Waypoint hits           : 10
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 500/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -305.704406
+  Epsilon (single)        : 0.818698
+  Exp q0 % and q10 %      : 0.993299, 0.006701
+  Waypoint hits           : 13
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 600/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -307.360939
+  Epsilon (single)        : 0.786590
+  Exp q0 % and q10 %      : 0.992253, 0.007747
+  Waypoint hits           : 18
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 700/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -324.313146
+  Epsilon (single)        : 0.755741
+  Exp q0 % and q10 %      : 0.992328, 0.007672
+  Waypoint hits           : 21
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 800/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -337.620828
+  Epsilon (single)        : 0.726103
+  Exp q0 % and q10 %      : 0.992672, 0.007328
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 900/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -349.271800
+  Epsilon (single)        : 0.697626
+  Exp q0 % and q10 %      : 0.993484, 0.006516
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1000/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -349.315325
+  Epsilon (single)        : 0.670266
+  Exp q0 % and q10 %      : 0.994187, 0.005813
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1100/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -348.429029
+  Epsilon (single)        : 0.643980
+  Exp q0 % and q10 %      : 0.994709, 0.005291
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1200/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -351.061505
+  Epsilon (single)        : 0.618724
+  Exp q0 % and q10 %      : 0.995176, 0.004824
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1300/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -354.501825
+  Epsilon (single)        : 0.594459
+  Exp q0 % and q10 %      : 0.995576, 0.004424
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1400/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -353.659055
+  Epsilon (single)        : 0.571145
+  Exp q0 % and q10 %      : 0.995984, 0.004016
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1500/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -352.790309
+  Epsilon (single)        : 0.548746
+  Exp q0 % and q10 %      : 0.996386, 0.003614
+  Waypoint hits           : 23
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1600/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -326.901026
+  Epsilon (single)        : 0.527225
+  Exp q0 % and q10 %      : 0.996057, 0.003943
+  Waypoint hits           : 26
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1700/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -280.362418
+  Epsilon (single)        : 0.506548
+  Exp q0 % and q10 %      : 0.995165, 0.004835
+  Waypoint hits           : 33
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1800/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -220.933572
+  Epsilon (single)        : 0.486682
+  Exp q0 % and q10 %      : 0.994330, 0.005670
+  Waypoint hits           : 41
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 1900/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -184.126310
+  Epsilon (single)        : 0.467595
+  Exp q0 % and q10 %      : 0.993275, 0.006725
+  Waypoint hits           : 52
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 2000/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -157.256413
+  Epsilon (single)        : 0.449257
+  Exp q0 % and q10 %      : 0.991125, 0.008875
+  Waypoint hits           : 57
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 2100/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -216.394439
+  Epsilon (single)        : 0.431638
+  Exp q0 % and q10 %      : 0.989035, 0.010965
+  Waypoint hits           : 62
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 2200/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -144.071152
+  Epsilon (single)        : 0.414710
+  Exp q0 % and q10 %      : 0.984225, 0.015775
+  Waypoint hits           : 69
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 2300/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -156.579011
+  Epsilon (single)        : 0.398446
+  Exp q0 % and q10 %      : 0.976595, 0.023405
+  Waypoint hits           : 79
+  Goal hits               : 0
+
+[SHAPING | SINGLE EPS] Episode 2400/8000
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 41.292173
+  Epsilon (single)        : 0.382819
+  Exp q0 % and q10 %      : 0.950910, 0.049090
+  Waypoint hits           : 103
+  Goal hits               : 1
+
+[SHAPING | SINGLE EPS] Episode 2500/8000
+  Avg Reward              : 200.000000
+  Avg With Shaping Reward : 94.074817
+  Epsilon (single)        : 0.367806
+  Exp q0 % and q10 %      : 0.941830, 0.058170
+  Waypoint hits           : 113
+  Goal hits               : 3
+
+[SHAPING | SINGLE EPS] Episode 2600/8000
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -100.051142
+  Epsilon (single)        : 0.353381
+  Exp q0 % and q10 %      : 0.936580, 0.063420
+  Waypoint hits           : 129
+  Goal hits               : 3
+
+[SHAPING | SINGLE EPS] Episode 2700/8000
+  Avg Reward              : 500.000000
+  Avg With Shaping Reward : 657.918720
+  Epsilon (single)        : 0.339522
+  Exp q0 % and q10 %      : 0.879400, 0.120600
+  Waypoint hits           : 170
+  Goal hits               : 8
+
+[SHAPING | SINGLE EPS] Episode 2800/8000
+  Avg Reward              : 200.000000
+  Avg With Shaping Reward : 371.939699
+  Epsilon (single)        : 0.326207
+  Exp q0 % and q10 %      : 0.829105, 0.170895
+  Waypoint hits           : 218
+  Goal hits               : 10
+
+[SHAPING | SINGLE EPS] Episode 2900/8000
+  Avg Reward              : 500.000000
+  Avg With Shaping Reward : 709.244164
+  Epsilon (single)        : 0.313413
+  Exp q0 % and q10 %      : 0.773595, 0.226405
+  Waypoint hits           : 278
+  Goal hits               : 15
+
+[SHAPING | SINGLE EPS] Episode 3000/8000
+  Avg Reward              : 1100.000000
+  Avg With Shaping Reward : 1416.261591
+  Epsilon (single)        : 0.301122
+  Exp q0 % and q10 %      : 0.748240, 0.251760
+  Waypoint hits           : 337
+  Goal hits               : 26
+
+[SHAPING | SINGLE EPS] Episode 3100/8000
+  Avg Reward              : 1200.000000
+  Avg With Shaping Reward : 1569.805214
+  Epsilon (single)        : 0.289312
+  Exp q0 % and q10 %      : 0.707600, 0.292400
+  Waypoint hits           : 403
+  Goal hits               : 38
+
+[SHAPING | SINGLE EPS] Episode 3200/8000
+  Avg Reward              : 600.000000
+  Avg With Shaping Reward : 854.582273
+  Epsilon (single)        : 0.277966
+  Exp q0 % and q10 %      : 0.678040, 0.321960
+  Waypoint hits           : 461
+  Goal hits               : 44
+
+[SHAPING | SINGLE EPS] Episode 3300/8000
+  Avg Reward              : 800.000000
+  Avg With Shaping Reward : 1222.684879
+  Epsilon (single)        : 0.267065
+  Exp q0 % and q10 %      : 0.677050, 0.322950
+  Waypoint hits           : 539
+  Goal hits               : 52
+
+[SHAPING | SINGLE EPS] Episode 3400/8000
+  Avg Reward              : 1700.000000
+  Avg With Shaping Reward : 2198.970710
+  Epsilon (single)        : 0.256591
+  Exp q0 % and q10 %      : 0.671020, 0.328980
+  Waypoint hits           : 614
+  Goal hits               : 69
+
+[SHAPING | SINGLE EPS] Episode 3500/8000
+  Avg Reward              : 1900.000000
+  Avg With Shaping Reward : 2422.518936
+  Epsilon (single)        : 0.246528
+  Exp q0 % and q10 %      : 0.661025, 0.338975
+  Waypoint hits           : 693
+  Goal hits               : 88
+
+[SHAPING | SINGLE EPS] Episode 3600/8000
+  Avg Reward              : 2300.000000
+  Avg With Shaping Reward : 2807.553999
+  Epsilon (single)        : 0.236860
+  Exp q0 % and q10 %      : 0.648420, 0.351580
+  Waypoint hits           : 773
+  Goal hits               : 111
+
+[SHAPING | SINGLE EPS] Episode 3700/8000
+  Avg Reward              : 3900.000000
+  Avg With Shaping Reward : 4474.092716
+  Epsilon (single)        : 0.227570
+  Exp q0 % and q10 %      : 0.642880, 0.357120
+  Waypoint hits           : 849
+  Goal hits               : 150
+
+[SHAPING | SINGLE EPS] Episode 3800/8000
+  Avg Reward              : 4300.000000
+  Avg With Shaping Reward : 4940.690078
+  Epsilon (single)        : 0.218645
+  Exp q0 % and q10 %      : 0.621785, 0.378215
+  Waypoint hits           : 932
+  Goal hits               : 193
+
+[SHAPING | SINGLE EPS] Episode 3900/8000
+  Avg Reward              : 5000.000000
+  Avg With Shaping Reward : 5760.680529
+  Epsilon (single)        : 0.210071
+  Exp q0 % and q10 %      : 0.602110, 0.397890
+  Waypoint hits           : 1021
+  Goal hits               : 243
+
+[SHAPING | SINGLE EPS] Episode 4000/8000
+  Avg Reward              : 4600.000000
+  Avg With Shaping Reward : 5197.273942
+  Epsilon (single)        : 0.201832
+  Exp q0 % and q10 %      : 0.593625, 0.406375
+  Waypoint hits           : 1094
+  Goal hits               : 289
+
+[SHAPING | SINGLE EPS] Episode 4100/8000
+  Avg Reward              : 6400.000000
+  Avg With Shaping Reward : 7148.447175
+  Epsilon (single)        : 0.193916
+  Exp q0 % and q10 %      : 0.582485, 0.417515
+  Waypoint hits           : 1179
+  Goal hits               : 353
+
+[SHAPING | SINGLE EPS] Episode 4200/8000
+  Avg Reward              : 6700.000000
+  Avg With Shaping Reward : 7417.069840
+  Epsilon (single)        : 0.186311
+  Exp q0 % and q10 %      : 0.581095, 0.418905
+  Waypoint hits           : 1259
+  Goal hits               : 420
+
+[SHAPING | SINGLE EPS] Episode 4300/8000
+  Avg Reward              : 7100.000000
+  Avg With Shaping Reward : 7895.156521
+  Epsilon (single)        : 0.179005
+  Exp q0 % and q10 %      : 0.583715, 0.416285
+  Waypoint hits           : 1347
+  Goal hits               : 491
+
+[SHAPING | SINGLE EPS] Episode 4400/8000
+  Avg Reward              : 7400.000000
+  Avg With Shaping Reward : 8275.723404
+  Epsilon (single)        : 0.171984
+  Exp q0 % and q10 %      : 0.575835, 0.424165
+  Waypoint hits           : 1441
+  Goal hits               : 565
+
+[SHAPING | SINGLE EPS] Episode 4500/8000
+  Avg Reward              : 8200.000000
+  Avg With Shaping Reward : 9120.418824
+  Epsilon (single)        : 0.165239
+  Exp q0 % and q10 %      : 0.574095, 0.425905
+  Waypoint hits           : 1536
+  Goal hits               : 647
+
+[SHAPING | SINGLE EPS] Episode 4600/8000
+  Avg Reward              : 6300.000000
+  Avg With Shaping Reward : 7015.789504
+  Epsilon (single)        : 0.158759
+  Exp q0 % and q10 %      : 0.576845, 0.423155
+  Waypoint hits           : 1617
+  Goal hits               : 710
+
+[SHAPING | SINGLE EPS] Episode 4700/8000
+  Avg Reward              : 6700.000000
+  Avg With Shaping Reward : 7483.389223
+  Epsilon (single)        : 0.152533
+  Exp q0 % and q10 %      : 0.581085, 0.418915
+  Waypoint hits           : 1702
+  Goal hits               : 777
+
+[SHAPING | SINGLE EPS] Episode 4800/8000
+  Avg Reward              : 5900.000000
+  Avg With Shaping Reward : 6686.842922
+  Epsilon (single)        : 0.146551
+  Exp q0 % and q10 %      : 0.586765, 0.413235
+  Waypoint hits           : 1789
+  Goal hits               : 836
+
+[SHAPING | SINGLE EPS] Episode 4900/8000
+  Avg Reward              : 4400.000000
+  Avg With Shaping Reward : 5052.169592
+  Epsilon (single)        : 0.140803
+  Exp q0 % and q10 %      : 0.590825, 0.409175
+  Waypoint hits           : 1868
+  Goal hits               : 880
+
+[SHAPING | SINGLE EPS] Episode 5000/8000
+  Avg Reward              : 7800.000000
+  Avg With Shaping Reward : 8674.111978
+  Epsilon (single)        : 0.135281
+  Exp q0 % and q10 %      : 0.591005, 0.408995
+  Waypoint hits           : 1958
+  Goal hits               : 958
+
+[SHAPING | SINGLE EPS] Episode 5100/8000
+  Avg Reward              : 6700.000000
+  Avg With Shaping Reward : 7374.728569
+  Epsilon (single)        : 0.129976
+  Exp q0 % and q10 %      : 0.591930, 0.408070
+  Waypoint hits           : 2038
+  Goal hits               : 1025
+
+[SHAPING | SINGLE EPS] Episode 5200/8000
+  Avg Reward              : 7400.000000
+  Avg With Shaping Reward : 8179.520217
+  Epsilon (single)        : 0.124878
+  Exp q0 % and q10 %      : 0.601315, 0.398685
+  Waypoint hits           : 2121
+  Goal hits               : 1099
+
+[SHAPING | SINGLE EPS] Episode 5300/8000
+  Avg Reward              : 7800.000000
+  Avg With Shaping Reward : 8666.874388
+  Epsilon (single)        : 0.119981
+  Exp q0 % and q10 %      : 0.604680, 0.395320
+  Waypoint hits           : 2214
+  Goal hits               : 1177
+
+[SHAPING | SINGLE EPS] Episode 5400/8000
+  Avg Reward              : 7900.000000
+  Avg With Shaping Reward : 8727.412374
+  Epsilon (single)        : 0.115275
+  Exp q0 % and q10 %      : 0.606730, 0.393270
+  Waypoint hits           : 2304
+  Goal hits               : 1256
+
+[SHAPING | SINGLE EPS] Episode 5500/8000
+  Avg Reward              : 5900.000000
+  Avg With Shaping Reward : 6516.163685
+  Epsilon (single)        : 0.110754
+  Exp q0 % and q10 %      : 0.616815, 0.383185
+  Waypoint hits           : 2374
+  Goal hits               : 1315
+
+[SHAPING | SINGLE EPS] Episode 5600/8000
+  Avg Reward              : 6600.000000
+  Avg With Shaping Reward : 7429.955587
+  Epsilon (single)        : 0.106411
+  Exp q0 % and q10 %      : 0.617705, 0.382295
+  Waypoint hits           : 2462
+  Goal hits               : 1381
+
+[SHAPING | SINGLE EPS] Episode 5700/8000
+  Avg Reward              : 6700.000000
+  Avg With Shaping Reward : 7560.472542
+  Epsilon (single)        : 0.102238
+  Exp q0 % and q10 %      : 0.605065, 0.394935
+  Waypoint hits           : 2556
+  Goal hits               : 1448
+
+[SHAPING | SINGLE EPS] Episode 5800/8000
+  Avg Reward              : 5900.000000
+  Avg With Shaping Reward : 6534.708573
+  Epsilon (single)        : 0.098228
+  Exp q0 % and q10 %      : 0.619075, 0.380925
+  Waypoint hits           : 2631
+  Goal hits               : 1507
+
+[SHAPING | SINGLE EPS] Episode 5900/8000
+  Avg Reward              : 5700.000000
+  Avg With Shaping Reward : 6295.353533
+  Epsilon (single)        : 0.094376
+  Exp q0 % and q10 %      : 0.644930, 0.355070
+  Waypoint hits           : 2700
+  Goal hits               : 1564
+
+[SHAPING | SINGLE EPS] Episode 6000/8000
+  Avg Reward              : 8600.000000
+  Avg With Shaping Reward : 9542.226177
+  Epsilon (single)        : 0.090674
+  Exp q0 % and q10 %      : 0.647075, 0.352925
+  Waypoint hits           : 2794
+  Goal hits               : 1650
+
+[SHAPING | SINGLE EPS] Episode 6100/8000
+  Avg Reward              : 7100.000000
+  Avg With Shaping Reward : 7838.721655
+  Epsilon (single)        : 0.087118
+  Exp q0 % and q10 %      : 0.653480, 0.346520
+  Waypoint hits           : 2875
+  Goal hits               : 1721
+
+[SHAPING | SINGLE EPS] Episode 6200/8000
+  Avg Reward              : 7300.000000
+  Avg With Shaping Reward : 8145.136451
+  Epsilon (single)        : 0.083702
+  Exp q0 % and q10 %      : 0.647160, 0.352840
+  Waypoint hits           : 2963
+  Goal hits               : 1794
+
+[SHAPING | SINGLE EPS] Episode 6300/8000
+  Avg Reward              : 3900.000000
+  Avg With Shaping Reward : 4182.065602
+  Epsilon (single)        : 0.080419
+  Exp q0 % and q10 %      : 0.660135, 0.339865
+  Waypoint hits           : 3007
+  Goal hits               : 1833
+
+[SHAPING | SINGLE EPS] Episode 6400/8000
+  Avg Reward              : 2200.000000
+  Avg With Shaping Reward : 2386.357163
+  Epsilon (single)        : 0.077265
+  Exp q0 % and q10 %      : 0.699380, 0.300620
+  Waypoint hits           : 3038
+  Goal hits               : 1855
+
+[SHAPING | SINGLE EPS] Episode 6500/8000
+  Avg Reward              : 4100.000000
+  Avg With Shaping Reward : 4436.171763
+  Epsilon (single)        : 0.074235
+  Exp q0 % and q10 %      : 0.729260, 0.270740
+  Waypoint hits           : 3085
+  Goal hits               : 1896
+
+[SHAPING | SINGLE EPS] Episode 6600/8000
+  Avg Reward              : 8700.000000
+  Avg With Shaping Reward : 9672.488126
+  Epsilon (single)        : 0.071324
+  Exp q0 % and q10 %      : 0.727130, 0.272870
+  Waypoint hits           : 3180
+  Goal hits               : 1983
+
+[SHAPING | SINGLE EPS] Episode 6700/8000
+  Avg Reward              : 6600.000000
+  Avg With Shaping Reward : 7499.326347
+  Epsilon (single)        : 0.068526
+  Exp q0 % and q10 %      : 0.721865, 0.278135
+  Waypoint hits           : 3275
+  Goal hits               : 2049
+
+[SHAPING | SINGLE EPS] Episode 6800/8000
+  Avg Reward              : 6200.000000
+  Avg With Shaping Reward : 7053.706736
+  Epsilon (single)        : 0.065839
+  Exp q0 % and q10 %      : 0.724065, 0.275935
+  Waypoint hits           : 3369
+  Goal hits               : 2111
+
+[SHAPING | SINGLE EPS] Episode 6900/8000
+  Avg Reward              : 6200.000000
+  Avg With Shaping Reward : 6999.598033
+  Epsilon (single)        : 0.063257
+  Exp q0 % and q10 %      : 0.721080, 0.278920
+  Waypoint hits           : 3455
+  Goal hits               : 2173
+
+[SHAPING | SINGLE EPS] Episode 7000/8000
+  Avg Reward              : 8600.000000
+  Avg With Shaping Reward : 9559.176094
+  Epsilon (single)        : 0.060776
+  Exp q0 % and q10 %      : 0.719550, 0.280450
+  Waypoint hits           : 3549
+  Goal hits               : 2259
+
+[SHAPING | SINGLE EPS] Episode 7100/8000
+  Avg Reward              : 6700.000000
+  Avg With Shaping Reward : 7556.122848
+  Epsilon (single)        : 0.058392
+  Exp q0 % and q10 %      : 0.692845, 0.307155
+  Waypoint hits           : 3643
+  Goal hits               : 2326
+
+[SHAPING | SINGLE EPS] Episode 7200/8000
+  Avg Reward              : 8100.000000
+  Avg With Shaping Reward : 9002.555972
+  Epsilon (single)        : 0.056102
+  Exp q0 % and q10 %      : 0.653855, 0.346145
+  Waypoint hits           : 3736
+  Goal hits               : 2407
+
+[SHAPING | SINGLE EPS] Episode 7300/8000
+  Avg Reward              : 8700.000000
+  Avg With Shaping Reward : 9595.476565
+  Epsilon (single)        : 0.053902
+  Exp q0 % and q10 %      : 0.632980, 0.367020
+  Waypoint hits           : 3826
+  Goal hits               : 2494
+
+[SHAPING | SINGLE EPS] Episode 7400/8000
+  Avg Reward              : 7900.000000
+  Avg With Shaping Reward : 8723.004758
+  Epsilon (single)        : 0.051788
+  Exp q0 % and q10 %      : 0.631345, 0.368655
+  Waypoint hits           : 3913
+  Goal hits               : 2573
+
+[SHAPING | SINGLE EPS] Episode 7500/8000
+  Avg Reward              : 7200.000000
+  Avg With Shaping Reward : 7959.928439
+  Epsilon (single)        : 0.049757
+  Exp q0 % and q10 %      : 0.630745, 0.369255
+  Waypoint hits           : 3993
+  Goal hits               : 2645
+
+[SHAPING | SINGLE EPS] Episode 7600/8000
+  Avg Reward              : 7000.000000
+  Avg With Shaping Reward : 7757.650609
+  Epsilon (single)        : 0.047806
+  Exp q0 % and q10 %      : 0.640905, 0.359095
+  Waypoint hits           : 4068
+  Goal hits               : 2715
+
+[SHAPING | SINGLE EPS] Episode 7700/8000
+  Avg Reward              : 7200.000000
+  Avg With Shaping Reward : 8010.340025
+  Epsilon (single)        : 0.045931
+  Exp q0 % and q10 %      : 0.645300, 0.354700
+  Waypoint hits           : 4153
+  Goal hits               : 2787
+
+[SHAPING | SINGLE EPS] Episode 7800/8000
+  Avg Reward              : 6000.000000
+  Avg With Shaping Reward : 6886.743606
+  Epsilon (single)        : 0.044130
+  Exp q0 % and q10 %      : 0.637925, 0.362075
+  Waypoint hits           : 4251
+  Goal hits               : 2847
+
+[SHAPING | SINGLE EPS] Episode 7900/8000
+  Avg Reward              : 7300.000000
+  Avg With Shaping Reward : 8039.946946
+  Epsilon (single)        : 0.042399
+  Exp q0 % and q10 %      : 0.639875, 0.360125
+  Waypoint hits           : 4328
+  Goal hits               : 2920
+
+[SHAPING | SINGLE EPS] Episode 8000/8000
+  Avg Reward              : 8000.000000
+  Avg With Shaping Reward : 8827.904310
+  Epsilon (single)        : 0.040736
+  Exp q0 % and q10 %      : 0.653890, 0.346110
+  Waypoint hits           : 4411
+  Goal hits               : 3000
+

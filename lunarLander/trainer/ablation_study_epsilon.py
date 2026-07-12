@@ -3,6 +3,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import argparse
 
 from abstract_mdps import SequentialWaypointMDP
 from agent import HierarchicalDQNLearner
@@ -77,14 +78,18 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
     ax1.grid(True, linestyle='--', alpha=0.5)
     
     ax2 = ax1.twinx()
-    eps_q0_history, eps_q10_history = epsilon_history
-    
-    ax2.plot(x_axis, eps_q0_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (q=0)')
-    ax2.plot(x_axis, eps_q10_history, color='red', linestyle=':', linewidth=1.8, label='Epsilon Decay (q=10)')
+    # Gestisce sia il caso di una singola history (baseline) che di una tupla (shaping)
+    if isinstance(epsilon_history, tuple):
+        eps_q0, eps_q10 = epsilon_history
+        ax2.plot(x_axis, eps_q0, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (q=0)')
+        ax2.plot(x_axis, eps_q10, color='red', linestyle=':', linewidth=1.8, label='Epsilon Decay (q=10)')
+    else:
+        ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay (Single)')
     
     ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
     ax2.set_ylim(-0.05, 1.05)
 
+    ax2.tick_params(axis='y', labelcolor='orange')
     # EXTERNAL LEGEND
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
@@ -413,13 +418,24 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
 # =====================================================================
 
 def main():
-    print("=== STARTING SEQUENTIAL TASK EXPERIMENT: ABLATION STUDY ===")
+    parser = argparse.ArgumentParser(description="Ablation study on epsilon strategies for sequential tasks.")
+    parser.add_argument(
+        "--mode", 
+        type=str, 
+        default="comparison", 
+        choices=["single", "double", "comparison", "baseline"],
+        help="Execution mode: 'single' for single epsilon with shaping, 'double' for double epsilon with shaping, 'comparison' for both, 'baseline' for vanilla DDQN (no shaping)."
+    )
+    args = parser.parse_args()
+
+    print(f"=== STARTING ABLATION STUDY | MODE: {args.mode.upper()} ===")
     os.makedirs("logs", exist_ok=True)
 
     # HYPERPARAMETERS
     episodes = 6500
     gamma = 0.99
-    eps_decay = 0.999
+    double_eps_decay = 0.999
+    single_eps_decay = 0.9996
     K_scaling = 1
     
     print("\n1. Initializing Environment and Abstract MDP...")
@@ -428,100 +444,106 @@ def main():
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()
 
-    print("   -> Plotting Value Functions (V*) Heatmaps...")
-    save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
-    
-    # -----------------------------------------------------------------
-    # EXPERIMENT 1: SHAPING AGENT (SINGLE EPSILON - ABLATION BASELINE)
-    # -----------------------------------------------------------------
-    print("\n=======================================================")
-    print("TRAINING: SHAPING AGENT (SINGLE EPSILON)")
-    print("=======================================================")
-    agent_shaping_single = HierarchicalDQNLearner(
-        env=env,
-        max_episodes=episodes,
-        gamma=gamma,
-        eps_decay=0.9996, # Slower decay for the baseline to give it a fair chance at q=10
-        use_ddqn=True,
-        policy_name="shaping_single_eps_policy.pth",
-        extra_state_dims=2
-    )
-    
-    single_learning_curve, _, single_eps_history, _, single_waypoints, single_goals = run_sequential_training(
-        env, 
-        agent_shaping_single, 
-        abstract_mdp, 
-        episodes, 
-        use_shaping=True,            # Shaping ACTIVE
-        use_double_epsilon=False,    # Double Epsilon DISABLED
-        K=K_scaling,
-        log_file="logs/shaping_single_eps_training.log",
-        save_policy=True
-    )
+    if args.mode == "baseline":
+        print("\n=======================================================")
+        print("TRAINING: VANILLA DDQN AGENT (BASELINE - NO SHAPING)")
+        print("=======================================================")
+        agent_baseline = HierarchicalDQNLearner(
+            env=env, max_episodes=episodes, gamma=gamma, eps_decay=single_eps_decay, # Use a slower decay
+            use_ddqn=True, policy_name="baseline_policy.pth", extra_state_dims=2
+        )
+        
+        b_curve, b_total, b_eps, b_buf, _, _ = run_sequential_training(
+            env, agent_baseline, abstract_mdp, episodes, 
+            use_shaping=False, use_double_epsilon=False, K=K_scaling,
+            log_file="logs/baseline_training.log", save_policy=True
+        )
 
-    # -----------------------------------------------------------------
-    # EXPERIMENT 2: SHAPING AGENT (DOUBLE EPSILON - PROPOSED)
-    # -----------------------------------------------------------------
-    print("\n=======================================================")
-    print("TRAINING: SHAPING AGENT (DOUBLE EPSILON)")
-    print("=======================================================")
-    agent_shaping_double = HierarchicalDQNLearner(
-        env=env,
-        max_episodes=episodes,
-        gamma=gamma,
-        eps_decay=eps_decay, # Normal decay rate (0.999)
-        use_ddqn=True,
-        policy_name="shaping_double_eps_policy.pth",
-        extra_state_dims=2
-    )
-    
-    double_learning_curve, double_total_rewards, double_eps_history, double_buffer_history, double_waypoints, double_goals = run_sequential_training(
-        env, 
-        agent_shaping_double, 
-        abstract_mdp, 
-        episodes, 
-        use_shaping=True,           # Shaping ACTIVE
-        use_double_epsilon=True,    # Double Epsilon ACTIVE
-        K=K_scaling,
-        log_file="logs/shaping_double_eps_training.log"
-    )
-    
-    # -----------------------------------------------------------------
-    # PLOTTING RESULTS
-    # -----------------------------------------------------------------
-    print("\n3. Generating plots for slides...")
-    
-    # Extract arrays from the tuple
-    eps_q0_history, eps_q10_history = double_eps_history
-    
-    # 1. Slide plot for Phase 1 (Waypoint)
-    plot_ablation_slide_phase1(
-        episodes=episodes, 
-        single_eps_waypoints=single_waypoints, 
-        single_eps_history=single_eps_history, 
-        double_eps_waypoints=double_waypoints, 
-        eps_q0_history=eps_q0_history, 
-        eps_q10_history=eps_q10_history,
-        window_size=500, 
-        filename="img/slide_ablation_phase1_waypoint.png"
-    )
+        print("\n3. Generating plots for BASELINE mode...")
+        b_buf_q0, b_buf_q10 = b_buf
+        plot_shaping_reward_breakdown(b_curve, b_total, b_eps, window_size=500, filename="img/reward_breakdown_baseline.png")
+        plot_buffer_fractions(b_buf_q0, b_buf_q10, window_size=500, filename="img/buffer_fractions_baseline.png")
 
-    # 2. Slide plot for Phase 2 (Goal)
-    plot_ablation_slide_phase2(
-        episodes=episodes,  
-        single_eps_goals=single_goals, 
-        single_eps_history=single_eps_history,  
-        double_eps_goals=double_goals, 
-        eps_q0_history=eps_q0_history, 
-        eps_q10_history=eps_q10_history,
-        window_size=500, 
-        filename="img/slide_ablation_phase2_goal.png"
-    )
-    
-    # Standard metrics for the proposed Double Epsilon agent
-    buf_q0, buf_q10 = double_buffer_history
-    plot_shaping_reward_breakdown(double_learning_curve, double_total_rewards, double_eps_history, window_size=500, filename="img/shaping_reward_breakdown_proposed.png")
-    plot_buffer_fractions(buf_q0, buf_q10, window_size=500, filename="img/buffer_fractions_proposed.png")
+    if args.mode in ["single", "comparison"]:
+        print("\n=======================================================")
+        print("TRAINING: SHAPING AGENT (SINGLE EPSILON)")
+        print("=======================================================")
+        agent_shaping_single = HierarchicalDQNLearner(
+            env=env, max_episodes=episodes, gamma=gamma, eps_decay=single_eps_decay,
+            use_ddqn=True, policy_name="shaping_single_eps_policy.pth", extra_state_dims=2
+        )
+        
+        s_curve, s_total, s_eps, s_buf, s_wp, s_goals = run_sequential_training(
+            env, agent_shaping_single, abstract_mdp, episodes, 
+            use_shaping=True, use_double_epsilon=False, K=K_scaling,
+            log_file="logs/shaping_single_eps_training.log", save_policy=True
+        )
+
+        if args.mode == "single":
+            print("\n3. Generating plots for SINGLE EPSILON mode...")
+            s_buf_q0, s_buf_q10 = s_buf
+            plot_shaping_reward_breakdown(s_curve, s_total, s_eps, window_size=500, filename="img/shaping_reward_breakdown_single_eps.png")
+            plot_buffer_fractions(s_buf_q0, s_buf_q10, window_size=500, filename="img/buffer_fractions_single_eps.png")
+
+    if args.mode in ["double", "comparison"]:
+        print("\n=======================================================")
+        print("TRAINING: SHAPING AGENT (DOUBLE EPSILON)")
+        print("=======================================================")
+        agent_shaping_double = HierarchicalDQNLearner(
+            env=env, max_episodes=episodes, gamma=gamma, eps_decay=double_eps_decay,
+            use_ddqn=True, policy_name="shaping_double_eps_policy.pth", extra_state_dims=2
+        )
+        
+        d_curve, d_total, d_eps, d_buf, d_wp, d_goals = run_sequential_training(
+            env, agent_shaping_double, abstract_mdp, episodes, 
+            use_shaping=True, use_double_epsilon=True, K=K_scaling,
+            log_file="logs/shaping_double_eps_training.log", save_policy=True
+        )
+
+        if args.mode == "double":
+            print("\n3. Generating plots for DOUBLE EPSILON mode...")
+            d_buf_q0, d_buf_q10 = d_buf
+            plot_shaping_reward_breakdown(d_curve, d_total, d_eps, window_size=500, filename="img/shaping_reward_breakdown_double_eps.png")
+            plot_buffer_fractions(d_buf_q0, d_buf_q10, window_size=500, filename="img/buffer_fractions_double_eps.png")
+
+    if args.mode == "comparison":
+        print("\n3. Generating plots for COMPARISON mode...")
+        
+        # Plot V* heatmaps only in comparison mode to avoid redundancy
+        print("   -> Plotting Value Functions (V*) Heatmaps...")
+        save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
+
+        # Extract arrays from the tuple for double epsilon history
+        eps_q0_history, eps_q10_history = d_eps
+        
+        # 1. Slide plot for Phase 1 (Waypoint)
+        plot_ablation_slide_phase1(
+            episodes=episodes, 
+            single_eps_waypoints=s_wp, 
+            single_eps_history=s_eps, 
+            double_eps_waypoints=d_wp, 
+            eps_q0_history=eps_q0_history, 
+            eps_q10_history=eps_q10_history,
+            window_size=500, 
+            filename="img/slide_ablation_phase1_waypoint.png"
+        )
+
+        # 2. Slide plot for Phase 2 (Goal)
+        plot_ablation_slide_phase2(
+            episodes=episodes,  
+            single_eps_goals=s_goals, 
+            single_eps_history=s_eps,  
+            double_eps_goals=d_goals, 
+            eps_q0_history=eps_q0_history, 
+            eps_q10_history=eps_q10_history,
+            window_size=500, 
+            filename="img/slide_ablation_phase2_goal.png"
+        )
+        
+        # Standard metrics for the proposed Double Epsilon agent
+        d_buf_q0, d_buf_q10 = d_buf
+        plot_shaping_reward_breakdown(d_curve, d_total, d_eps, window_size=500, filename="img/shaping_reward_breakdown_proposed.png")
+        plot_buffer_fractions(d_buf_q0, d_buf_q10, window_size=500, filename="img/buffer_fractions_proposed.png")
     
     env.close()
 
