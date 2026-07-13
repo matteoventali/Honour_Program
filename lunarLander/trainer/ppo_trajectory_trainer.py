@@ -3,6 +3,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import argparse
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -22,25 +23,28 @@ def log_and_print(message, file_handle):
         file_handle.write(message + "\n")
         file_handle.flush()
 
-def plot_shaping_reward_breakdown(true_rewards, total_rewards, window_size=100, filename="img/shaping_reward_breakdown_ppo.png"):
+def plot_shaping_reward_breakdown(true_rewards, total_rewards, use_shaping, window_size=100, filename="img/shaping_reward_breakdown_ppo.png"):
     """
     Plots the true environment reward vs the total reward (env + shaping) for PPO.
+    The labels and title adapt based on whether shaping was used.
     """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     fig, ax1 = plt.subplots(figsize=(12, 7))
     
-    if len(true_rewards) >= window_size:
-        true_ma = pd.Series(true_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
-        total_ma = pd.Series(total_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
-    else:
-        true_ma = true_rewards
-        total_ma = total_rewards
-    x_axis = np.arange(len(true_rewards))
+    true_ma = pd.Series(true_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    x_axis = np.arange(len(true_ma))
         
     ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='True Environment Reward')
-    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Total Reward (Env + Shaping)')
     
-    ax1.set_title("PPO Shaping Agent Reward Analysis", fontsize=15, fontweight='bold')
+    if use_shaping:
+        total_ma = pd.Series(total_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+        ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Total Reward (Env + Shaping)')
+        title = "PPO Shaping Agent Reward Analysis"
+    else:
+        # In baseline mode, total_rewards is the same as true_rewards, so we don't plot it.
+        title = "PPO Baseline Reward Analysis"
+
+    ax1.set_title(title, fontsize=15, fontweight='bold')
     ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
@@ -252,72 +256,91 @@ class RewardLoggingCallback(BaseCallback):
 # =====================================================================
 
 def main():
+    parser = argparse.ArgumentParser(description="Train a PPO agent on the sequential LunarLander task with optional reward shaping.")
+    parser.add_argument("--no-shaping", action="store_true", help="Disable potential-based reward shaping.")
+    args = parser.parse_args()
+
+    use_shaping = not args.no_shaping
+    config_name = "shaping" if use_shaping else "baseline"
+
     os.makedirs("logs", exist_ok=True)
     os.makedirs("img", exist_ok=True)
     os.makedirs("models", exist_ok=True)
     
-    log_file_path = "logs/ppo_shaping_sequential.log"
+    log_file_path = f"logs/ppo_{config_name}_sequential.log"
     log_file = open(log_file_path, "w")
     
-    log_and_print("=== STARTING SEQUENTIAL TASK EXPERIMENT: SHAPING WITH PPO ===", log_file)
+    title = "SHAPING WITH PPO" if use_shaping else "BASELINE PPO (NO SHAPING)"
+    log_and_print(f"=== STARTING SEQUENTIAL TASK EXPERIMENT: {title} ===", log_file)
     
     # HYPERPARAMETERS
     episodes = 20000
     gamma = 0.99
     K_scaling = 1
     
-    log_and_print("\n1. Initializing Environment and Abstract MDP...", log_file)
+    log_and_print("\n1. Initializing Environment and Abstract MDP...", log_file)    
     env = gym.make("LunarLander-v3", continuous=False)
     
     abstract_mdp = SequentialWaypointMDP(width=12, height=12, gamma=gamma)
     abstract_mdp.value_iteration()
 
-    log_and_print("   -> Plotting Value Functions (V*) Heatmaps...", log_file)
-    save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
+    # Plot V* heatmaps only if shaping is active, as they are not used otherwise
+    if use_shaping:
+        log_and_print("   -> Plotting Value Functions (V*) Heatmaps...", log_file)
+        save_sequential_heatmaps(abstract_mdp, filename_prefix="seq_experiment")
 
     log_and_print("\n=======================================================", log_file)
-    log_and_print("TRAINING: SHAPING AGENT (PPO)", log_file)
+    log_and_print(f"TRAINING: {title}", log_file)
     log_and_print("=======================================================", log_file)
     
     # Wrap the environment in the Custom Wrapper to handle Q and Shaping
-    wrapped_env = SequentialTaskWrapper(env, abstract_mdp, use_shaping=True, K=K_scaling)
+    wrapped_env = SequentialTaskWrapper(env, abstract_mdp, use_shaping=use_shaping, K=K_scaling)
     
     # Initialize PPO
     model = PPO(
         "MlpPolicy",
         wrapped_env,
         gamma=gamma,
-        verbose=0,
         learning_rate=3e-4,
         n_steps=2048,
         batch_size=64,
-        n_epochs=10
+        n_epochs=10,
+        verbose=0
     )
     
     # Initialize the Callback for tracking
-    logging_callback = RewardLoggingCallback(use_shaping=True, log_file=log_file)
+    logging_callback = RewardLoggingCallback(use_shaping=use_shaping, log_file=log_file)
     logging_callback.max_episodes = episodes
     
     # Run the Training
     model.learn(total_timesteps=float('inf'), callback=logging_callback)
-    model.save("models/ppo_shaping_sequential_policy_final.zip")
+    
+    final_model_path = f"models/ppo_{config_name}_sequential_policy_final.zip"
+    model.save(final_model_path)
+    log_and_print(f"\n--- Final model saved to {final_model_path} ---", log_file)
 
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
     log_and_print("\n3. Generating plots...", log_file)
+    
+    # Generate plots with filenames that reflect the configuration
+    reward_plot_filename = f"img/shaping_reward_breakdown_ppo_{config_name}.png"
+    phase_plot_filename = f"img/phase_fractions_ppo_{config_name}.png"
+
     plot_shaping_reward_breakdown(
         logging_callback.true_episode_rewards, 
         logging_callback.total_episode_rewards, 
+        use_shaping=use_shaping,
         window_size=100, 
-        filename="img/shaping_reward_breakdown_ppo.png"
+        filename=reward_plot_filename
     )
     
     plot_episode_phase_fractions(
         logging_callback.q0_fractions, 
         logging_callback.q10_fractions, 
         window_size=100, 
-        filename="img/phase_fractions_ppo.png"
+        filename=phase_plot_filename
     )
     
     env.close()
