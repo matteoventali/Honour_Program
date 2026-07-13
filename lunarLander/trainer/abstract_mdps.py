@@ -263,7 +263,7 @@ class KinematicAbstractMDP:
         self.v_star[self.goal_state] = 1.0
 
 
-class SequentialWaypointMDP:
+class SequentialWaypointMDP_old:
     """
     MDP for sequential tasks.
     The abstract state is 3D: (x, y, q)
@@ -304,6 +304,69 @@ class SequentialWaypointMDP:
     def value_iteration(self, theta=0.001):
         print("Solving Sequential MDP with Value Iteration...")
         
+        self.v_star[self.goal_state] = self.goal_reward
+        
+        while True:
+            delta = 0
+            new_v = self.v_star.copy()
+            for s in self.states:
+                if s != self.goal_state: 
+                    v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                    best_v = max(v_actions)
+                    delta = max(delta, abs(best_v - self.v_star[s]))
+                    new_v[s] = best_v
+                    self.v_star = new_v
+            if delta < theta: break
+
+
+class SequentialWaypointMDP:
+    """
+    MDP for sequential tasks with 3 phases.
+    The abstract state is 3D: (x, y, q)
+    q = 0: searching for waypoint 1 (1, 8)
+    q = 1: searching for waypoint 2 (8, 8)
+    q = 2: searching for the final goal (0, 0)
+    """
+    def __init__(self, width=12, height=12, gamma=0.99):
+        self.width = width
+        self.height = height
+        self.gamma = gamma
+        self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
+        # Tre stati logici: 0, 1, 2
+        self.states = [(x, y, q) for x in range(width) for y in range(height) for q in (0, 1, 2)]
+        
+        # Nuove coordinate della traiettoria
+        self.waypoint1 = (1, 8)
+        self.waypoint2 = (8, 8)
+        self.goal_state = (5, 0, 2)
+        
+        self.goal_reward = 10000
+        self.v_star = defaultdict(float)
+        
+    def get_transitions(self, state, action):
+        x, y, q = state
+        next_y = y
+        reward = 0
+        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
+        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
+            
+        next_x = x
+        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
+        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
+        
+        next_q = q
+        
+        # Logica di transizione a 3 stati
+        if x == self.waypoint1[0] and y == self.waypoint1[1] and q == 0:
+            next_q = 1
+        elif x == self.waypoint2[0] and y == self.waypoint2[1] and q == 1:
+            next_q = 2
+
+        next_state = (next_x, next_y, next_q)
+        return next_state, reward
+
+    def value_iteration(self, theta=0.001):
+        print("Solving Sequential MDP (3 Phases) with Value Iteration...")
         self.v_star[self.goal_state] = self.goal_reward
         
         while True:

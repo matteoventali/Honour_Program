@@ -34,31 +34,49 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
     
-    def q0_fraction(self):
+    def q0_fraction_old(self):
         if len(self.buffer) == 0:
             return 0.0
         
         q0 = sum(state[-1] == 0 for state, _, _, _, _ in self.buffer)
         return q0 / len(self.buffer)
     
-    def q1_fraction(self):
+    def q1_fraction_old(self):
         if len(self.buffer) == 0:
             return 0.0
         
         q1 = sum(state[-1] == 10 for state, _, _, _, _ in self.buffer)
         return q1 / len(self.buffer)
     
-    def q0_fraction_onehot(self):
+    def q0_fraction_onehot_old(self):
         if len(self.buffer) == 0:
             return 0.0
         q0 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
         return q0 / len(self.buffer)
     
-    def q1_fraction_onehot(self):
+    def q1_fraction_onehot_old(self):
         if len(self.buffer) == 0:
             return 0.0
         q1 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
         return q1 / len(self.buffer)
+
+    def q0_fraction_onehot(self):
+        if len(self.buffer) == 0: return 0.0
+        # q=0 è il terzultimo elemento
+        q0 = sum(state[-3] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q0 / len(self.buffer)
+    
+    def q1_fraction_onehot(self):
+        if len(self.buffer) == 0: return 0.0
+        # q=1 è il penultimo elemento
+        q1 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q1 / len(self.buffer)
+
+    def q2_fraction_onehot(self):
+        if len(self.buffer) == 0: return 0.0
+        # q=2 è l'ultimo elemento
+        q2 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q2 / len(self.buffer)
 
 class HierarchicalDQNLearner:
     def __init__(self, env, abstract_mdp=None, mapping_fn=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
@@ -91,7 +109,7 @@ class HierarchicalDQNLearner:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
-        self.memory = ReplayBuffer(capacity=200000)
+        self.memory = ReplayBuffer(capacity=300000)
 
     def select_action(self, state):
         if ran.random() < self.eps:
