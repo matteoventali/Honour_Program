@@ -523,7 +523,7 @@ def main():
             log_file="logs/shaping_multi_eps_training.log", save_policy=True
         )
         
-        if args.mode == "double":
+        if args.mode == "multi":
             print("\n3. Generating plots for MULTI EPSILON mode...")
             d_buf_q0, d_buf_q1, d_buf_q2 = d_buf
             plot_shaping_reward_breakdown(d_curve, d_total, d_eps, window_size=500, filename="img/shaping_reward_breakdown_multi_eps.png")
