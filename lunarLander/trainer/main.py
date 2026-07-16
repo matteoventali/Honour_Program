@@ -8,7 +8,7 @@ from abstract_mdps import NPhaseWaypointMDP
 from agent import HierarchicalDQNLearner
 from utils import phi_mapping_sequential, save_sequential_heatmaps, plot_buffer_fractions, plot_shaping_reward_breakdown
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
+def run_sequential_training(env, agent, abstract_mdp, episodes, save_policy=True, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
     num_phases = abstract_mdp.num_phases
     
     true_episode_rewards = []
@@ -25,7 +25,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     total_hits = [0] * num_phases
 
     log_handle = open(log_file, 'a') if log_file else None
-    if log_handle: log_handle.write(f"=== NEW RUN (Shaping: {use_shaping}, Multi-Eps: {use_double_epsilon}) ===\n")
+    if log_handle: 
+        log_handle.write(f"=== NEW RUN (Shaping: {use_shaping}, Multi-Eps: {use_double_epsilon}) ===\n")
+        log_handle.write(f"===Trajectory: {abstract_mdp.waypoints}===\n")
 
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
@@ -119,6 +121,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         total_episode_rewards.append(episode_total_reward)
         eps_single_history.append(eps_single)
 
+        # Print logs
         if (n_episode + 1) % 100 == 0:
             recent_avg = np.mean(true_episode_rewards[-100:])
             recent_avg_with_shaping = np.mean(total_episode_rewards[-100:])
@@ -159,6 +162,14 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 log_handle.write(log_string + "\n")
                 log_handle.flush()
 
+        # Policy saving
+        if save_policy and (n_episode + 1) % 250 == 0:
+            prefix = "shaping" if use_shaping else "baseline"
+            eps_suffix = "multi_eps" if use_double_epsilon else "single_eps"
+            agent.policy_name = f"{prefix}_{eps_suffix}_policy_ep_{n_episode + 1}.pth"
+            agent._save_policy()
+
+
     if log_handle: log_handle.close()
     return true_episode_rewards, total_episode_rewards, eps_histories, buffer_histories, hits_history
 
@@ -168,17 +179,22 @@ def main():
     env = gym.make("LunarLander-v3", continuous=False)
 
     # Hyperparameters
+    use_multi_eps = False
     episodes = 10000
-    eps_decay = 0.999
+    multi_eps_decay = 0.999
+    sing_eps_decay = 0.9996
     gamma = 0.99
+    eps_decay = multi_eps_decay if use_multi_eps else sing_eps_decay
     
     # Loading configuration
     with open('trajectory.json', 'r') as f:
         config = json.load(f)
     route_waypoints = [tuple(wp) for wp in config['waypoints']]
     print(f"Training for this trajectory {route_waypoints}")
+    #route_waypoints = [(1,8), (5,6), (8,8)]
     num_phases = len(route_waypoints)
     
+    # Learning phase
     abstract_mdp = NPhaseWaypointMDP(waypoints=route_waypoints, gamma=gamma)
     abstract_mdp.value_iteration()
     save_sequential_heatmaps(abstract_mdp)
@@ -187,22 +203,20 @@ def main():
         env=env, max_episodes=episodes, eps_decay=eps_decay, use_ddqn=True, 
         extra_state_dims=num_phases # Tells the agent the size of the one-hot array
     )
-    
     true_rewards, total_rewards, eps_histories, buffers, hits = run_sequential_training(
         env, agent_shaping, abstract_mdp, episodes, 
         use_shaping=True, use_double_epsilon=True, 
         log_file="logs/n_phase_training.log"
     )
-    
-    plot_buffer_fractions(buffers, filename="img/buffer_fractions_n_phases.png")
-    plot_shaping_reward_breakdown(
-        true_rewards, 
-        total_rewards, 
-        eps_histories, 
-        window_size=500, 
+
+    # Plotting phase
+    print("Generating plots ...")
+    plot_buffer_fractions(buffers, filename="img/buffer_fractions_n_phases.png", window_size=500)
+    plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=500, 
         filename="img/reward_breakdown_n_phases.png"
     )
     env.close()
+    print("End")
 
 if __name__ == "__main__":
     main()
