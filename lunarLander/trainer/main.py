@@ -8,7 +8,7 @@ from abstract_mdps import NPhaseWaypointMDP
 from agent import HierarchicalDQNLearner
 from utils import phi_mapping_sequential, save_sequential_heatmaps, plot_buffer_fractions, plot_shaping_reward_breakdown
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, save_policy=True, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
     num_phases = abstract_mdp.num_phases
     
     true_episode_rewards = []
@@ -70,7 +70,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, save_policy=True
                 if abstract_x_ns == goal_x and abstract_y_ns == goal_y:
                     total_hits[q] += 1
                     episode_hits[q] = 1
-                    env_goal_reward = 10000.0
+                    env_goal_reward = goal_reward
                     terminated = True
 
             abstract_ns = (abstract_x_ns, abstract_y_ns, next_q)
@@ -179,8 +179,10 @@ def main():
     env = gym.make("LunarLander-v3", continuous=False)
 
     # Hyperparameters
+    abstract_goal_reward = 10000
+    env_goal_reward = 500
     use_multi_eps = False
-    episodes = 10000
+    episodes = 1
     multi_eps_decay = 0.999
     sing_eps_decay = 0.9996
     gamma = 0.99
@@ -190,22 +192,21 @@ def main():
     with open('trajectory.json', 'r') as f:
         config = json.load(f)
     route_waypoints = [tuple(wp) for wp in config['waypoints']]
-    print(f"Training for this trajectory {route_waypoints}")
     #route_waypoints = [(1,8), (5,6), (8,8)]
+    print(f"Training for this trajectory {route_waypoints}")
     num_phases = len(route_waypoints)
     
     # Learning phase
-    abstract_mdp = NPhaseWaypointMDP(waypoints=route_waypoints, gamma=gamma)
+    abstract_mdp = NPhaseWaypointMDP(waypoints=route_waypoints, gamma=gamma, goal_reward=abstract_goal_reward)
     abstract_mdp.value_iteration()
     save_sequential_heatmaps(abstract_mdp)
 
     agent_shaping = HierarchicalDQNLearner(
         env=env, max_episodes=episodes, eps_decay=eps_decay, use_ddqn=True, 
-        extra_state_dims=num_phases # Tells the agent the size of the one-hot array
+        extra_state_dims=num_phases
     )
     true_rewards, total_rewards, eps_histories, buffers, hits = run_sequential_training(
-        env, agent_shaping, abstract_mdp, episodes, 
-        use_shaping=True, use_double_epsilon=True, 
+        env, agent_shaping, abstract_mdp, episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=True, 
         log_file="logs/n_phase_training.log"
     )
 

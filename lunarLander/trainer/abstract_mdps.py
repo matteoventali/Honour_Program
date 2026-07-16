@@ -8,7 +8,7 @@ class NPhaseWaypointMDP:
     q ranges from 0 to len(waypoints) - 1.
     The final element in the waypoints list is considered the Final Goal.
     """
-    def __init__(self, waypoints, width=12, height=12, gamma=0.99):
+    def __init__(self, waypoints, width=12, height=12, gamma=0.99, goal_reward=10000):
         self.width = width
         self.height = height
         self.gamma = gamma
@@ -22,7 +22,7 @@ class NPhaseWaypointMDP:
         
         # The Final Goal is associated with the last phase index
         self.goal_state = (*self.waypoints[-1], self.num_phases - 1)
-        self.goal_reward = 10000
+        self.goal_reward = goal_reward
         self.v_star = defaultdict(float)
         
     def get_transitions(self, state, action):
