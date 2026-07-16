@@ -33,56 +33,21 @@ class ReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
-    
-    def q0_fraction_old(self):
-        if len(self.buffer) == 0:
-            return 0.0
-        
-        q0 = sum(state[-1] == 0 for state, _, _, _, _ in self.buffer)
-        return q0 / len(self.buffer)
-    
-    def q1_fraction_old(self):
-        if len(self.buffer) == 0:
-            return 0.0
-        
-        q1 = sum(state[-1] == 10 for state, _, _, _, _ in self.buffer)
-        return q1 / len(self.buffer)
-    
-    def q0_fraction_onehot_old(self):
-        if len(self.buffer) == 0:
-            return 0.0
-        q0 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q0 / len(self.buffer)
-    
-    def q1_fraction_onehot_old(self):
-        if len(self.buffer) == 0:
-            return 0.0
-        q1 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q1 / len(self.buffer)
 
-    def q0_fraction_onehot(self):
+    def q_fraction_onehot(self, q_index, num_phases):
+        """Returns the fraction of states in the buffer for the desired phase (q_index)."""
         if len(self.buffer) == 0: return 0.0
-        # q=0 è il terzultimo elemento
-        q0 = sum(state[-3] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q0 / len(self.buffer)
-    
-    def q1_fraction_onehot(self):
-        if len(self.buffer) == 0: return 0.0
-        # q=1 è il penultimo elemento
-        q1 = sum(state[-2] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q1 / len(self.buffer)
-
-    def q2_fraction_onehot(self):
-        if len(self.buffer) == 0: return 0.0
-        # q=2 è l'ultimo elemento
-        q2 = sum(state[-1] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q2 / len(self.buffer)
+        
+        # The one-hot vector is appended at the end of the state representation.
+        # We find the index relative to the end of the array.
+        idx = -num_phases + q_index
+        q_count = sum(state[idx] == 1.0 for state, _, _, _, _ in self.buffer)
+        return q_count / len(self.buffer)
 
 class HierarchicalDQNLearner:
-    def __init__(self, env, abstract_mdp=None, mapping_fn=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
+    def __init__(self, env, abstract_mdp=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
         self.env = env
         self.abstract_mdp = abstract_mdp
-        self.mapping_fn = mapping_fn
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
@@ -96,12 +61,11 @@ class HierarchicalDQNLearner:
         self.eps_min = 0.01
         self.eps_decay = eps_decay
         
-        # MODIFICA: Permettiamo di aggiungere dimensioni extra allo stato (es. la variabile 'q')
+        # Account for dynamic one-hot phases appended to state
         state_dim = self.env.observation_space.shape[0] + extra_state_dims
         action_dim = self.env.action_space.n
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(self.device)
         self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
         
         if self.use_ddqn:
@@ -150,100 +114,6 @@ class HierarchicalDQNLearner:
         if self.use_ddqn:
             for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
                 target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
-
-    def train_normal(self):
-        print(f"[{self.policy_name}] Starting Normal Training...")
-        total_rewards = []
-        for n_episode in range(self.max_episodes):
-            s_raw, _ = self.env.reset()
-            terminated = truncated = False
-            episode_reward = 0
-            while not (terminated or truncated):
-                a = self.select_action(s_raw)
-                ns_raw, reward, terminated, truncated, _ = self.env.step(a)
-                done = terminated or truncated
-                self.memory.push(s_raw, a, reward, ns_raw, done)
-                self.optimize_model()
-                s_raw = ns_raw
-                episode_reward += reward
-            self.eps = max(self.eps_min, self.eps * self.eps_decay)
-            total_rewards.append(episode_reward)
-            if (n_episode + 1) % 500 == 0:
-                self._save_policy()
-                print(f"[{self.policy_name}] Episode {n_episode+1}/{self.max_episodes} | Avg Reward (last 100): {np.mean(total_rewards[-100:]):.2f}")
-        return np.array(total_rewards)
-
-    def train_shaping(self):
-        print(f"[{self.policy_name}] Starting Training with Reward Shaping...")
-        self.abstract_mdp.value_iteration()
-        K = 100
-        total_rewards = []
-        for n_episode in range(self.max_episodes):
-            s_raw, _ = self.env.reset()
-            terminated = truncated = False
-            episode_reward = 0
-            while not (terminated or truncated):
-                a = self.select_action(s_raw)
-                ns_raw, reward, terminated, truncated, _ = self.env.step(a)
-                done = terminated or truncated
-                
-                phi_s = self.abstract_mdp.v_star[self.mapping_fn(s_raw)]
-                
-                # MODIFICA PAPER: Non Return-Invariant RS. 
-                # Nessun azzeramento del potenziale agli stati terminali.
-                phi_ns = self.abstract_mdp.v_star[self.mapping_fn(ns_raw)]
-                
-                shaping_signal = K * (self.gamma * phi_ns - phi_s)
-                
-                self.memory.push(s_raw, a, reward + shaping_signal, ns_raw, done)
-                self.optimize_model()
-                s_raw = ns_raw
-                episode_reward += reward
-            self.eps = max(self.eps_min, self.eps * self.eps_decay)
-            total_rewards.append(episode_reward)
-            if (n_episode + 1) % 500 == 0:
-                self._save_policy()
-                print(f"[{self.policy_name}] Episode {n_episode+1}/{self.max_episodes} | Avg Reward (last 100): {np.mean(total_rewards[-100:]):.2f}")
-        return np.array(total_rewards)
-
-    def train_goal_mdp(self):
-        print(f"[{self.policy_name}] Starting Goal-MDP Training with Reward Shaping...")
-        self.abstract_mdp.value_iteration()
-        K = 100
-        true_episode_rewards, goal_episode_rewards = [], []
-        for n_episode in range(self.max_episodes):
-            s_raw, _ = self.env.reset()
-            terminated = truncated = False
-            episode_true_reward = episode_goal_reward = 0
-            while not (terminated or truncated):
-                a = self.select_action(s_raw)
-                ns_raw, original_reward, terminated, truncated, _ = self.env.step(a)
-                done = terminated or truncated
-                episode_true_reward += original_reward
-                
-                env_goal_reward = original_reward if terminated else 0.0
-                
-                if terminated and self.mapping_fn(ns_raw) == self.abstract_mdp.goal_state:
-                    env_goal_reward += 100.0 # Dagli un vero motivo per restare a sinistra!
-
-                episode_goal_reward += env_goal_reward
-
-                phi_s = self.abstract_mdp.v_star[self.mapping_fn(s_raw)]
-                phi_ns = self.abstract_mdp.v_star[self.mapping_fn(ns_raw)]
-
-                shaping_signal = K * (self.gamma * phi_ns - phi_s)
-                
-                self.memory.push(s_raw, a, env_goal_reward + shaping_signal, ns_raw, done)
-                self.optimize_model()
-                s_raw = ns_raw
-                
-            self.eps = max(self.eps_min, self.eps * self.eps_decay)
-            true_episode_rewards.append(episode_true_reward)
-            goal_episode_rewards.append(episode_goal_reward)
-            if (n_episode + 1) % 500 == 0:
-                self._save_policy()
-                print(f"[{self.policy_name}] Episode {n_episode+1}/{self.max_episodes} | Avg True Reward (last 100): {np.mean(true_episode_rewards[-100:]):.2f}")
-        return np.array(true_episode_rewards), np.array(goal_episode_rewards)
 
     def _save_policy(self):
         os.makedirs("./policy", exist_ok=True)
