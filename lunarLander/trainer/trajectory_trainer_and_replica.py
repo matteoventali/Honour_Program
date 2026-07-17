@@ -103,6 +103,36 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, epsilon_history, 
     print(f"\n>>> Shaping reward breakdown plot successfully saved to: {filename}")
     plt.close(fig)
 
+def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png"):
+    """
+    Plots the replay buffer composition for N phases dynamically.
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    if not buffer_histories or not buffer_histories[0]:
+        print("Warning: Buffer history is empty, skipping plot generation.")
+        plt.close(fig)
+        return
+        
+    x_axis = np.arange(len(buffer_histories[0]))
+    num_phases = len(buffer_histories)
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, num_phases))
+    for idx, history in enumerate(buffer_histories):
+        ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=True).mean()
+        label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
+        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Phase q={idx} ({label})')
+    
+    ax.set_title(f"Replay Buffer Composition (MA Window = {window_size})", fontsize=14, fontweight='bold')
+    ax.set_ylabel("Fraction in Buffer", fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=num_phases, fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print(f"\n>>> Buffer fractions plot successfully saved to: {filename}")
+
 # =====================================================================
 # TRAINING LOOP
 # =====================================================================
@@ -115,6 +145,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     true_episode_rewards = []
     total_episode_rewards = []
     epsilon_history = []
+    buffer_histories = [[] for _ in range(num_phases)]
     
     # Log file
     log_handle = open(log_file, 'a') if log_file else None
@@ -232,6 +263,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
         true_episode_rewards.append(episode_true_reward)
         total_episode_rewards.append(episode_total_reward)
         epsilon_history.append(agent.eps)
+        
+        # Log buffer fractions at the end of the episode
+        for i in range(num_phases):
+            buffer_histories[i].append(agent.memory.q_fraction_onehot(i, num_phases))
 
         # Print progress every 100 episodes
         if (n_episode + 1) % 100 == 0:
@@ -271,7 +306,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
     if log_handle:
         log_handle.close()
 
-    return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(epsilon_history)
+    return np.array(true_episode_rewards), np.array(total_episode_rewards), np.array(epsilon_history), buffer_histories
 
 # =====================================================================
 # MAIN EXPERIMENT ORCHESTRATOR
@@ -320,7 +355,7 @@ def main():
         extra_state_dims=num_phases
     )
     
-    learning_curve, total_rewards, eps_history = run_sequential_training(
+    learning_curve, total_rewards, eps_history, buffer_history = run_sequential_training(
         env,
         agent_unified,
         abstract_mdp,
@@ -338,6 +373,7 @@ def main():
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
     plot_shaping_reward_breakdown(learning_curve, total_rewards, eps_history, window_size=500, filename="img/shaping_half_replication_breakdown.png")
+    plot_buffer_fractions(buffer_history, window_size=100, filename="img/buffer_fractions_replication.png")
 
     env.close()
 
