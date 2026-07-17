@@ -180,7 +180,7 @@ def main():
 
     # Hyperparameters
     abstract_goal_reward = 10000
-    env_goal_reward = 500
+    env_goal_reward = 10000
     use_multi_eps = False
     episodes = 1
     multi_eps_decay = 0.999
