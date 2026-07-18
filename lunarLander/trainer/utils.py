@@ -93,6 +93,49 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history=No
     print(f"\n>>> Comparison plot successfully saved to: {filename}")
     plt.close(fig)
 
+def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=None, window_size=100, title="Mean Performance with Variance", filename="img/mean_std_plot.png"):
+    """
+    Plots the mean and standard deviation of reward histories for one or two sets of runs.
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    def plot_single_curve(reward_histories, label, color):
+        if not reward_histories:
+            return
+        
+        # Ensure all histories have the same length by padding with NaNs if necessary
+        max_len = max(len(h) for h in reward_histories)
+        padded_histories = [np.pad(h, (0, max_len - len(h)), 'constant', constant_values=np.nan) for h in reward_histories]
+        
+        rewards_df = pd.DataFrame(padded_histories).T
+        mean_rewards = rewards_df.mean(axis=1)
+        std_rewards = rewards_df.std(axis=1)
+
+        # Apply moving average
+        mean_ma = mean_rewards.rolling(window=window_size, min_periods=1, center=True).mean()
+        std_ma = std_rewards.rolling(window=window_size, min_periods=1, center=True).mean()
+
+        x_axis = np.arange(len(mean_ma))
+        ax.plot(x_axis, mean_ma, label=f"Mean {label}", color=color, linewidth=2.5)
+        ax.fill_between(x_axis, mean_ma - std_ma, mean_ma + std_ma, color=color, alpha=0.2, label=f"Std Dev {label}")
+
+    if reward_histories_single:
+        plot_single_curve(reward_histories_single, "Single Epsilon", "black")
+
+    if reward_histories_multi:
+        plot_single_curve(reward_histories_multi, "Multi Epsilon", "blue")
+
+    ax.set_title(title, fontsize=15, fontweight='bold')
+    ax.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
+    ax.set_ylabel("Mean Episode Reward", fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc="lower right", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches='tight')
+    print(f"\n>>> Mean/Std plot successfully saved to: {filename}")
+    plt.close(fig)
+
 def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png"):
     """
     Plots the replay buffer composition for N phases dynamically.
