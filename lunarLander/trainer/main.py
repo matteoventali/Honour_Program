@@ -89,7 +89,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 if abstract_s != abstract_ns:
                     phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
                     phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
-                    shaping_signal = K * (phi_ns - phi_s)
+                    shaping_signal = K * (abstract_mdp.gamma * phi_ns - phi_s)
             
             total_step_reward = env_goal_reward + shaping_signal
             episode_total_reward += total_step_reward
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--config", 
-        type=str, 
+        type=str,
         default="trajectory.json", 
         help="Path to the trajectory configuration file."
     )
