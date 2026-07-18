@@ -133,6 +133,45 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     plt.close(fig)
     print(f"\n>>> Buffer fractions plot successfully saved to: {filename}")
 
+def plot_replication_comparison(replica_rewards, no_replica_rewards, epsilon_history, window_size=100, filename="img/replication_comparison.png"):
+    """
+    Compares the learning curves of an agent with experience replication vs. one without.
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax1 = plt.subplots(figsize=(12, 7))
+
+    # Calculate moving averages
+    replica_ma = pd.Series(replica_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    no_replica_ma = pd.Series(no_replica_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    x_axis = np.arange(len(replica_rewards))
+
+    # Plot curves
+    ax1.plot(x_axis, no_replica_ma, color='red', linestyle='-', linewidth=2, label='Shaping Only (No Replication)')
+    ax1.plot(x_axis, replica_ma, color='blue', linestyle='-', linewidth=2.5, label='Shaping with Experience Replication')
+
+    # Formatting
+    ax1.set_title("Performance Comparison: Experience Replication", fontsize=15, fontweight='bold')
+    ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
+    ax1.set_ylabel("Episode Reward", fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.5)
+
+    # Secondary axis for Epsilon
+    ax2 = ax1.twinx()
+    ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+    ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
+    ax2.tick_params(axis='y', labelcolor='orange')
+    ax2.set_ylim(0, 1.05)
+
+    # Combine and display legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=11)
+
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches='tight')
+    print(f"\n>>> Replication comparison plot successfully saved to: {filename}")
+    plt.close(fig)
+
 # =====================================================================
 # TRAINING LOOP
 # =====================================================================
@@ -250,13 +289,14 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                         
                         # 3. Add the replicated transition to the replay buffer
                         # We use the 'done' from the original transition
-                        agent.memory.push(s_aug_rep, a, shaping_signal_rep, ns_aug_rep, done)
+                        agent.memory.push(s_aug_rep, a, shaping_signal_rep, ns_aug_rep, False)
 
             # Optimize model
             agent.optimize_model()
 
             s_raw = ns_raw
             s_aug = ns_aug
+            q = next_q
             
         # Decay epsilon at the end of the episode
         agent.eps = max(agent.eps_min, agent.eps * agent.eps_decay)
@@ -298,11 +338,10 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
                 log_handle.flush() # Ensure data is written immediately
 
         # Policy saving
-        if n_episode + 1 % 250 == 0:
+        if (n_episode + 1) % 250 == 0:
             agent.policy_name = f"replica_policy_ep_{n_episode + 1}.pth"
             agent._save_policy()
 
-    
     if log_handle:
         log_handle.close()
 
@@ -317,12 +356,12 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 100
+    episodes = 6500
     goal_reward = 10000
     gamma = 0.999
     eps_decay = 0.9995
     K_scaling = 1
-    replication_episodes_count = episodes // 2
+    replication_episodes_count = 2000
     
     print("\n1. Initializing Environment and Abstract MDP...")
     env = gym.make("LunarLander-v3", continuous=False)
@@ -334,18 +373,17 @@ def main():
     print(f"Training for this trajectory: {route_waypoints}")
     num_phases = len(route_waypoints)
 
-    # -----------------------------------------------------------------
-    # PLOTTING RESULTS
-    # -----------------------------------------------------------------
     abstract_mdp = NPhaseWaypointMDP(waypoints=route_waypoints, gamma=gamma, goal_reward=goal_reward)
     abstract_mdp.value_iteration()
 
     print("   -> Plotting Value Functions (V*) Heatmaps...")
     save_sequential_heatmaps(abstract_mdp, filename_prefix="replication_exp")
+
+    # --- EXPERIMENT 1: AGENT WITH REPLICATION ---
     print("\n=======================================================")
     print(f"TRAINING: AGENT WITH REPLICATION FOR THE FIRST {replication_episodes_count} EPISODES")
     print("=======================================================")
-    agent_unified = HierarchicalDQNLearner(
+    agent_with_replica = HierarchicalDQNLearner(
         env=env,
         max_episodes=episodes,
         gamma=gamma,
@@ -355,9 +393,9 @@ def main():
         extra_state_dims=num_phases
     )
     
-    learning_curve, total_rewards, eps_history, buffer_history = run_sequential_training(
+    replica_rewards, total_rewards_rep, eps_history_rep, buffer_history_rep = run_sequential_training(
         env,
-        agent_unified,
+        agent_with_replica,
         abstract_mdp,
         episodes,
         use_shaping=True,
@@ -367,13 +405,44 @@ def main():
         goal_reward = goal_reward,
         log_file=f"logs/shaping_and_replica_{replication_episodes_count}_episodes.log"
     )
-    
+
+    # --- EXPERIMENT 2: AGENT WITHOUT REPLICATION (CONTROL GROUP) ---
+    print("\n=======================================================")
+    print("TRAINING: AGENT WITHOUT REPLICATION (SHAPING ONLY)")
+    print("=======================================================")
+    agent_no_replica = HierarchicalDQNLearner(
+        env=env,
+        max_episodes=episodes,
+        gamma=gamma,
+        eps_decay=eps_decay,
+        use_ddqn=True,
+        policy_name="shaping_no_replication_policy.pth",
+        extra_state_dims=num_phases
+    )
+
+    no_replica_rewards, _, _, _ = run_sequential_training(
+        env,
+        agent_no_replica,
+        abstract_mdp,
+        episodes,
+        use_shaping=True,
+        use_replication=False, # <-- REPLICATION DISABLED
+        replication_episodes=0,
+        K=K_scaling,
+        goal_reward=goal_reward,
+        log_file="logs/shaping_only_no_replica.log"
+    )
+
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
     # -----------------------------------------------------------------
     print("\n3. Generating plots...")
-    plot_shaping_reward_breakdown(learning_curve, total_rewards, eps_history, window_size=500, filename="img/shaping_half_replication_breakdown.png")
-    plot_buffer_fractions(buffer_history, window_size=100, filename="img/buffer_fractions_replication.png")
+    # Plot for the agent with replication
+    plot_shaping_reward_breakdown(replica_rewards, total_rewards_rep, eps_history_rep, window_size=100, filename="img/shaping_half_replication_breakdown.png")
+    plot_buffer_fractions(buffer_history_rep, window_size=100, filename="img/buffer_fractions_replication.png")
+
+    # Final comparison plot
+    plot_replication_comparison(replica_rewards, no_replica_rewards, eps_history_rep, window_size=100, filename="img/replication_comparison.png")
 
     env.close()
 
