@@ -63,6 +63,36 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
         plt.close()
         print(f" -> Generated V* Heatmap for Phase q={current_q}")
 
+def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history=None, window_size=100, filename="img/baseline_vs_shaping.png", title="Learning Curve Comparison", baseline_label="Baseline", shaping_label="Shaping"):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    fig, ax1 = plt.subplots(figsize=(12, 7))
+    baseline_ma = pd.Series(baseline_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    x_axis = np.arange(len(baseline_rewards))
+    ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label=baseline_label)
+    ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label=shaping_label)
+    ax1.set_title(title, fontsize=15, fontweight='bold')
+    ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
+    ax1.set_ylabel("Episode Reward", fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.5)
+    
+    if epsilon_history:
+        ax2 = ax1.twinx()
+        ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+        ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
+        ax2.tick_params(axis='y', labelcolor='orange')
+        ax2.set_ylim(0, 1.05)
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=11)
+    else:
+        ax1.legend(loc="lower right", fontsize=11)
+
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches='tight')
+    print(f"\n>>> Comparison plot successfully saved to: {filename}")
+    plt.close(fig)
+
 def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png"):
     """
     Plots the replay buffer composition for N phases dynamically.
@@ -118,14 +148,20 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     # Plot Epsilon Decays (Right Y-Axis)
     ax2 = ax1.twinx()
     
-    num_phases = len(eps_histories)
-    # Generate dynamic colors using a colormap (e.g., plasma or inferno) so lines are distinct
-    colors = plt.cm.plasma(np.linspace(0, 0.8, num_phases))
-    
-    for idx in range(num_phases):
-        label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
-        ax2.plot(x_axis, eps_histories[idx], color=colors[idx], linestyle='--', linewidth=2, alpha=0.8, label=f'ε Decay (q={idx}: {label})')
-    
+    # Check if it's multi-epsilon or single epsilon history
+    is_multi_eps = any(isinstance(i, list) for i in eps_histories)
+
+    if is_multi_eps:
+        num_phases = len(eps_histories)
+        colors = plt.cm.plasma(np.linspace(0, 0.8, num_phases))
+        for idx in range(num_phases):
+            label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
+            ax2.plot(x_axis, eps_histories[idx], color=colors[idx], linestyle='--', linewidth=2, alpha=0.8, label=f'ε Decay (q={idx}: {label})')
+    else: # Single epsilon history
+        # The history might be wrapped in another list, get the first element if so.
+        single_eps_history = eps_histories[0] if isinstance(eps_histories[0], list) else eps_histories
+        ax2.plot(x_axis, single_eps_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+
     ax2.set_ylabel("Exploration Rate (ε)", color='black', fontsize=12)
     ax2.set_ylim(-0.05, 1.05)
 
@@ -134,7 +170,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     lines2, labels2 = ax2.get_legend_handles_labels()
     
     # Dynamically calculate legend columns based on number of items to keep it compact
-    legend_cols = max(2, (num_phases + 2) // 2)
+    legend_cols = max(2, (len(labels1) + len(labels2)) // 2)
     
     ax1.legend(
         lines1 + lines2, labels1 + labels2, 

@@ -6,7 +6,7 @@ import json
 
 from abstract_mdps import NPhaseWaypointMDP
 from agent import HierarchicalDQNLearner
-from utils import phi_mapping_sequential, save_sequential_heatmaps, plot_buffer_fractions, plot_shaping_reward_breakdown
+from utils import phi_mapping_sequential, save_sequential_heatmaps, plot_buffer_fractions, plot_shaping_reward_breakdown, plot_comparison_curves
 
 def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
     num_phases = abstract_mdp.num_phases
@@ -171,53 +171,106 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
 
     if log_handle: log_handle.close()
-    return true_episode_rewards, total_episode_rewards, eps_histories, buffer_histories, hits_history
+    
+    # Return the correct epsilon history based on the mode
+    final_eps_history = eps_single_history if not use_double_epsilon else eps_histories
+    return true_episode_rewards, total_episode_rewards, final_eps_history, buffer_histories, hits_history
 
-def main():
-    print("=== STARTING N-PHASE ABLATION STUDY ===")
+def main(args):
+    print(f"=== STARTING N-PHASE ABLATION STUDY (Mode: {args.mode}) ===")
     os.makedirs("logs", exist_ok=True)
     env = gym.make("LunarLander-v3", continuous=False)
 
     # Hyperparameters
     abstract_goal_reward = 10000
     env_goal_reward = 10000
-    use_multi_eps = False
-    episodes = 1
-    multi_eps_decay = 0.999
-    sing_eps_decay = 0.9996
     gamma = 0.99
-    eps_decay = multi_eps_decay if use_multi_eps else sing_eps_decay
+    plot_window_size = 500
     
     # Loading configuration
-    with open('trajectory.json', 'r') as f:
+    with open(args.config, 'r') as f:
         config = json.load(f)
     route_waypoints = [tuple(wp) for wp in config['waypoints']]
-    #route_waypoints = [(1,8), (5,6), (8,8)]
+    #route_waypoints = []
     print(f"Training for this trajectory {route_waypoints}")
     num_phases = len(route_waypoints)
     
     # Learning phase
     abstract_mdp = NPhaseWaypointMDP(waypoints=route_waypoints, gamma=gamma, goal_reward=abstract_goal_reward)
     abstract_mdp.value_iteration()
-    save_sequential_heatmaps(abstract_mdp)
+    save_sequential_heatmaps(abstract_mdp, filename_prefix=f"{args.mode}_exp")
 
-    agent_shaping = HierarchicalDQNLearner(
-        env=env, max_episodes=episodes, eps_decay=eps_decay, use_ddqn=True, 
-        extra_state_dims=num_phases
-    )
-    true_rewards, total_rewards, eps_histories, buffers, hits = run_sequential_training(
-        env, agent_shaping, abstract_mdp, episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=True, 
-        log_file="logs/n_phase_training.log"
-    )
+    # --- Training Runs ---
+    if args.mode == 'single' or args.mode == 'comparison':
+        print("\n" + "="*50 + "\nTRAINING: SHAPING WITH SINGLE EPSILON\n" + "="*50)
+        agent_single_eps = HierarchicalDQNLearner(
+            env=env, max_episodes=args.episodes, eps_decay=0.9996, use_ddqn=True, 
+            extra_state_dims=num_phases
+        )
+        true_rewards_single, total_rewards_single, eps_histories_single, buffers_single, _ = run_sequential_training(
+            env, agent_single_eps, abstract_mdp, args.episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=False, 
+            log_file="logs/single_epsilon_training.log"
+        )        
+        # Generate individual plots in both 'single' and 'comparison' modes
+        print("Generating plots for single epsilon run...")
+        plot_buffer_fractions(buffers_single, filename="img/buffer_fractions_single_eps.png", window_size=plot_window_size)
+        plot_shaping_reward_breakdown(true_rewards_single, total_rewards_single, eps_histories_single, window_size=plot_window_size, 
+            filename="img/reward_breakdown_single_eps.png"
+        )
 
-    # Plotting phase
-    print("Generating plots ...")
-    plot_buffer_fractions(buffers, filename="img/buffer_fractions_n_phases.png", window_size=500)
-    plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=500, 
-        filename="img/reward_breakdown_n_phases.png"
-    )
+    if args.mode == 'multi' or args.mode == 'comparison':
+        print("\n" + "="*50 + "\nTRAINING: SHAPING WITH MULTI EPSILON\n" + "="*50)
+        agent_multi_eps = HierarchicalDQNLearner(
+            env=env, max_episodes=args.episodes, eps_decay=0.999, use_ddqn=True, 
+            extra_state_dims=num_phases
+        )
+        true_rewards_multi, total_rewards_multi, eps_histories_multi, buffers_multi, _ = run_sequential_training(
+            env, agent_multi_eps, abstract_mdp, args.episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=True, 
+            log_file="logs/multi_epsilon_training.log"
+        )        
+        # Generate individual plots in both 'multi' and 'comparison' modes
+        print("Generating plots for multi epsilon run...")
+        plot_buffer_fractions(buffers_multi, filename="img/buffer_fractions_multi_eps.png", window_size=plot_window_size)
+        plot_shaping_reward_breakdown(true_rewards_multi, total_rewards_multi, eps_histories_multi, window_size=plot_window_size, 
+            filename="img/reward_breakdown_multi_eps.png"
+        )
+
+    # --- Comparison Plot ---
+    if args.mode == 'comparison':
+        print("\nGenerating comparison plot...")
+        plot_comparison_curves(
+            baseline_rewards=true_rewards_single,
+            shaping_rewards=true_rewards_multi,
+            window_size=plot_window_size,
+            filename="img/single_vs_multi_epsilon_comparison.png",
+            title="Single Epsilon vs. Multi Epsilon Performance",
+            baseline_label="Single Epsilon",
+            shaping_label="Multi Epsilon"
+        )
+
     env.close()
     print("End")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run N-Phase DQN training with different epsilon strategies.")
+    parser.add_argument(
+        "--mode", 
+        type=str, 
+        default="comparison", 
+        choices=['single', 'multi', 'comparison'],
+        help="Execution mode: 'single' for single epsilon, 'multi' for multi-epsilon, 'comparison' for both."
+    )
+    parser.add_argument(
+        "--episodes", 
+        type=int, 
+        default=1, 
+        help="Number of training episodes."
+    )
+    parser.add_argument(
+        "--config", 
+        type=str, 
+        default="trajectory.json", 
+        help="Path to the trajectory configuration file."
+    )
+    args = parser.parse_args()
+    main(args)
