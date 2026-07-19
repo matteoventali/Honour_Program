@@ -1,0 +1,458 @@
+==================================================
+STARTING NEW TRAINING RUN
+==================================================
+[SHAPING (Replica: ON)] Episode 100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.015652
+  Epsilon                 : 0.960782
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 3, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.314940
+  Epsilon                 : 0.923102
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 4, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.316222
+  Epsilon                 : 0.886899
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 5, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.510970
+  Epsilon                 : 0.852117
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 7, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -34.753938
+  Epsilon                 : 0.818698
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 12, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 600/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.708981
+  Epsilon                 : 0.786590
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 13, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.407028
+  Epsilon                 : 0.755741
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 15, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 800/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -38.712931
+  Epsilon                 : 0.726103
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 15, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 900/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -32.384945
+  Epsilon                 : 0.697626
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 22, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1000/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -33.570429
+  Epsilon                 : 0.670266
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 25, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -35.744772
+  Epsilon                 : 0.643980
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.009548
+  Epsilon                 : 0.618724
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.009548
+  Epsilon                 : 0.594459
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.403985
+  Epsilon                 : 0.571145
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.995343
+  Epsilon                 : 0.548746
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1600/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -40.191970
+  Epsilon                 : 0.527225
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -40.290481
+  Epsilon                 : 0.506548
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1800/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.995146
+  Epsilon                 : 0.486682
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 1900/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.896833
+  Epsilon                 : 0.467595
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2000/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.601400
+  Epsilon                 : 0.449257
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -40.093361
+  Epsilon                 : 0.431638
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.499435
+  Epsilon                 : 0.414710
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 29, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -39.201333
+  Epsilon                 : 0.398446
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 31, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -35.346383
+  Epsilon                 : 0.382819
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 37, Goal: 0
+
+[SHAPING (Replica: ON)] Episode 2500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -31.494613
+  Epsilon                 : 0.367806
+  Buffer Fractions        : q0(WP1): 50.00%, q1(Goal): 50.00%
+  Hits (Cumulative)       : WP1: 41, Goal: 0
+
+[SHAPING (Replica: OFF)] Episode 2600/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -22.002819
+  Epsilon                 : 0.353381
+  Buffer Fractions        : q0(WP1): 62.90%, q1(Goal): 37.10%
+  Hits (Cumulative)       : WP1: 51, Goal: 0
+
+[SHAPING (Replica: OFF)] Episode 2700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -11.521689
+  Epsilon                 : 0.339522
+  Buffer Fractions        : q0(WP1): 72.25%, q1(Goal): 27.76%
+  Hits (Cumulative)       : WP1: 63, Goal: 0
+
+[SHAPING (Replica: OFF)] Episode 2800/6500
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 76.423689
+  Epsilon                 : 0.326207
+  Buffer Fractions        : q0(WP1): 83.90%, q1(Goal): 16.10%
+  Hits (Cumulative)       : WP1: 67, Goal: 1
+
+[SHAPING (Replica: OFF)] Episode 2900/6500
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 91.170501
+  Epsilon                 : 0.313413
+  Buffer Fractions        : q0(WP1): 93.35%, q1(Goal): 6.65%
+  Hits (Cumulative)       : WP1: 86, Goal: 2
+
+[SHAPING (Replica: OFF)] Episode 3000/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -23.882034
+  Epsilon                 : 0.301122
+  Buffer Fractions        : q0(WP1): 95.28%, q1(Goal): 4.72%
+  Hits (Cumulative)       : WP1: 92, Goal: 2
+
+[SHAPING (Replica: OFF)] Episode 3100/6500
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 85.020292
+  Epsilon                 : 0.289312
+  Buffer Fractions        : q0(WP1): 95.79%, q1(Goal): 4.21%
+  Hits (Cumulative)       : WP1: 96, Goal: 3
+
+[SHAPING (Replica: OFF)] Episode 3200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -9.827686
+  Epsilon                 : 0.277966
+  Buffer Fractions        : q0(WP1): 94.76%, q1(Goal): 5.24%
+  Hits (Cumulative)       : WP1: 111, Goal: 3
+
+[SHAPING (Replica: OFF)] Episode 3300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -19.149714
+  Epsilon                 : 0.267065
+  Buffer Fractions        : q0(WP1): 97.28%, q1(Goal): 2.72%
+  Hits (Cumulative)       : WP1: 111, Goal: 3
+
+[SHAPING (Replica: OFF)] Episode 3400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -16.582895
+  Epsilon                 : 0.256591
+  Buffer Fractions        : q0(WP1): 97.39%, q1(Goal): 2.61%
+  Hits (Cumulative)       : WP1: 115, Goal: 3
+
+[SHAPING (Replica: OFF)] Episode 3500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -14.408763
+  Epsilon                 : 0.246528
+  Buffer Fractions        : q0(WP1): 97.87%, q1(Goal): 2.13%
+  Hits (Cumulative)       : WP1: 118, Goal: 3
+
+[SHAPING (Replica: OFF)] Episode 3600/6500
+  Avg Reward              : 400.000000
+  Avg With Shaping Reward : 396.723438
+  Epsilon                 : 0.236860
+  Buffer Fractions        : q0(WP1): 96.81%, q1(Goal): 3.19%
+  Hits (Cumulative)       : WP1: 140, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 3700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -13.894216
+  Epsilon                 : 0.227570
+  Buffer Fractions        : q0(WP1): 95.76%, q1(Goal): 4.24%
+  Hits (Cumulative)       : WP1: 148, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 3800/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -12.522801
+  Epsilon                 : 0.218645
+  Buffer Fractions        : q0(WP1): 95.52%, q1(Goal): 4.48%
+  Hits (Cumulative)       : WP1: 152, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 3900/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -12.814528
+  Epsilon                 : 0.210071
+  Buffer Fractions        : q0(WP1): 97.89%, q1(Goal): 2.11%
+  Hits (Cumulative)       : WP1: 152, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 4000/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : 1.211283
+  Epsilon                 : 0.201832
+  Buffer Fractions        : q0(WP1): 99.44%, q1(Goal): 0.56%
+  Hits (Cumulative)       : WP1: 152, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 4100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -33.036704
+  Epsilon                 : 0.193916
+  Buffer Fractions        : q0(WP1): 99.41%, q1(Goal): 0.59%
+  Hits (Cumulative)       : WP1: 157, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 4200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -2.361444
+  Epsilon                 : 0.186311
+  Buffer Fractions        : q0(WP1): 99.73%, q1(Goal): 0.27%
+  Hits (Cumulative)       : WP1: 159, Goal: 7
+
+[SHAPING (Replica: OFF)] Episode 4300/6500
+  Avg Reward              : 200.000000
+  Avg With Shaping Reward : 190.664661
+  Epsilon                 : 0.179005
+  Buffer Fractions        : q0(WP1): 99.02%, q1(Goal): 0.98%
+  Hits (Cumulative)       : WP1: 166, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -0.472582
+  Epsilon                 : 0.171984
+  Buffer Fractions        : q0(WP1): 99.11%, q1(Goal): 0.89%
+  Hits (Cumulative)       : WP1: 166, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -6.513817
+  Epsilon                 : 0.165239
+  Buffer Fractions        : q0(WP1): 98.99%, q1(Goal): 1.01%
+  Hits (Cumulative)       : WP1: 167, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4600/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -9.874538
+  Epsilon                 : 0.158759
+  Buffer Fractions        : q0(WP1): 98.69%, q1(Goal): 1.31%
+  Hits (Cumulative)       : WP1: 168, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -8.060893
+  Epsilon                 : 0.152533
+  Buffer Fractions        : q0(WP1): 98.31%, q1(Goal): 1.69%
+  Hits (Cumulative)       : WP1: 172, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4800/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : 4.657367
+  Epsilon                 : 0.146551
+  Buffer Fractions        : q0(WP1): 98.31%, q1(Goal): 1.69%
+  Hits (Cumulative)       : WP1: 172, Goal: 9
+
+[SHAPING (Replica: OFF)] Episode 4900/6500
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 104.863908
+  Epsilon                 : 0.140803
+  Buffer Fractions        : q0(WP1): 98.85%, q1(Goal): 1.15%
+  Hits (Cumulative)       : WP1: 174, Goal: 10
+
+[SHAPING (Replica: OFF)] Episode 5000/6500
+  Avg Reward              : 100.000000
+  Avg With Shaping Reward : 104.967752
+  Epsilon                 : 0.135281
+  Buffer Fractions        : q0(WP1): 99.71%, q1(Goal): 0.29%
+  Hits (Cumulative)       : WP1: 175, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : 0.947219
+  Epsilon                 : 0.129976
+  Buffer Fractions        : q0(WP1): 98.85%, q1(Goal): 1.15%
+  Hits (Cumulative)       : WP1: 186, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -12.810669
+  Epsilon                 : 0.124878
+  Buffer Fractions        : q0(WP1): 98.69%, q1(Goal): 1.31%
+  Hits (Cumulative)       : WP1: 192, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -6.989269
+  Epsilon                 : 0.119981
+  Buffer Fractions        : q0(WP1): 98.53%, q1(Goal): 1.47%
+  Hits (Cumulative)       : WP1: 201, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -1.865153
+  Epsilon                 : 0.115275
+  Buffer Fractions        : q0(WP1): 98.91%, q1(Goal): 1.09%
+  Hits (Cumulative)       : WP1: 203, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : 4.075833
+  Epsilon                 : 0.110754
+  Buffer Fractions        : q0(WP1): 98.38%, q1(Goal): 1.62%
+  Hits (Cumulative)       : WP1: 211, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5600/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -3.734587
+  Epsilon                 : 0.106411
+  Buffer Fractions        : q0(WP1): 98.69%, q1(Goal): 1.31%
+  Hits (Cumulative)       : WP1: 211, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5700/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -31.764784
+  Epsilon                 : 0.102238
+  Buffer Fractions        : q0(WP1): 99.25%, q1(Goal): 0.75%
+  Hits (Cumulative)       : WP1: 211, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5800/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -18.244453
+  Epsilon                 : 0.098228
+  Buffer Fractions        : q0(WP1): 99.25%, q1(Goal): 0.75%
+  Hits (Cumulative)       : WP1: 213, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 5900/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -25.430748
+  Epsilon                 : 0.094376
+  Buffer Fractions        : q0(WP1): 99.22%, q1(Goal): 0.78%
+  Hits (Cumulative)       : WP1: 218, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6000/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -17.536992
+  Epsilon                 : 0.090674
+  Buffer Fractions        : q0(WP1): 99.32%, q1(Goal): 0.68%
+  Hits (Cumulative)       : WP1: 219, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6100/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -28.795643
+  Epsilon                 : 0.087118
+  Buffer Fractions        : q0(WP1): 99.32%, q1(Goal): 0.68%
+  Hits (Cumulative)       : WP1: 219, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6200/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -14.896194
+  Epsilon                 : 0.083702
+  Buffer Fractions        : q0(WP1): 99.31%, q1(Goal): 0.69%
+  Hits (Cumulative)       : WP1: 220, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6300/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -13.515953
+  Epsilon                 : 0.080419
+  Buffer Fractions        : q0(WP1): 99.63%, q1(Goal): 0.37%
+  Hits (Cumulative)       : WP1: 221, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6400/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -11.544072
+  Epsilon                 : 0.077265
+  Buffer Fractions        : q0(WP1): 99.68%, q1(Goal): 0.32%
+  Hits (Cumulative)       : WP1: 221, Goal: 11
+
+[SHAPING (Replica: OFF)] Episode 6500/6500
+  Avg Reward              : 0.000000
+  Avg With Shaping Reward : -1.382994
+  Epsilon                 : 0.074235
+  Buffer Fractions        : q0(WP1): 99.70%, q1(Goal): 0.30%
+  Hits (Cumulative)       : WP1: 221, Goal: 11
+
