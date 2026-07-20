@@ -176,7 +176,7 @@ def plot_replication_comparison(replica_rewards, no_replica_rewards, epsilon_his
 # TRAINING LOOP
 # =====================================================================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, goal_reward=10000, use_replication=False, replication_episodes=0, K=1.0, log_file=None, debug_replication=False):
+def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True, goal_reward=10000, use_replication=False, replication_episodes=0, K=1.0, log_file=None):
     """
     Executes the training loop for the sequential task.
     """
