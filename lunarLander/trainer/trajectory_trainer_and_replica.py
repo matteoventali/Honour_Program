@@ -269,7 +269,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, use_shaping=True
             # If replication is active, for each real transition (s,a,s') in phase q,
             # we replicate it for all other phases q_ != q.
             if use_replication and (n_episode < replication_episodes):
-                for replicated_q_idx in range(num_phases):
+                #for replicated_q_idx in range(num_phases):
+                for replicated_q_idx in range(q_before_transition + 1, num_phases):
                     # Skip replication for the phase where the real transition occurred
                     if replicated_q_idx != q_before_transition:
                         # 1. Create augmented states for the replicated phase

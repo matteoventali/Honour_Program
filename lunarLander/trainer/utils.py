@@ -193,8 +193,8 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     # Plot Epsilon Decays (Right Y-Axis)
     ax2 = ax1.twinx()
     
-    # Check if it's multi-epsilon or single epsilon history
-    is_multi_eps = any(isinstance(i, list) for i in eps_histories)
+    # Check if eps_histories is a list of lists/arrays (multi-epsilon case)
+    is_multi_eps = any(isinstance(i, (list, np.ndarray)) for i in eps_histories)
 
     if is_multi_eps:
         num_phases = len(eps_histories)
@@ -203,12 +203,23 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
             label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
             ax2.plot(x_axis, eps_histories[idx], color=colors[idx], linestyle='--', linewidth=2, alpha=0.8, label=f'ε Decay (q={idx}: {label})')
     else: # Single epsilon history
-        # The history might be wrapped in another list, get the first element if so.
-        single_eps_history = eps_histories[0] if isinstance(eps_histories[0], list) else eps_histories
-        ax2.plot(x_axis, single_eps_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+        ax2.plot(x_axis, eps_histories, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+
+    # Align the zero of both y-axes for better visual comparison
+    y1_min, y1_max = ax1.get_ylim()
+    y2_min, y2_max = -0.05, 1.05 # Epsilon range is fixed
+    
+    # Align y-axes so that the zero points match.
+    if y1_min < 0 < y1_max:
+        # Calculate the proportional position of zero on the reward axis
+        zero_ratio = -y1_min / (y1_max - y1_min)
+        # Set the epsilon axis limits so its zero is at the same ratio
+        new_y2_min = -zero_ratio * y2_max / (1 - zero_ratio)
+        ax2.set_ylim(new_y2_min, y2_max)
+    else:
+        ax2.set_ylim(y2_min, y2_max)
 
     ax2.set_ylabel("Exploration Rate (ε)", color='black', fontsize=12)
-    ax2.set_ylim(-0.05, 1.05)
 
     # Combine Legends from both axes
     lines1, labels1 = ax1.get_legend_handles_labels()
