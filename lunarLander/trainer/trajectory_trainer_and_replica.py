@@ -357,7 +357,7 @@ def main():
     os.makedirs("logs", exist_ok=True)
     
     # HYPERPARAMETERS
-    episodes = 6500
+    episodes = 1
     goal_reward = 10000
     gamma = 0.999
     eps_decay = 0.9995
@@ -408,31 +408,31 @@ def main():
     )
 
     # --- EXPERIMENT 2: AGENT WITHOUT REPLICATION (CONTROL GROUP) ---
-    print("\n=======================================================")
-    print("TRAINING: AGENT WITHOUT REPLICATION (SHAPING ONLY)")
-    print("=======================================================")
-    agent_no_replica = HierarchicalDQNLearner(
-        env=env,
-        max_episodes=episodes,
-        gamma=gamma,
-        eps_decay=eps_decay,
-        use_ddqn=True,
-        policy_name="shaping_no_replication_policy.pth",
-        extra_state_dims=num_phases
-    )
-
-    no_replica_rewards, _, _, _ = run_sequential_training(
-        env,
-        agent_no_replica,
-        abstract_mdp,
-        episodes,
-        use_shaping=True,
-        use_replication=False, # <-- REPLICATION DISABLED
-        replication_episodes=0,
-        K=K_scaling,
-        goal_reward=goal_reward,
-        log_file="logs/shaping_only_no_replica.log"
-    )
+    #print("\n=======================================================")
+    #print("TRAINING: AGENT WITHOUT REPLICATION (SHAPING ONLY)")
+    #print("=======================================================")
+    #agent_no_replica = HierarchicalDQNLearner(
+    #    env=env,
+    #    max_episodes=episodes,
+    #    gamma=gamma,
+    #    eps_decay=eps_decay,
+    #    use_ddqn=True,
+    #    policy_name="shaping_no_replication_policy.pth",
+    #    extra_state_dims=num_phases
+    #)
+#
+    #no_replica_rewards, _, _, _ = run_sequential_training(
+    #    env,
+    #    agent_no_replica,
+    #    abstract_mdp,
+    #    episodes,
+    #    use_shaping=True,
+    #    use_replication=False, # <-- REPLICATION DISABLED
+    #    replication_episodes=0,
+    #    K=K_scaling,
+    #    goal_reward=goal_reward,
+    #    log_file="logs/shaping_only_no_replica.log"
+    #)
 
     # -----------------------------------------------------------------
     # PLOTTING RESULTS
@@ -443,7 +443,7 @@ def main():
     plot_buffer_fractions(buffer_history_rep, window_size=100, filename="img/buffer_fractions_replication.png")
 
     # Final comparison plot
-    plot_replication_comparison(replica_rewards, no_replica_rewards, eps_history_rep, window_size=100, filename="img/replication_comparison.png")
+    #plot_replication_comparison(replica_rewards, no_replica_rewards, eps_history_rep, window_size=100, filename="img/replication_comparison.png")
 
     env.close()
 
