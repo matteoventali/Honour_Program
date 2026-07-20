@@ -17,7 +17,9 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
     """
     Generates and saves a separate heatmap for V* for each phase defined in the MDP.
     """
-    os.makedirs("img/heatmaps", exist_ok=True)
+    # Construct the full path for the heatmap and ensure the directory exists.
+    base_output_dir = os.path.dirname(filename_prefix)
+    os.makedirs(f"img/heatmaps/{base_output_dir}", exist_ok=True)
     width, height, num_phases = abstract_mdp.width, abstract_mdp.height, abstract_mdp.num_phases
     
     # Extract global min/max for consistent colormap scaling
