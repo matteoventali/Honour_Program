@@ -1,0 +1,7 @@
+{
+  "formula": "F(wp1 & X(F(goal)))",
+  "waypoints_dict": {
+    "wp1": [1,8],
+    "goal": [8,8]
+  }
+}
