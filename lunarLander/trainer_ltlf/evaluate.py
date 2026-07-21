@@ -13,6 +13,7 @@ import torch.nn.functional as F
 # Modular imports to reuse existing components
 from agent import QNetwork
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
+from utils import phi_mapping_sequential
 
 # =====================================================================
 # UTILITY FUNCTIONS
@@ -35,6 +36,12 @@ def evaluate_policy_worker(policy_filename, episodes, render, formula, waypoints
     """
     policy_path = os.path.join("./policy/", policy_filename)
     automaton = LTLfAutomaton(formula)
+    
+    # Instantiate the abstract MDP to reuse its logic, just like in training
+    abstract_mdp = LTLfWaypointMDP(
+        waypoints_dict=waypoints_dict, 
+        ltlf_automaton=automaton
+    )
     num_states = len(automaton.states)
     extra_dims = num_states
     
@@ -66,7 +73,7 @@ def evaluate_policy_worker(policy_filename, episodes, render, formula, waypoints
     # Dynamic success tracker for N phases
     success_counts = [0] * num_states
 
-    for ep in range(episodes):
+    for _ in range(episodes):
         obs, _ = env.reset()
         terminated = truncated = False
         total_reward = 0
@@ -87,20 +94,23 @@ def evaluate_policy_worker(policy_filename, episodes, render, formula, waypoints
             
             next_obs, _, terminated, truncated, _ = env.step(action)
             
-            # Abstract the new physical state
-            x_pos = np.clip((next_obs[0] + 1) / 2 * (grid_w - 1), 0, grid_w - 1)
-            y_pos = np.clip(next_obs[1] / 1.5 * (grid_h - 1), 0, grid_h - 1)
-            abstract_x_ns, abstract_y_ns = int(x_pos), int(y_pos)
+            # Abstract the new physical state using the same function as in training
+            abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(next_obs, q, grid_w, grid_h)
             
             # --- LTLf State Transition Logic ---
-            truth_assignment = {prop: (abstract_x_ns == coords[0] and abstract_y_ns == coords[1]) for prop, coords in waypoints_dict.items()}
+            truth_assignment = abstract_mdp._get_truth_assignment(abstract_x_ns, abstract_y_ns)
             next_q = automaton.get_next_q(q, truth_assignment)
-            
+
             step_reward = 0.0
-            if automaton.is_goal_reached(next_q):
-                step_reward = goal_reward
-                print(f"[{policy_filename}] Final Goal State Reached (q={next_q})")
-                terminated = True
+            # Se c'è una transizione di stato nell'automa (waypoint raggiunto)
+            if next_q != q:
+                if automaton.is_goal_reached(next_q):
+                    step_reward = goal_reward
+                    print(f"[{policy_filename}] --> TRANSIZIONE: Raggiunto OBIETTIVO FINALE (Stato {q} -> {next_q})")
+                    terminated = True
+                else:
+                    # Waypoint intermedio raggiunto
+                    print(f"[{policy_filename}] --> TRANSIZIONE: Raggiunto waypoint (Stato {q} -> {next_q})")
             
             total_reward += step_reward
             

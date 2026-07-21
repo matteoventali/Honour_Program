@@ -171,7 +171,7 @@ class LTLfWaypointMDP:
         
         return next_state, reward
     
-    def value_iteration(self, theta=0.001):
+    def value_iteration_old(self, theta=0.001):
         print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
         
         for s in self.states:
@@ -183,6 +183,43 @@ class LTLfWaypointMDP:
             new_v = self.v_star.copy()
             for s in self.states:
                 if not self.automaton.is_goal_reached(s[2]):
+                    v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
+                    best_v = max(v_actions)
+                    delta = max(delta, abs(best_v - self.v_star[s]))
+                    new_v[s] = best_v
+            self.v_star = new_v
+            if delta < theta: break
+
+    def value_iteration(self, theta=0.001):
+        print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
+        
+        terminal_states = set()
+        
+        # 1. Replichiamo la vecchia logica: ancoriamo il premio massimo allo stato 
+        # fisico che *causerà* la fine, invece di aspettare lo stato accettante logico.
+        for s in self.states:
+            x, y, q = s
+            truth_assignment = self._get_truth_assignment(x, y)
+            next_q = self.automaton.get_next_q(q, truth_assignment)
+            
+            # Se calpestare (x, y) nello stato logico 'q' soddisfa la formula:
+            if self.automaton.is_goal_reached(next_q):
+                terminal_states.add(s)
+                self.v_star[s] = self.goal_reward
+                
+            # Manteniamo a 10000 anche gli stati logici già accettanti per sicurezza
+            elif self.automaton.is_goal_reached(q):
+                terminal_states.add(s)
+                self.v_star[s] = self.goal_reward
+        
+        # 2. Ciclo di update identico al precedente
+        while True:
+            delta = 0
+            new_v = self.v_star.copy()
+            for s in self.states:
+                # Come nel vecchio codice (if s != self.goal_state:), 
+                # saltiamo l'update per gli stati terminali per non diluire il valore
+                if s not in terminal_states: 
                     v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
                     best_v = max(v_actions)
                     delta = max(delta, abs(best_v - self.v_star[s]))

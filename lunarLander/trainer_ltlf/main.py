@@ -78,6 +78,13 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
             # Se c'è stata una transizione logica (raggiunto un waypoint/obiettivo logico)
             if next_q != q:
+                #print(
+                #        f"Transition {q}->{next_q}",
+                #        abstract_x_ns,
+                #        abstract_y_ns,
+                #        truth_assignment
+                #)
+
                 if abstract_mdp.automaton.is_goal_reached(next_q):
                     # Final Goal Check
                     total_hits[q_idx] += 1
