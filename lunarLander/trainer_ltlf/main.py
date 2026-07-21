@@ -4,7 +4,6 @@ import numpy as np
 import argparse
 import json
 
-# Importing the new classes for LTLf logic, while temporarily keeping NPhaseWaypointMDP to avoid breaking the old code below the return
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
 from agent import HierarchicalDQNLearner
 from utils import phi_mapping_sequential, save_sequential_heatmaps, plot_buffer_fractions, plot_shaping_reward_breakdown, plot_comparison_curves
@@ -20,83 +19,93 @@ def save_training_data(filename, **kwargs):
     print(f"\n>>> Training data saved to: {filename}")
 
 def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, use_double_epsilon=True, K=1.0, log_file=None):
-    num_phases = abstract_mdp.num_phases
-    
+    num_states = len(abstract_mdp.automaton.states)
     true_episode_rewards = []
     total_episode_rewards = []
     
-    # Dynamic Epsilon Tracking Arrays
-    epsilons = [agent.eps] * num_phases
-    eps_single = agent.eps
+    # Dynamic Epsilon Tracking Arrays (adattati a num_states)
+    epsilons = [agent.eps] * num_states
+    eps_single = agent.eps 
     
-    eps_histories = [[] for _ in range(num_phases)]
+    eps_histories = [[] for _ in range(num_states)]
     eps_single_history = []
-    buffer_histories = [[] for _ in range(num_phases)]
-    hits_history = [[] for _ in range(num_phases)]
-    total_hits = [0] * num_phases
+    buffer_histories = [[] for _ in range(num_states)]
+    hits_history = [[] for _ in range(num_states)]
+    total_hits = [0] * num_states
 
     log_handle = open(log_file, 'a') if log_file else None
-    if log_handle:
+    if log_handle: 
         log_handle.write(f"=== NEW RUN (Shaping: {use_shaping}, Multi-Eps: {use_double_epsilon}) ===\n")
-        log_handle.write(f"===Trajectory: {abstract_mdp.waypoints}===\n")
+        log_handle.write(f"===Trajectory: {abstract_mdp.waypoints_dict}===\n")
 
     for n_episode in range(episodes):
         s_raw, _ = env.reset()
-        q = 0
+        
+        # Inizializzazione LTLf: recuperiamo lo stato logico iniziale ("q0", "q1", ecc.) e il suo indice
+        q = abstract_mdp.automaton.get_initial_q()
+        q_idx = abstract_mdp.automaton.states.index(q)
         
         # Track which milestones are hit *this* episode for cascade epsilon decay
-        reached_phase_this_episode = [False] * num_phases
+        reached_phase_this_episode = [False] * num_states
         
-        # Dynamic One-Hot encoding array
-        q_one_hot = np.zeros(num_phases, dtype=np.float32)
-        q_one_hot[q] = 1.0
+        # Dynamic One-Hot encoding array basato sugli stati logici
+        q_one_hot = np.zeros(num_states, dtype=np.float32)
+        q_one_hot[q_idx] = 1.0
         s_aug = np.concatenate((s_raw, q_one_hot)).astype(np.float32)
         
         terminated = truncated = False
         episode_true_reward = episode_total_reward = 0.0
-        episode_hits = [0] * num_phases
+        episode_hits = [0] * num_states
 
         while not (terminated or truncated):
-            # Select Epsilon based on current Phase (q)
-            agent.eps = epsilons[q] if use_double_epsilon else eps_single
+            # Select Epsilon based on current Phase index (q_idx)
+            agent.eps = epsilons[q_idx] if use_double_epsilon else eps_single
 
             a = agent.select_action(s_aug)
             ns_raw, _, terminated, truncated, _ = env.step(a)
 
-            abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, q)
-            next_q = q
+            # Estrazione coordinate fisiche astratte (passiamo 0 come fase fittizia solo per avere X e Y)
+            abstract_x, abstract_y, _ = phi_mapping_sequential(s_raw, 0)
+            abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, 0)
+            
             env_goal_reward = 0.0
 
-            # Dynamic Phase Transition Checking
-            if q < num_phases - 1:
-                target_x, target_y = abstract_mdp.waypoints[q]
-                if abstract_x_ns == target_x and abstract_y_ns == target_y:
-                    total_hits[q] += 1
-                    episode_hits[q] = 1
-                    reached_phase_this_episode[q] = True
-                    next_q = q + 1
-            else:
-                # Final Goal Check
-                goal_x, goal_y = abstract_mdp.waypoints[-1]
-                if abstract_x_ns == goal_x and abstract_y_ns == goal_y:
-                    total_hits[q] += 1
-                    episode_hits[q] = 1
+            # --- Dynamic Phase Transition Checking (LTLf) ---
+            # Esattamente come il vecchio codice valutava target_x e target_y su (abstract_x_ns, abstract_y_ns)
+            truth_assignment = abstract_mdp._get_truth_assignment(abstract_x_ns, abstract_y_ns)
+            next_q = abstract_mdp.automaton.get_next_q(q, truth_assignment)
+            next_q_idx = abstract_mdp.automaton.states.index(next_q)
+
+            # Se c'è stata una transizione logica (raggiunto un waypoint/obiettivo logico)
+            if next_q != q:
+                if abstract_mdp.automaton.is_goal_reached(next_q):
+                    # Final Goal Check
+                    total_hits[q_idx] += 1
+                    episode_hits[q_idx] = 1
                     env_goal_reward = goal_reward
                     terminated = True
+                else:
+                    # Raggiungimento traguardo intermedio
+                    total_hits[q_idx] += 1
+                    episode_hits[q_idx] = 1
+                    reached_phase_this_episode[q_idx] = True
 
+            # Ricostruiamo la tripla (x, y, q) per replicare la struttura del tuo vecchio codice
+            abstract_s = (abstract_x, abstract_y, q)
             abstract_ns = (abstract_x_ns, abstract_y_ns, next_q)
+            
             done = terminated or truncated
             episode_true_reward += env_goal_reward
             
-            # Next One-Hot
-            next_q_one_hot = np.zeros(num_phases, dtype=np.float32)
-            next_q_one_hot[next_q] = 1.0
+            # Next One-Hot 
+            next_q_one_hot = np.zeros(num_states, dtype=np.float32)
+            next_q_one_hot[next_q_idx] = 1.0
             ns_aug = np.concatenate((ns_raw, next_q_one_hot)).astype(np.float32)
 
-            # Potential Based Shaping
+            # --- Potential Based Shaping ---
             shaping_signal = 0.0
             if use_shaping:
-                abstract_s = phi_mapping_sequential(s_raw, q)
+                # Applica il shaping solo se lo stato astratto o logico è cambiato (replica del tuo logica originale)
                 if abstract_s != abstract_ns:
                     phi_s = abstract_mdp.v_star.get(abstract_s, 0.0)
                     phi_ns = abstract_mdp.v_star.get(abstract_ns, 0.0)
@@ -111,11 +120,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             s_raw = ns_raw
             s_aug = ns_aug
             q = next_q
+            q_idx = next_q_idx
             
-        # Cascaded Multi-Epsilon Decay
+        # Cascaded Multi-Epsilon Decay (Usa i nuovi indici LTLf)
         if use_double_epsilon:
             epsilons[0] = max(0.08, epsilons[0] * agent.eps_decay)
-            for i in range(1, num_phases):
+            for i in range(1, num_states):
                 # Start decaying phase N only if phase N-1 is consistently reached and its epsilon is minimal
                 if reached_phase_this_episode[i-1] and epsilons[i-1] <= 0.081:
                     epsilons[i] = max(0.08, epsilons[i] * agent.eps_decay)
@@ -123,9 +133,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             eps_single = max(agent.eps_min, eps_single * agent.eps_decay)
             
         # Logging Data Appends
-        for i in range(num_phases):
+        for i in range(num_states):
             eps_histories[i].append(epsilons[i])
-            buffer_histories[i].append(agent.memory.q_fraction_onehot(i, num_phases))
+            buffer_histories[i].append(agent.memory.q_fraction_onehot(i, num_states))
             hits_history[i].append(episode_hits[i])
             
         true_episode_rewards.append(episode_true_reward)
@@ -139,23 +149,23 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             mode_str = "SHAPING" if use_shaping else "BASELINE"
             eps_str = "MULTI EPS" if use_double_epsilon else "SINGLE EPS"
 
-            # Dynamic labels: WP1, WP2, ..., Goal
-            labels = [f"WP{i+1}" for i in range(num_phases - 1)] + ["Goal"]
+            # Dynamic labels generate direttamente dagli stati logici (e.g., q0, q1, ecc.)
+            labels = [f"q{s}" for s in abstract_mdp.automaton.states]
             
             # 1. Format Epsilons String
             if use_double_epsilon:
-                eps_details = ", ".join([f"q{i}({labels[i]}): {epsilons[i]:.4f}" for i in range(num_phases)])
+                eps_details = ", ".join([f"{labels[i]}: {epsilons[i]:.4f}" for i in range(num_states)])
             else:
                 eps_details = f"Single: {eps_single:.4f}"
 
             # 2. Format Buffer Fractions String dynamically calling the dynamic q_fraction_onehot
             buffer_details = ", ".join([
-                f"q{i}({labels[i]}): {agent.memory.q_fraction_onehot(i, num_phases):.2%}" 
-                for i in range(num_phases)
+                f"{labels[i]}: {agent.memory.q_fraction_onehot(i, num_states):.2%}" 
+                for i in range(num_states)
             ])
 
             # 3. Format Target Hits String
-            hits_details = ", ".join([f"{labels[i]}: {total_hits[i]}" for i in range(num_phases)])
+            hits_details = ", ".join([f"{labels[i]}: {total_hits[i]}" for i in range(num_states)])
 
             log_string = (
                 f"----------------------------------------------------------------------------------------------------\n"
@@ -179,7 +189,6 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             eps_suffix = "multi_eps" if use_double_epsilon else "single_eps"
             agent.policy_name = f"{prefix}_{eps_suffix}_policy_ep_{n_episode + 1}.pth"
             agent._save_policy()
-
 
     if log_handle: log_handle.close()
     
@@ -212,21 +221,21 @@ def main(args):
         
     # Extract LTLf formula and waypoint dictionary
     formula_str = config.get('formula', 'F(goal)')
-    raw_waypoints = config.get('waypoints_dict', {'goal': [10, 10]})
+    raw_waypoints = config.get('waypoints_dict', {'goal': [5, 0]})
     
     # Convert lists in JSON to tuples for the MDP
     waypoints_dict = {name: tuple(coords) for name, coords in raw_waypoints.items()}
     
     print(f"\nLoaded LTLf Formula: {formula_str}")
     print(f"Waypoint Dictionary: {waypoints_dict}")
-    num_phases = len(waypoints_dict) # Temporary fallback if old code gets executed
-
+    
+    # Inizializziamo l'automa sempre, così num_states è corretto anche per il post-process
+    print("\nGenerating LTLf Automaton ...")
+    automaton = LTLfAutomaton(formula_str)
+    num_states = len(automaton.states)
+    
     if not args.post_process:
-        # --- LTLf ---
-        print("\nGenerating LTLf Automaton ...")
-        automaton = LTLfAutomaton(formula_str)
         automaton.render_graph()
-
         env = gym.make("LunarLander-v3", continuous=False)
         
         # --- Abstraction ---
@@ -240,17 +249,12 @@ def main(args):
         abstract_mdp.value_iteration()
         save_sequential_heatmaps(abstract_mdp, filename_prefix=f"{plot_dir}/{args.mode}_exp")
 
-
-        # Early return to test automaton generation isolated from the training cycle
-        print("Automaton successfully generated. Exiting before RL training cycle.")
-        return
-
         # --- Training Runs ---
         if args.mode in ['single', 'comparison']:
             print("\n" + "="*50 + "\nTRAINING: SHAPING WITH SINGLE EPSILON\n" + "="*50)
             agent_single_eps = HierarchicalDQNLearner(
                 env=env, max_episodes=args.episodes, eps_decay=0.9996, use_ddqn=True, 
-                extra_state_dims=num_phases
+                extra_state_dims=num_states
             )
             s_true, s_total, s_eps, s_bufs, _ = run_sequential_training(
                 env, agent_single_eps, abstract_mdp, args.episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=False, 
@@ -262,7 +266,7 @@ def main(args):
             print("\n" + "="*50 + "\nTRAINING: SHAPING WITH MULTI EPSILON\n" + "="*50)
             agent_multi_eps = HierarchicalDQNLearner(
                 env=env, max_episodes=args.episodes, eps_decay=0.999, use_ddqn=True, 
-                extra_state_dims=num_phases
+                extra_state_dims=num_states
             )
             m_true, m_total, m_eps, m_bufs, _ = run_sequential_training(
                 env, agent_multi_eps, abstract_mdp, args.episodes, goal_reward=env_goal_reward, use_shaping=True, use_double_epsilon=True, 

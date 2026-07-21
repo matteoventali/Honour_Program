@@ -106,7 +106,6 @@ class LTLfAutomaton:
             print(f"[Errore LTLfAutomaton] Impossibile valutare la transizione '{guard}': {e}")
             return False
 
-    # Aggiungi questo nuovo metodo alla fine della classe
     def render_graph(self, filename="ltlf_automaton", directory="img"):
         """
         Renderizza e salva il DFA come immagine PNG.
@@ -117,6 +116,7 @@ class LTLfAutomaton:
             print(f"Grafo dell'automa salvato con successo in: {directory}/{filename}.png")
         except Exception as e:
             print(f"[Errore Graphviz] Impossibile renderizzare il grafo: {e}")
+
 
 class LTLfWaypointMDP:
     """
@@ -163,18 +163,14 @@ class LTLfWaypointMDP:
         if action in [2, 4, 6]:    next_x = max(x - 1, 0)
         elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
         
-        # 1. Valutiamo le proposizioni logiche nelle nuove coordinate
-        truth_assignment = self._get_truth_assignment(next_x, next_y)
+        truth_assignment = self._get_truth_assignment(x, y)
         
-        # 2. Otteniamo il prossimo stato dell'automa dal modulo LTLf
+        # Otteniamo il prossimo stato dell'automa dal modulo LTLf
         next_q = self.automaton.get_next_q(q, truth_assignment)
         next_state = (next_x, next_y, next_q)
         
-        # 3. Assegniamo il reward se il DFA raggiunge uno stato di accettazione (il Goal logico della formula)
-        #reward = self.goal_reward if self.automaton.is_goal_reached(next_q) else 0
-        
         return next_state, reward
-
+    
     def value_iteration(self, theta=0.001):
         print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
         
