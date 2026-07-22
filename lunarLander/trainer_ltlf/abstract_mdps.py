@@ -93,15 +93,17 @@ class LTLfAutomaton:
         e la valuta rispetto al dizionario di verità attuale.
         """
         guard = guard.strip()
-        if guard == "1": return True
-        if guard == "0": return False
+        
+        # 1. Intercettiamo le costanti universali (sia formati numerici che testuali)
+        if guard.lower() in ["1", "true"]: return True
+        if guard.lower() in ["0", "false"]: return False
         
         # Mappiamo gli operatori logici standard in sintassi Python
         expr = guard.replace('&', ' and ').replace('|', ' or ').replace('~', ' not ').replace('!', ' not ')
         
         try:
-            # Valutiamo l'espressione passando le proposizioni atomiche come variabili locali
-            return eval(expr, {"__builtins__": None}, truth_assignment)
+            # 2. FIX: Usare un dizionario vuoto {} al posto di None per i builtins
+            return eval(expr, {"__builtins__": {}}, truth_assignment)
         except Exception as e:
             print(f"[Errore LTLfAutomaton] Impossibile valutare la transizione '{guard}': {e}")
             return False
@@ -149,7 +151,7 @@ class LTLfWaypointMDP:
             truth_assignment[prop_name] = (x == wp_x and y == wp_y)
         return truth_assignment
 
-    def get_transitions(self, state, action):
+    def get_transitions_old(self, state, action):
         x, y, q = state
         next_y = y
         reward = 0
@@ -170,8 +172,31 @@ class LTLfWaypointMDP:
         next_state = (next_x, next_y, next_q)
         
         return next_state, reward
+
+    def get_transitions(self, state, action):
+        x, y, q = state
+        reward = 0
+        
+        # 1. Calcola il movimento fisico NORMALE (come facevi prima)
+        next_y = y
+        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
+        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
+            
+        next_x = x
+        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
+        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
+        
+        # 2. LA MODIFICA CHIAVE: Valuta le proposizioni sulle coordinate di ARRIVO
+        # (Esempio generico, adatta alla tua funzione di valutazione)
+        truth_assignment = self._get_truth_assignment(next_x, next_y)
+        
+        # 3. Aggiorna lo stato dell'automa basandoti su questa valutazione
+        next_q = self.automaton.get_next_q(q, truth_assignment)
+
+        next_state = (next_x, next_y, next_q)
+        return next_state, reward
     
-    def value_iteration_old(self, theta=0.001):
+    def value_iteration(self, theta=0.001):
         print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
         
         for s in self.states:
@@ -190,7 +215,7 @@ class LTLfWaypointMDP:
             self.v_star = new_v
             if delta < theta: break
 
-    def value_iteration(self, theta=0.001):
+    def value_iteration_old(self, theta=0.001):
         print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
         
         terminal_states = set()
