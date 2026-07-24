@@ -22,9 +22,10 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
     import numpy as np
     import matplotlib.pyplot as plt
 
-    # Construct the full path for the heatmap and ensure the directory exists.
-    base_output_dir = os.path.dirname(filename_prefix)
-    os.makedirs(f"img/heatmaps/{base_output_dir}", exist_ok=True)
+    # Store every heatmap directly under img/heatmaps.
+    output_dir = os.path.join("img", "heatmaps")
+    os.makedirs(output_dir, exist_ok=True)
+    filename_prefix = os.path.basename(filename_prefix)
     
     width, height = abstract_mdp.width, abstract_mdp.height
     
@@ -63,7 +64,7 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
         # Nessun plot per i waypoint o il goal
             
         plt.tight_layout()
-        plt.savefig(f"img/heatmaps/{filename_prefix}_q{current_q}.png", dpi=150, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
         plt.close()
         print(f" -> Generated V* Heatmap for DFA State q={current_q}")
 
@@ -140,7 +141,7 @@ def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=No
     print(f"\n>>> Mean/Std plot successfully saved to: {filename}")
     plt.close(fig)
 
-def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png"):
+def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None):
     """
     Plots the replay buffer composition for N phases dynamically.
     """
@@ -151,8 +152,8 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     colors = plt.cm.tab10(np.linspace(0, 1, len(buffer_histories)))
     for idx, history in enumerate(buffer_histories):
         ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=True).mean()
-        label = "Goal" if idx == len(buffer_histories)-1 else f"WP {idx+1}"
-        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Phase q={idx} ({label})')
+        state_label = state_labels[idx] if state_labels is not None else idx
+        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'DFA state q={state_label}')
     
     ax.set_title(f"Replay Buffer Composition (MA Window = {window_size})", fontsize=14, fontweight='bold')
     ax.set_ylabel("Fraction in Buffer", fontsize=12)
@@ -184,8 +185,8 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     x_axis = np.arange(len(true_rewards))
         
     # Plot Rewards (Left Y-Axis)
-    ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='True Environment Reward')
-    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Total Reward (Env + Shaping)')
+    ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Synthetic Goal Reward')
+    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Learning Reward (Goal + Shaping)')
     
     ax1.set_title(f"Shaping Agent Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
