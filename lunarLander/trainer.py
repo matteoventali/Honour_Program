@@ -16,6 +16,7 @@ import numpy as np
 
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
 from agent import HierarchicalDQNLearner
+from automaton_validator import validate_automaton
 from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, save_sequential_heatmaps
 
 
@@ -419,13 +420,15 @@ def main(args):
 
     # Build the DFA once for both training and post-processing.
     automaton = LTLfAutomaton(formula)
+    validation_report = validate_automaton(automaton, waypoints, width=int(config.get("grid_w", 12)), height=int(config.get("grid_h", 12)))
     print(
         "=== LTLf TRAINING (single epsilon) ===\n"
         f"Formula: {formula}\n"
         f"Waypoints: {waypoints}\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
-        "Gym reward is ignored by design."
+        "Gym reward is ignored by design.\n"
+        f"{validation_report.format()}"
     )
 
     if not args.post_process:

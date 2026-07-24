@@ -61,7 +61,7 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
         ax.set_yticks(np.arange(-.5, height, 1), minor=True)
         ax.grid(which='minor', color='w', linestyle='-', linewidth=1, alpha=0.4)
         
-        # Nessun plot per i waypoint o il goal
+        # Keep the heatmap free of waypoint and goal markers.
             
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
