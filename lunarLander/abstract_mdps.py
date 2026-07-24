@@ -108,7 +108,28 @@ class LTLfAutomaton:
     def render_graph(self, filename="ltlf_automaton", directory="img"):
         """Render the DFA and save it as a PNG image."""
         try:
-            src = Source(self.dot_string)
+            # ltlf2dfa emits a left-to-right graph.  With complex formulae the
+            # transition guards become wide, leaving the resulting PNG only a
+            # few pixels high.  A top-to-bottom layout gives labels enough room
+            # and keeps the automaton readable independently of formula length.
+            render_dot = re.sub(
+                r"rankdir\s*=\s*LR\s*;",
+                "rankdir = TB;",
+                self.dot_string,
+                count=1,
+            )
+            render_dot = re.sub(
+                r"(digraph[^{]*\{)",
+                (
+                    r"\1\n"
+                    r'graph [pad="0.35", nodesep="0.55", ranksep="0.75"];' "\n"
+                    r'node [width="0.55", height="0.55"];' "\n"
+                    r'edge [fontsize="10"];'
+                ),
+                render_dot,
+                count=1,
+            )
+            src = Source(render_dot)
             src.render(filename=filename, directory=directory, format='png', cleanup=True)
             print(f"Automaton graph saved to: {directory}/{filename}.png")
         except Exception as e:
