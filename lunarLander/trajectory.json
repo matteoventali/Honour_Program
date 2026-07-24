@@ -1,11 +1,12 @@
 {
-    "formula": "((!wp1 U g1) | (!g1 U (wp1 & X(F(g2)))))",
+    "formula": "F(wp1 & X(F(g1) & G((!wp2) | F(g2))))",
     "grid_w": 12,
     "grid_h": 12,
     "goal_reward": 10000,
     "waypoints_dict": {
-        "wp1": [3, 8],
+        "wp1": [2, 9],
         "g1": [8, 8],
-        "g2": [5, 6]
+        "wp2": [5, 6],
+        "g2": [9, 3]
     }
 }
