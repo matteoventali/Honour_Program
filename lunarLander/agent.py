@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from collections import deque
 
 class QNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -20,13 +19,33 @@ class QNetwork(nn.Module):
         return self.fc3(x)
 
 class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
+    def __init__(self, capacity, num_phases):
+        self.capacity = capacity
+        self.num_phases = num_phases
+        self.buffer = []
+        self.phase_indices = []
+        self.phase_counts = np.zeros(num_phases, dtype=np.int64)
+        self.position = 0
 
     def push(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
+        """Insert a transition and update DFA-state counts in constant time."""
+        transition = (state, action, reward, next_state, done)
+        phase_index = int(np.argmax(state[-self.num_phases:]))
+
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(transition)
+            self.phase_indices.append(phase_index)
+        else:
+            replaced_phase_index = self.phase_indices[self.position]
+            self.phase_counts[replaced_phase_index] -= 1
+            self.buffer[self.position] = transition
+            self.phase_indices[self.position] = phase_index
+
+        self.phase_counts[phase_index] += 1
+        self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
+        """Sample transitions efficiently from the indexable ring buffer."""
         batch = ran.sample(self.buffer, batch_size)
         state, action, reward, next_state, done = map(np.array, zip(*batch))
         return state, action, reward, next_state, done
@@ -35,14 +54,14 @@ class ReplayBuffer:
         return len(self.buffer)
 
     def q_fraction_onehot(self, q_index, num_phases):
-        """Returns the fraction of states in the buffer for the desired phase (q_index)."""
-        if len(self.buffer) == 0: return 0.0
-        
-        # The one-hot vector is appended at the end of the state representation.
-        # We find the index relative to the end of the array.
-        idx = -num_phases + q_index
-        q_count = sum(state[idx] == 1.0 for state, _, _, _, _ in self.buffer)
-        return q_count / len(self.buffer)
+        """Return a DFA-state fraction using incrementally maintained counts."""
+        if num_phases != self.num_phases:
+            raise ValueError(f"Expected {self.num_phases} DFA states, received {num_phases}")
+        if not 0 <= q_index < self.num_phases:
+            raise IndexError(f"DFA state index {q_index} is out of range")
+        if len(self.buffer) == 0:
+            return 0.0
+        return float(self.phase_counts[q_index] / len(self.buffer))
 
 class HierarchicalDQNLearner:
     def __init__(self, env, abstract_mdp=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
@@ -74,7 +93,7 @@ class HierarchicalDQNLearner:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
-        self.memory = ReplayBuffer(capacity=300000)
+        self.memory = ReplayBuffer(capacity=300000, num_phases=extra_state_dims)
 
     def select_action(self, state):
         if ran.random() < self.eps:
