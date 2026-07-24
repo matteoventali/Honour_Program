@@ -1,6 +1,7 @@
 import os
 import argparse
 import json
+from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -20,6 +21,10 @@ from utils import phi_mapping_sequential, save_sequential_heatmaps
 # Variabili globali per estrarre facilmente i dati di logging per i nostri plot custom
 global_true_rewards = []
 global_total_rewards = []
+global_episode_lengths = []
+global_episode_end_reasons = []
+global_dfa_transition_counts = defaultdict(int)
+metrics_recording_enabled = False
 
 # ==========================================
 # 1. FUNZIONI DI PLOTTING AGGIORNATE
@@ -40,8 +45,8 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, window_size=100, 
         
     x_axis = np.arange(len(true_rewards))
         
-    ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='True Environment Reward')
-    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Total Reward (Env + Shaping)')
+    ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Goal-MDP Task Reward')
+    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Training Reward (Task + Shaping)')
     
     ax1.set_title(f"DSAC Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
@@ -84,22 +89,30 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, window_size=100, f
 # 2. LTLF SHAPING WRAPPER
 # ==========================================
 class LTLfShapingWrapper(gym.Wrapper):
-    def __init__(self, env, abstract_mdp, use_shaping=True, K=1.0, goal_reward=10000):
+    def __init__(
+        self,
+        env,
+        abstract_mdp,
+        use_shaping=True,
+        K=1.0,
+        goal_reward=10000,
+        expected_episodes=None,
+    ):
         super().__init__(env)
         self.abstract_mdp = abstract_mdp
         self.use_shaping = use_shaping
         self.K = K
         self.goal_reward = goal_reward
+        self.expected_episodes = expected_episodes
         self.num_states = len(abstract_mdp.automaton.states)
         self.current_q = None
         self.last_s_raw = None
         
         self.episode_count = 0
-        self.total_hits = [0] * self.num_states
-        self.labels = [f"q{s}" for s in self.abstract_mdp.automaton.states]
         
         self.ep_true_reward = 0.0
         self.ep_total_reward = 0.0
+        self.ep_length = 0
 
         obs_shape = env.observation_space.shape[0] + self.num_states
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(obs_shape,), dtype=np.float32)
@@ -111,6 +124,7 @@ class LTLfShapingWrapper(gym.Wrapper):
         
         self.ep_true_reward = 0.0
         self.ep_total_reward = 0.0
+        self.ep_length = 0
         
         q_idx = self.abstract_mdp.automaton.states.index(self.current_q)
         q_one_hot = np.zeros(self.num_states, dtype=np.float32)
@@ -120,6 +134,9 @@ class LTLfShapingWrapper(gym.Wrapper):
 
     def step(self, action):
         ns_raw, env_reward, terminated, truncated, info = self.env.step(action)
+        env_terminated = terminated
+        task_success = False
+        self.ep_length += 1
         
         abstract_x, abstract_y, _ = phi_mapping_sequential(self.last_s_raw, 0)
         abstract_x_ns, abstract_y_ns, _ = phi_mapping_sequential(ns_raw, 0)
@@ -130,11 +147,12 @@ class LTLfShapingWrapper(gym.Wrapper):
         custom_env_reward = 0.0
         
         if next_q != self.current_q:
-            q_idx = self.abstract_mdp.automaton.states.index(self.current_q)
-            self.total_hits[q_idx] += 1
+            if metrics_recording_enabled:
+                global_dfa_transition_counts[(self.current_q, next_q)] += 1
             
             if self.abstract_mdp.automaton.is_goal_reached(next_q):
                 custom_env_reward = self.goal_reward
+                task_success = True
                 terminated = True
                 
         abstract_s = (abstract_x, abstract_y, self.current_q)
@@ -151,23 +169,48 @@ class LTLfShapingWrapper(gym.Wrapper):
         self.ep_true_reward += custom_env_reward
         self.ep_total_reward += total_reward
         
-        if terminated or truncated:
+        if (terminated or truncated) and metrics_recording_enabled:
             global_true_rewards.append(self.ep_true_reward)
             global_total_rewards.append(self.ep_total_reward)
+            global_episode_lengths.append(self.ep_length)
+            if task_success:
+                global_episode_end_reasons.append("success")
+            elif env_terminated:
+                global_episode_end_reasons.append("env_terminated")
+            else:
+                global_episode_end_reasons.append("truncated")
             self.episode_count += 1
             
             if self.episode_count % 100 == 0:
-                recent_avg = np.mean(global_true_rewards[-100:])
+                recent_rewards = np.asarray(global_true_rewards[-100:])
+                recent_reasons = global_episode_end_reasons[-100:]
+                recent_avg = np.mean(recent_rewards)
                 recent_avg_with_shaping = np.mean(global_total_rewards[-100:])
+                recent_success_rate = np.mean(recent_rewards > 0)
+                cumulative_successes = int(np.count_nonzero(np.asarray(global_true_rewards) > 0))
+                cumulative_success_rate = cumulative_successes / self.episode_count
+                recent_env_terminated = recent_reasons.count("env_terminated")
+                recent_truncated = recent_reasons.count("truncated")
+                recent_mean_length = np.mean(global_episode_lengths[-100:])
                 mode_str = "SHAPING" if self.use_shaping else "BASELINE"
-                hits_details = ", ".join([f"{self.labels[i]}: {self.total_hits[i]}" for i in range(self.num_states)])
+                progress_total = self.expected_episodes if self.expected_episodes is not None else "?"
+                transition_details = ", ".join(
+                    f"q{src}->q{dst}: {count}"
+                    for (src, dst), count in sorted(global_dfa_transition_counts.items())
+                ) or "none"
                 
                 log_string = (
                     f"----------------------------------------------------------------------------------------------------\n"
-                    f"[{mode_str} | DSAC] Episode {self.episode_count}/{args.episodes}\n"
-                    f"Avg Reward                  : {recent_avg:.6f}\n" +
-                    (f"Avg Total Reward            : {recent_avg_with_shaping:.6f}\n" if self.use_shaping else "") +
-                    f"Hits (Cumulative)           : {hits_details}\n"
+                    f"[{mode_str} | DSAC] Episode {self.episode_count}/{progress_total}\n"
+                    f"Avg Goal-MDP Task Reward    : {recent_avg:.6f}\n"
+                    f"Successes (cumulative)      : {cumulative_successes}/{self.episode_count} "
+                    f"({cumulative_success_rate:.2%})\n"
+                    f"Success Rate (last 100)     : {recent_success_rate:.2%}\n"
+                    f"Endings (last 100)          : env_terminated={recent_env_terminated}, "
+                    f"truncated={recent_truncated}, success={int(np.count_nonzero(recent_rewards > 0))}\n"
+                    f"Avg Episode Length (last 100): {recent_mean_length:.1f}\n" +
+                    (f"Avg Training Reward         : {recent_avg_with_shaping:.6f}\n" if self.use_shaping else "") +
+                    f"DFA Transitions (cumulative): {transition_details}\n"
                     f"----------------------------------------------------------------------------------------------------"
                 )
                 print(log_string)
@@ -229,6 +272,8 @@ class CustomCritic(nn.Module):
 # 4. TRAINING LOOP E MAIN
 # ==========================================
 def train_dsac(env_fn, args):
+    global metrics_recording_enabled
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n---> Inizializzazione DSAC su {device} (Shaping: {args.use_shaping})")
     
@@ -257,7 +302,18 @@ def train_dsac(env_fn, args):
     train_collector = Collector(policy, train_envs, buffer, exploration_noise=True)
     
     print(">>> Pre-campionamento dati casuali nel buffer...")
+    metrics_recording_enabled = False
     train_collector.collect(n_step=2000, random=True)
+
+    # Il warm-up popola soltanto il replay buffer: non deve entrare nelle
+    # metriche né lasciare un episodio parziale come primo episodio misurato.
+    global_true_rewards.clear()
+    global_total_rewards.clear()
+    global_episode_lengths.clear()
+    global_episode_end_reasons.clear()
+    global_dfa_transition_counts.clear()
+    train_collector.reset_env()
+    metrics_recording_enabled = True
     
     print(f"\n=== INIZIO ADDESTRAMENTO: ESATTAMENTE {args.episodes} EPISODI ===")
     
@@ -274,8 +330,27 @@ def train_dsac(env_fn, args):
             policy.update(sample_size=64, buffer=buffer)
             
     print("\n=== ADDESTRAMENTO COMPLETATO ===")
-    
-    return global_true_rewards.copy(), global_total_rewards.copy()
+
+    metrics_recording_enabled = False
+    metric_lengths = {
+        "task_rewards": len(global_true_rewards),
+        "total_rewards": len(global_total_rewards),
+        "episode_lengths": len(global_episode_lengths),
+        "episode_end_reasons": len(global_episode_end_reasons),
+    }
+    if any(length != args.episodes for length in metric_lengths.values()):
+        raise RuntimeError(
+            f"Conteggio metriche non valido: attesi {args.episodes} episodi, "
+            f"registrati {metric_lengths}."
+        )
+
+    return {
+        "task_rewards": global_true_rewards.copy(),
+        "total_rewards": global_total_rewards.copy(),
+        "episode_lengths": global_episode_lengths.copy(),
+        "episode_end_reasons": global_episode_end_reasons.copy(),
+        "dfa_transition_counts": dict(global_dfa_transition_counts),
+    }
 
 
 def main(args):
@@ -295,6 +370,8 @@ def main(args):
     print(f"LTLf Formula: {formula_str}")
     
     automaton = LTLfAutomaton(formula_str)
+    print(f"DFA initial state: q{automaton.get_initial_q()}")
+    print(f"DFA accepting states: {sorted(automaton.accepting_states)}")
     
     abstract_mdp = LTLfWaypointMDP(
         waypoints_dict=waypoints_dict, 
@@ -310,16 +387,57 @@ def main(args):
     
     def make_env():
         base_env = gym.make("LunarLander-v3", continuous=False)
-        return LTLfShapingWrapper(base_env, abstract_mdp, use_shaping=args.use_shaping)
+        return LTLfShapingWrapper(
+            base_env,
+            abstract_mdp,
+            use_shaping=args.use_shaping,
+            expected_episodes=args.episodes,
+        )
 
     global_true_rewards.clear()
     global_total_rewards.clear()
     
-    true_rewards, total_rewards = train_dsac(make_env, args)
+    metrics = train_dsac(make_env, args)
+    true_rewards = metrics["task_rewards"]
+    total_rewards = metrics["total_rewards"]
+    success_flags = np.asarray(true_rewards) > 0
+    success_rate = float(np.mean(success_flags)) if len(success_flags) else 0.0
+    transition_items = sorted(metrics["dfa_transition_counts"].items())
+    transition_labels = np.asarray(
+        [f"q{src}->q{dst}" for (src, dst), _ in transition_items]
+    )
+    transition_counts = np.asarray(
+        [count for _, count in transition_items],
+        dtype=np.int64,
+    )
     
     prefix = "shaping" if args.use_shaping else "baseline"
     
-    np.savez_compressed(f"{data_dir}/{prefix}_dsac_data.npz", true_rewards=true_rewards, total_rewards=total_rewards)
+    np.savez_compressed(
+        f"{data_dir}/{prefix}_dsac_data.npz",
+        task_rewards=true_rewards,
+        total_rewards=total_rewards,
+        success_flags=success_flags,
+        success_rate=success_rate,
+        episode_lengths=np.asarray(metrics["episode_lengths"], dtype=np.int64),
+        episode_end_reasons=np.asarray(metrics["episode_end_reasons"]),
+        dfa_transition_labels=transition_labels,
+        dfa_transition_counts=transition_counts,
+        # Alias mantenuto per compatibilità con gli script di analisi esistenti.
+        true_rewards=true_rewards,
+    )
+    print(f">>> Success rate complessivo: {success_rate:.2%}")
+    print(
+        ">>> DFA transitions complessive: "
+        + (
+            ", ".join(
+                f"{label}: {count}"
+                for label, count in zip(transition_labels, transition_counts)
+            )
+            if len(transition_labels)
+            else "none"
+        )
+    )
     
     plot_shaping_reward_breakdown(
         true_rewards, total_rewards, 
