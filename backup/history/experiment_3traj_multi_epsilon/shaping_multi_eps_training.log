@@ -1,0 +1,556 @@
+==================================================
+STARTING NEW TRAINING RUN (Shaping: True, Multi-Eps: True)
+==================================================
+[SHAPING | MULTI EPS] Episode 100/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -321.184404
+Epsilon (q0, q1, q2)       : 0.9048, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.77%, 0.23%, 0.00%
+Hits (WP1/WP2/Goal)         : 1, 0, 0
+
+[SHAPING | MULTI EPS] Episode 200/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -271.842567
+Epsilon (q0, q1, q2)       : 0.8186, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.04%, 0.96%, 0.00%
+Hits (WP1/WP2/Goal)         : 8, 0, 0
+
+[SHAPING | MULTI EPS] Episode 300/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -291.845588
+Epsilon (q0, q1, q2)       : 0.7407, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.18%, 0.82%, 0.00%
+Hits (WP1/WP2/Goal)         : 10, 0, 0
+
+[SHAPING | MULTI EPS] Episode 400/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -189.121826
+Epsilon (q0, q1, q2)       : 0.6702, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.00%, 1.00%, 0.00%
+Hits (WP1/WP2/Goal)         : 17, 0, 0
+
+[SHAPING | MULTI EPS] Episode 500/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -146.285328
+Epsilon (q0, q1, q2)       : 0.6064, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 98.70%, 1.30%, 0.00%
+Hits (WP1/WP2/Goal)         : 28, 0, 0
+
+[SHAPING | MULTI EPS] Episode 600/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -195.298338
+Epsilon (q0, q1, q2)       : 0.5486, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 98.51%, 1.49%, 0.00%
+Hits (WP1/WP2/Goal)         : 35, 0, 0
+
+[SHAPING | MULTI EPS] Episode 700/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -327.084496
+Epsilon (q0, q1, q2)       : 0.4964, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 98.83%, 1.17%, 0.00%
+Hits (WP1/WP2/Goal)         : 35, 0, 0
+
+[SHAPING | MULTI EPS] Episode 800/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -245.197098
+Epsilon (q0, q1, q2)       : 0.4491, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.04%, 0.96%, 0.00%
+Hits (WP1/WP2/Goal)         : 35, 0, 0
+
+[SHAPING | MULTI EPS] Episode 900/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -199.212529
+Epsilon (q0, q1, q2)       : 0.4064, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 99.12%, 0.88%, 0.00%
+Hits (WP1/WP2/Goal)         : 36, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1000/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : -124.383649
+Epsilon (q0, q1, q2)       : 0.3677, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 98.81%, 1.19%, 0.00%
+Hits (WP1/WP2/Goal)         : 48, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1100/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 35.999777
+Epsilon (q0, q1, q2)       : 0.3327, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 98.04%, 1.96%, 0.00%
+Hits (WP1/WP2/Goal)         : 76, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1200/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 117.488724
+Epsilon (q0, q1, q2)       : 0.3010, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 97.09%, 2.91%, 0.00%
+Hits (WP1/WP2/Goal)         : 121, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1300/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 77.587088
+Epsilon (q0, q1, q2)       : 0.2724, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 96.69%, 3.31%, 0.00%
+Hits (WP1/WP2/Goal)         : 147, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1400/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 171.393926
+Epsilon (q0, q1, q2)       : 0.2464, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 95.48%, 4.52%, 0.00%
+Hits (WP1/WP2/Goal)         : 203, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1500/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 196.200094
+Epsilon (q0, q1, q2)       : 0.2230, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 94.35%, 5.65%, 0.00%
+Hits (WP1/WP2/Goal)         : 261, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1600/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 209.672932
+Epsilon (q0, q1, q2)       : 0.2017, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 93.15%, 6.85%, 0.00%
+Hits (WP1/WP2/Goal)         : 333, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1700/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 242.802045
+Epsilon (q0, q1, q2)       : 0.1825, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 91.50%, 8.50%, 0.00%
+Hits (WP1/WP2/Goal)         : 410, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1800/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 254.722455
+Epsilon (q0, q1, q2)       : 0.1652, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 89.40%, 10.60%, 0.00%
+Hits (WP1/WP2/Goal)         : 504, 0, 0
+
+[SHAPING | MULTI EPS] Episode 1900/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 238.053767
+Epsilon (q0, q1, q2)       : 0.1494, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 87.36%, 12.64%, 0.00%
+Hits (WP1/WP2/Goal)         : 594, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2000/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 252.176596
+Epsilon (q0, q1, q2)       : 0.1352, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 85.28%, 14.72%, 0.00%
+Hits (WP1/WP2/Goal)         : 685, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2100/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 246.409192
+Epsilon (q0, q1, q2)       : 0.1223, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 83.06%, 16.94%, 0.00%
+Hits (WP1/WP2/Goal)         : 778, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2200/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 253.136133
+Epsilon (q0, q1, q2)       : 0.1107, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 80.78%, 19.22%, 0.00%
+Hits (WP1/WP2/Goal)         : 872, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2300/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 250.371330
+Epsilon (q0, q1, q2)       : 0.1001, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 78.70%, 21.30%, 0.00%
+Hits (WP1/WP2/Goal)         : 967, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2400/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 253.020051
+Epsilon (q0, q1, q2)       : 0.0906, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 76.73%, 23.27%, 0.00%
+Hits (WP1/WP2/Goal)         : 1062, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2500/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 262.377830
+Epsilon (q0, q1, q2)       : 0.0820, 1.0000, 1.0000
+Buffer Fractions (q0/q1/q2) : 75.13%, 24.87%, 0.00%
+Hits (WP1/WP2/Goal)         : 1160, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2600/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 252.134277
+Epsilon (q0, q1, q2)       : 0.0800, 0.9194, 1.0000
+Buffer Fractions (q0/q1/q2) : 73.44%, 26.56%, 0.00%
+Hits (WP1/WP2/Goal)         : 1256, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2700/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 241.082097
+Epsilon (q0, q1, q2)       : 0.0800, 0.8411, 1.0000
+Buffer Fractions (q0/q1/q2) : 72.05%, 27.95%, 0.00%
+Hits (WP1/WP2/Goal)         : 1345, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2800/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 236.056135
+Epsilon (q0, q1, q2)       : 0.0800, 0.7656, 1.0000
+Buffer Fractions (q0/q1/q2) : 70.78%, 29.22%, 0.00%
+Hits (WP1/WP2/Goal)         : 1439, 0, 0
+
+[SHAPING | MULTI EPS] Episode 2900/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 244.795075
+Epsilon (q0, q1, q2)       : 0.0800, 0.6941, 1.0000
+Buffer Fractions (q0/q1/q2) : 69.22%, 30.78%, 0.00%
+Hits (WP1/WP2/Goal)         : 1537, 0, 0
+
+[SHAPING | MULTI EPS] Episode 3000/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 219.614972
+Epsilon (q0, q1, q2)       : 0.0800, 0.6324, 1.0000
+Buffer Fractions (q0/q1/q2) : 68.50%, 31.50%, 0.01%
+Hits (WP1/WP2/Goal)         : 1630, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3100/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 251.450419
+Epsilon (q0, q1, q2)       : 0.0800, 0.5739, 1.0000
+Buffer Fractions (q0/q1/q2) : 67.28%, 32.71%, 0.01%
+Hits (WP1/WP2/Goal)         : 1727, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3200/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 250.071234
+Epsilon (q0, q1, q2)       : 0.0800, 0.5219, 1.0000
+Buffer Fractions (q0/q1/q2) : 65.81%, 34.18%, 0.01%
+Hits (WP1/WP2/Goal)         : 1822, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3300/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 253.205114
+Epsilon (q0, q1, q2)       : 0.0800, 0.4736, 1.0000
+Buffer Fractions (q0/q1/q2) : 63.52%, 36.47%, 0.01%
+Hits (WP1/WP2/Goal)         : 1919, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3400/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 242.487000
+Epsilon (q0, q1, q2)       : 0.0800, 0.4311, 1.0000
+Buffer Fractions (q0/q1/q2) : 60.53%, 39.47%, 0.01%
+Hits (WP1/WP2/Goal)         : 2013, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3500/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 246.499440
+Epsilon (q0, q1, q2)       : 0.0800, 0.3920, 1.0000
+Buffer Fractions (q0/q1/q2) : 56.49%, 43.50%, 0.01%
+Hits (WP1/WP2/Goal)         : 2108, 1, 0
+
+[SHAPING | MULTI EPS] Episode 3600/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 356.639019
+Epsilon (q0, q1, q2)       : 0.0800, 0.3575, 1.0000
+Buffer Fractions (q0/q1/q2) : 53.91%, 46.02%, 0.06%
+Hits (WP1/WP2/Goal)         : 2200, 7, 0
+
+[SHAPING | MULTI EPS] Episode 3700/10000
+Avg Reward                  : 100.000000
+Avg Total Reward           : 666.480822
+Epsilon (q0, q1, q2)       : 0.0800, 0.3251, 1.0000
+Buffer Fractions (q0/q1/q2) : 51.93%, 47.90%, 0.16%
+Hits (WP1/WP2/Goal)         : 2295, 19, 1
+
+[SHAPING | MULTI EPS] Episode 3800/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 688.117241
+Epsilon (q0, q1, q2)       : 0.0800, 0.2948, 1.0000
+Buffer Fractions (q0/q1/q2) : 50.47%, 49.11%, 0.43%
+Hits (WP1/WP2/Goal)         : 2393, 44, 1
+
+[SHAPING | MULTI EPS] Episode 3900/10000
+Avg Reward                  : 0.000000
+Avg Total Reward           : 636.480123
+Epsilon (q0, q1, q2)       : 0.0800, 0.2675, 1.0000
+Buffer Fractions (q0/q1/q2) : 47.20%, 52.09%, 0.71%
+Hits (WP1/WP2/Goal)         : 2490, 61, 1
+
+[SHAPING | MULTI EPS] Episode 4000/10000
+Avg Reward                  : 300.000000
+Avg Total Reward           : 1057.407064
+Epsilon (q0, q1, q2)       : 0.0800, 0.2425, 1.0000
+Buffer Fractions (q0/q1/q2) : 44.69%, 54.01%, 1.30%
+Hits (WP1/WP2/Goal)         : 2588, 92, 4
+
+[SHAPING | MULTI EPS] Episode 4100/10000
+Avg Reward                  : 100.000000
+Avg Total Reward           : 883.178971
+Epsilon (q0, q1, q2)       : 0.0800, 0.2203, 1.0000
+Buffer Fractions (q0/q1/q2) : 43.87%, 54.14%, 1.98%
+Hits (WP1/WP2/Goal)         : 2684, 128, 5
+
+[SHAPING | MULTI EPS] Episode 4200/10000
+Avg Reward                  : 100.000000
+Avg Total Reward           : 890.275934
+Epsilon (q0, q1, q2)       : 0.0800, 0.2019, 1.0000
+Buffer Fractions (q0/q1/q2) : 42.95%, 54.15%, 2.89%
+Hits (WP1/WP2/Goal)         : 2771, 173, 6
+
+[SHAPING | MULTI EPS] Episode 4300/10000
+Avg Reward                  : 600.000000
+Avg Total Reward           : 1400.148907
+Epsilon (q0, q1, q2)       : 0.0800, 0.1855, 1.0000
+Buffer Fractions (q0/q1/q2) : 43.23%, 53.09%, 3.67%
+Hits (WP1/WP2/Goal)         : 2856, 219, 12
+
+[SHAPING | MULTI EPS] Episode 4400/10000
+Avg Reward                  : 1200.000000
+Avg Total Reward           : 2171.694547
+Epsilon (q0, q1, q2)       : 0.0800, 0.1687, 1.0000
+Buffer Fractions (q0/q1/q2) : 42.08%, 53.31%, 4.61%
+Hits (WP1/WP2/Goal)         : 2951, 278, 24
+
+[SHAPING | MULTI EPS] Episode 4500/10000
+Avg Reward                  : 1000.000000
+Avg Total Reward           : 1933.209877
+Epsilon (q0, q1, q2)       : 0.0800, 0.1560, 1.0000
+Buffer Fractions (q0/q1/q2) : 41.19%, 53.14%, 5.67%
+Hits (WP1/WP2/Goal)         : 3029, 338, 34
+
+[SHAPING | MULTI EPS] Episode 4600/10000
+Avg Reward                  : 1500.000000
+Avg Total Reward           : 2417.017688
+Epsilon (q0, q1, q2)       : 0.0800, 0.1441, 1.0000
+Buffer Fractions (q0/q1/q2) : 41.39%, 52.07%, 6.55%
+Hits (WP1/WP2/Goal)         : 3108, 396, 49
+
+[SHAPING | MULTI EPS] Episode 4700/10000
+Avg Reward                  : 2100.000000
+Avg Total Reward           : 3356.288146
+Epsilon (q0, q1, q2)       : 0.0800, 0.1313, 1.0000
+Buffer Fractions (q0/q1/q2) : 42.13%, 50.12%, 7.75%
+Hits (WP1/WP2/Goal)         : 3201, 476, 70
+
+[SHAPING | MULTI EPS] Episode 4800/10000
+Avg Reward                  : 1100.000000
+Avg Total Reward           : 1972.216124
+Epsilon (q0, q1, q2)       : 0.0800, 0.1214, 1.0000
+Buffer Fractions (q0/q1/q2) : 43.92%, 47.90%, 8.17%
+Hits (WP1/WP2/Goal)         : 3280, 529, 81
+
+[SHAPING | MULTI EPS] Episode 4900/10000
+Avg Reward                  : 1300.000000
+Avg Total Reward           : 2108.733431
+Epsilon (q0, q1, q2)       : 0.0800, 0.1129, 1.0000
+Buffer Fractions (q0/q1/q2) : 46.81%, 44.71%, 8.48%
+Hits (WP1/WP2/Goal)         : 3352, 583, 94
+
+[SHAPING | MULTI EPS] Episode 5000/10000
+Avg Reward                  : 1700.000000
+Avg Total Reward           : 2656.093781
+Epsilon (q0, q1, q2)       : 0.0800, 0.1040, 1.0000
+Buffer Fractions (q0/q1/q2) : 48.20%, 42.79%, 9.01%
+Hits (WP1/WP2/Goal)         : 3434, 647, 111
+
+[SHAPING | MULTI EPS] Episode 5100/10000
+Avg Reward                  : 200.000000
+Avg Total Reward           : 1208.958536
+Epsilon (q0, q1, q2)       : 0.0800, 0.0958, 1.0000
+Buffer Fractions (q0/q1/q2) : 49.02%, 40.74%, 10.24%
+Hits (WP1/WP2/Goal)         : 3516, 724, 113
+
+[SHAPING | MULTI EPS] Episode 5200/10000
+Avg Reward                  : 800.000000
+Avg Total Reward           : 1911.347226
+Epsilon (q0, q1, q2)       : 0.0800, 0.0878, 1.0000
+Buffer Fractions (q0/q1/q2) : 50.07%, 38.73%, 11.20%
+Hits (WP1/WP2/Goal)         : 3603, 804, 121
+
+[SHAPING | MULTI EPS] Episode 5300/10000
+Avg Reward                  : 1000.000000
+Avg Total Reward           : 2153.775971
+Epsilon (q0, q1, q2)       : 0.0800, 0.0807, 0.9960
+Buffer Fractions (q0/q1/q2) : 50.88%, 37.08%, 12.04%
+Hits (WP1/WP2/Goal)         : 3688, 887, 131
+
+[SHAPING | MULTI EPS] Episode 5400/10000
+Avg Reward                  : 1900.000000
+Avg Total Reward           : 3148.138360
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.9121
+Buffer Fractions (q0/q1/q2) : 50.60%, 36.19%, 13.21%
+Hits (WP1/WP2/Goal)         : 3780, 975, 150
+
+[SHAPING | MULTI EPS] Episode 5500/10000
+Avg Reward                  : 300.000000
+Avg Total Reward           : 1581.635513
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.8294
+Buffer Fractions (q0/q1/q2) : 50.44%, 35.17%, 14.39%
+Hits (WP1/WP2/Goal)         : 3876, 1070, 153
+
+[SHAPING | MULTI EPS] Episode 5600/10000
+Avg Reward                  : 500.000000
+Avg Total Reward           : 1686.860188
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.7602
+Buffer Fractions (q0/q1/q2) : 48.65%, 35.46%, 15.89%
+Hits (WP1/WP2/Goal)         : 3966, 1157, 158
+
+[SHAPING | MULTI EPS] Episode 5700/10000
+Avg Reward                  : 100.000000
+Avg Total Reward           : 922.018228
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.7145
+Buffer Fractions (q0/q1/q2) : 46.56%, 36.35%, 17.09%
+Hits (WP1/WP2/Goal)         : 4045, 1219, 159
+
+[SHAPING | MULTI EPS] Episode 5800/10000
+Avg Reward                  : 700.000000
+Avg Total Reward           : 1348.800914
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.6803
+Buffer Fractions (q0/q1/q2) : 46.69%, 36.04%, 17.27%
+Hits (WP1/WP2/Goal)         : 4115, 1268, 166
+
+[SHAPING | MULTI EPS] Episode 5900/10000
+Avg Reward                  : 600.000000
+Avg Total Reward           : 1496.715300
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.6388
+Buffer Fractions (q0/q1/q2) : 46.70%, 35.59%, 17.70%
+Hits (WP1/WP2/Goal)         : 4188, 1331, 172
+
+[SHAPING | MULTI EPS] Episode 6000/10000
+Avg Reward                  : 500.000000
+Avg Total Reward           : 1394.519310
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.6015
+Buffer Fractions (q0/q1/q2) : 47.65%, 35.01%, 17.33%
+Hits (WP1/WP2/Goal)         : 4264, 1391, 177
+
+[SHAPING | MULTI EPS] Episode 6100/10000
+Avg Reward                  : 300.000000
+Avg Total Reward           : 973.444949
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.5762
+Buffer Fractions (q0/q1/q2) : 48.22%, 34.49%, 17.29%
+Hits (WP1/WP2/Goal)         : 4330, 1434, 180
+
+[SHAPING | MULTI EPS] Episode 6200/10000
+Avg Reward                  : 2600.000000
+Avg Total Reward           : 3474.887083
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.5481
+Buffer Fractions (q0/q1/q2) : 48.47%, 35.14%, 16.39%
+Hits (WP1/WP2/Goal)         : 4398, 1484, 206
+
+[SHAPING | MULTI EPS] Episode 6300/10000
+Avg Reward                  : 2600.000000
+Avg Total Reward           : 3473.281601
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.5214
+Buffer Fractions (q0/q1/q2) : 49.09%, 35.47%, 15.44%
+Hits (WP1/WP2/Goal)         : 4472, 1534, 232
+
+[SHAPING | MULTI EPS] Episode 6400/10000
+Avg Reward                  : 1100.000000
+Avg Total Reward           : 1810.832325
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4979
+Buffer Fractions (q0/q1/q2) : 50.43%, 35.08%, 14.49%
+Hits (WP1/WP2/Goal)         : 4533, 1580, 243
+
+[SHAPING | MULTI EPS] Episode 6500/10000
+Avg Reward                  : 800.000000
+Avg Total Reward           : 1029.456296
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4885
+Buffer Fractions (q0/q1/q2) : 52.67%, 34.34%, 12.98%
+Hits (WP1/WP2/Goal)         : 4566, 1599, 251
+
+[SHAPING | MULTI EPS] Episode 6600/10000
+Avg Reward                  : 1600.000000
+Avg Total Reward           : 1956.652078
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4765
+Buffer Fractions (q0/q1/q2) : 56.24%, 32.07%, 11.68%
+Hits (WP1/WP2/Goal)         : 4599, 1624, 267
+
+[SHAPING | MULTI EPS] Episode 6700/10000
+Avg Reward                  : 2500.000000
+Avg Total Reward           : 3142.750259
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4564
+Buffer Fractions (q0/q1/q2) : 56.80%, 31.69%, 11.51%
+Hits (WP1/WP2/Goal)         : 4646, 1667, 292
+
+[SHAPING | MULTI EPS] Episode 6800/10000
+Avg Reward                  : 2000.000000
+Avg Total Reward           : 2475.318271
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4420
+Buffer Fractions (q0/q1/q2) : 59.12%, 30.03%, 10.85%
+Hits (WP1/WP2/Goal)         : 4692, 1699, 312
+
+[SHAPING | MULTI EPS] Episode 6900/10000
+Avg Reward                  : 2700.000000
+Avg Total Reward           : 3263.171615
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4285
+Buffer Fractions (q0/q1/q2) : 60.48%, 29.77%, 9.76%
+Hits (WP1/WP2/Goal)         : 4755, 1730, 339
+
+[SHAPING | MULTI EPS] Episode 7000/10000
+Avg Reward                  : 2500.000000
+Avg Total Reward           : 3035.109910
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.4129
+Buffer Fractions (q0/q1/q2) : 63.28%, 28.41%, 8.31%
+Hits (WP1/WP2/Goal)         : 4804, 1767, 364
+
+[SHAPING | MULTI EPS] Episode 7100/10000
+Avg Reward                  : 3200.000000
+Avg Total Reward           : 3751.643015
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3983
+Buffer Fractions (q0/q1/q2) : 66.23%, 25.65%, 8.12%
+Hits (WP1/WP2/Goal)         : 4849, 1803, 396
+
+[SHAPING | MULTI EPS] Episode 7200/10000
+Avg Reward                  : 3600.000000
+Avg Total Reward           : 4321.835490
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3819
+Buffer Fractions (q0/q1/q2) : 68.34%, 23.88%, 7.78%
+Hits (WP1/WP2/Goal)         : 4912, 1845, 432
+
+[SHAPING | MULTI EPS] Episode 7300/10000
+Avg Reward                  : 4700.000000
+Avg Total Reward           : 5645.338011
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3622
+Buffer Fractions (q0/q1/q2) : 69.65%, 22.37%, 7.98%
+Hits (WP1/WP2/Goal)         : 4980, 1898, 479
+
+[SHAPING | MULTI EPS] Episode 7400/10000
+Avg Reward                  : 1600.000000
+Avg Total Reward           : 1923.501566
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3558
+Buffer Fractions (q0/q1/q2) : 68.44%, 23.57%, 7.99%
+Hits (WP1/WP2/Goal)         : 5023, 1916, 495
+
+[SHAPING | MULTI EPS] Episode 7500/10000
+Avg Reward                  : 2200.000000
+Avg Total Reward           : 2648.480403
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3459
+Buffer Fractions (q0/q1/q2) : 68.74%, 23.69%, 7.57%
+Hits (WP1/WP2/Goal)         : 5070, 1944, 517
+
+[SHAPING | MULTI EPS] Episode 7600/10000
+Avg Reward                  : 2600.000000
+Avg Total Reward           : 3082.264990
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3354
+Buffer Fractions (q0/q1/q2) : 69.41%, 23.54%, 7.05%
+Hits (WP1/WP2/Goal)         : 5115, 1975, 543
+
+[SHAPING | MULTI EPS] Episode 7700/10000
+Avg Reward                  : 3300.000000
+Avg Total Reward           : 3906.502949
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3241
+Buffer Fractions (q0/q1/q2) : 68.98%, 23.88%, 7.14%
+Hits (WP1/WP2/Goal)         : 5170, 2009, 576
+
+[SHAPING | MULTI EPS] Episode 7800/10000
+Avg Reward                  : 3000.000000
+Avg Total Reward           : 3626.009997
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.3127
+Buffer Fractions (q0/q1/q2) : 68.53%, 24.17%, 7.31%
+Hits (WP1/WP2/Goal)         : 5225, 2045, 606
+
+[SHAPING | MULTI EPS] Episode 7900/10000
+Avg Reward                  : 4100.000000
+Avg Total Reward           : 4830.158885
+Epsilon (q0, q1, q2)       : 0.0800, 0.0800, 0.2998
+Buffer Fractions (q0/q1/q2) : 68.85%, 23.67%, 7.48%
+Hits (WP1/WP2/Goal)         : 5280, 2087, 647
+
