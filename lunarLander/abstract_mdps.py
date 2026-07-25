@@ -166,28 +166,6 @@ class LTLfWaypointMDP:
             truth_assignment[prop_name] = (x == wp_x and y == wp_y)
         return truth_assignment
 
-    def get_transitions_old(self, state, action):
-        x, y, q = state
-        next_y = y
-        reward = 0
-        
-        # Apply movement along the Y axis.
-        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
-        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
-            
-        # Apply movement along the X axis.
-        next_x = x
-        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
-        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
-        
-        truth_assignment = self._get_truth_assignment(x, y)
-        
-        # Advance the automaton using the current position.
-        next_q = self.automaton.get_next_q(q, truth_assignment)
-        next_state = (next_x, next_y, next_q)
-        
-        return next_state, reward
-
     def get_transitions(self, state, action):
         x, y, q = state
         reward = 0
