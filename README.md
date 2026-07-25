@@ -1,6 +1,24 @@
-# Lunar Lander Q-Learning and Hierarchical Reinforcement Learning
+# Lunar Lander with LTLf Reward Shaping
 
 This repository contains implementations of Tabular Q-Learning and Hierarchical Reinforcement Learning (HRL) with reward shaping for the Lunar Lander environment from Gymnasium. The project explores different training methodologies to learn optimal landing policies.
+
+The `discrete_sac` module provides a neural baseline based on d3rlpy's Discrete Soft
+Actor-Critic implementation. It keeps LunarLander's four-action discrete
+interface and augments each observation with the current LTLf automaton state.
+Its `trainer.py` entry point contains separate documented sections for the
+algorithm configuration, environment wrapper, metrics, plotting and training
+orchestration.
+
+Install the Python dependencies and start an experiment from the `discrete_sac`
+directory:
+
+```bash
+python3 -m pip install -r ../requirements.txt
+python3 trainer.py --steps 250000 --config trajectory.json
+```
+
+Use `--no-use-shaping` to train the corresponding unshaped baseline. Models,
+numeric episode metrics and plots are written to `results` and `img`.
 
 
 ## Features

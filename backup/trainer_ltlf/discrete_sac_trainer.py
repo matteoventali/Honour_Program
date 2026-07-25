@@ -43,7 +43,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, window_size=100, 
     ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='True Environment Reward')
     ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Total Reward (Env + Shaping)')
     
-    ax1.set_title(f"DSAC Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
+    ax1.set_title(f"Discrete SAC Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
@@ -65,10 +65,10 @@ def plot_comparison_curves(baseline_rewards, shaping_rewards, window_size=100, f
     shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
     x_axis = np.arange(len(baseline_rewards))
     
-    ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label="DSAC (No Shaping)")
-    ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label="DSAC (With Shaping)")
+    ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label="Discrete SAC (No Shaping)")
+    ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label="Discrete SAC (With Shaping)")
     
-    ax1.set_title("DSAC Performance Comparison", fontsize=15, fontweight='bold')
+    ax1.set_title("Discrete SAC Performance Comparison", fontsize=15, fontweight='bold')
     ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
@@ -164,7 +164,7 @@ class LTLfShapingWrapper(gym.Wrapper):
                 
                 log_string = (
                     f"----------------------------------------------------------------------------------------------------\n"
-                    f"[{mode_str} | DSAC] Episode {self.episode_count}/{args.episodes}\n"
+                    f"[{mode_str} | DISCRETE SAC] Episode {self.episode_count}/{args.episodes}\n"
                     f"Avg Reward                  : {recent_avg:.6f}\n" +
                     (f"Avg Total Reward            : {recent_avg_with_shaping:.6f}\n" if self.use_shaping else "") +
                     f"Hits (Cumulative)           : {hits_details}\n"
@@ -228,9 +228,9 @@ class CustomCritic(nn.Module):
 # ==========================================
 # 4. TRAINING LOOP E MAIN
 # ==========================================
-def train_dsac(env_fn, args):
+def train_discrete_sac(env_fn, args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"\n---> Inizializzazione DSAC su {device} (Shaping: {args.use_shaping})")
+    print(f"\n---> Inizializzazione Discrete SAC su {device} (Shaping: {args.use_shaping})")
     
     train_envs = DummyVectorEnv([env_fn])
     
@@ -315,20 +315,20 @@ def main(args):
     global_true_rewards.clear()
     global_total_rewards.clear()
     
-    true_rewards, total_rewards = train_dsac(make_env, args)
+    true_rewards, total_rewards = train_discrete_sac(make_env, args)
     
     prefix = "shaping" if args.use_shaping else "baseline"
     
-    np.savez_compressed(f"{data_dir}/{prefix}_dsac_data.npz", true_rewards=true_rewards, total_rewards=total_rewards)
+    np.savez_compressed(f"{data_dir}/{prefix}_discrete_sac_data.npz", true_rewards=true_rewards, total_rewards=total_rewards)
     
     plot_shaping_reward_breakdown(
         true_rewards, total_rewards, 
         window_size=min(50, max(1, len(true_rewards) // 10)), 
-        filename=f"{img_dir}/dsac_{prefix}_reward_breakdown.png"
+        filename=f"{img_dir}/discrete_sac_{prefix}_reward_breakdown.png"
     )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LTLf DSAC Training")
+    parser = argparse.ArgumentParser(description="LTLf Discrete SAC Training")
     parser.add_argument(
         "--episodes", 
         type=int, 
