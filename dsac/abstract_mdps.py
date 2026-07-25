@@ -2,50 +2,48 @@ import re
 from collections import defaultdict
 import numpy as np
 
-# Importiamo il parser corretto dalla libreria ltlf2dfa
+# Import the LTLf parser provided by ltlf2dfa.
 from ltlf2dfa.parser.ltlf import LTLfParser
 from graphviz import Source
 
 class LTLfAutomaton:
     """
-    Wrapper per la libreria ltlf2dfa.
-    Converte una formula LTLf in un DFA (formato DOT) e ne fa il parsing 
-    in un grafo navigabile per l'MDP.
+    Wrap ltlf2dfa and expose its DFA as a graph that can be traversed by the MDP.
     """
     def __init__(self, formula_str):
         self.formula_str = formula_str
         
-        # 1. Parsing della formula e generazione del DFA (in formato DOT)
+        # Parse the formula and generate its DFA in DOT format.
         parser = LTLfParser()
         parsed_formula = parser(formula_str)
         dot_string = parsed_formula.to_dfa()
         self.dot_string = parsed_formula.to_dfa()
         
-        # 2. Strutture dati dell'automa
+        # Initialize the automaton data structures.
         self.states = set()
         self.accepting_states = set()
-        self.transitions = {}  # {stato_sorgente: [(condizione_booleana, stato_destinazione), ...]}
+        self.transitions = {}  # {source_state: [(Boolean_guard, destination_state), ...]}
         self.initial_state = None
         
-        # 3. Estrazione delle informazioni dalla stringa DOT
+        # Extract states and transitions from the DOT representation.
         self._parse_dot(dot_string)
         
-        # Ordiniamo gli stati in una lista per l'MDP
+        # Keep a stable state order for the MDP and one-hot encodings.
         self.states = sorted(list(self.states))
         self.num_phases = len(self.states)
 
     def _parse_dot(self, dot_string):
         """
-        Analizza la stringa DOT generata da ltlf2dfa ed estrae stati, 
-        stati accettanti, stato iniziale e transizioni logiche.
+        Parse the DOT output and extract states, accepting states, the initial
+        state, and guarded transitions.
         """
-        # Estrazione degli stati accettanti (es. node [shape = doublecircle]; 2 3;)
+        # Extract accepting states, e.g. node [shape = doublecircle]; 2 3;.
         match_acc = re.search(r'node\s*\[shape\s*=\s*doublecircle\]\s*;\s*(.*?);', dot_string)
         if match_acc:
             acc_str = match_acc.group(1).replace(',', ' ')
             self.accepting_states = set(int(s) for s in acc_str.split() if s.strip().isdigit())
             
-        # Estrazione delle transizioni (es. 1 -> 2 [label="wp1 & ~wp2"])
+        # Extract guarded transitions, e.g. 1 -> 2 [label="wp1 & ~wp2"].
         trans_matches = re.findall(r'(\d+)\s*->\s*(\d+)\s*\[label\s*=\s*"(.*?)"\]', dot_string)
         for src_str, dst_str, guard in trans_matches:
             src = int(src_str)
@@ -57,8 +55,8 @@ class LTLfAutomaton:
                 self.transitions[src] = []
             self.transitions[src].append((guard, dst))
             
-        # Estrazione dello stato iniziale (solitamente indicato da un arco senza etichetta da un nodo fantasma '0')
-        # Es. 0 [style=invis]; 0 -> 1;
+        # Extract the initial state from the unlabeled edge leaving the invisible node.
+        # Example: 0 [style=invis]; 0 -> 1;.
         init_match = re.search(r'(\d+)\s*->\s*(\d+)\s*;', dot_string)
         if init_match:
             self.initial_state = int(init_match.group(2))
@@ -66,17 +64,16 @@ class LTLfAutomaton:
             self.initial_state = min(self.states) if self.states else 0
 
     def get_initial_q(self):
-        """Restituisce l'ID dello stato iniziale dell'automa."""
+        """Return the identifier of the DFA pre-trace state."""
         return self.initial_state
 
     def is_goal_reached(self, current_q):
-        """Verifica se lo stato attuale è uno stato accettante."""
+        """Return whether the current DFA state is accepting."""
         return current_q in self.accepting_states
 
     def get_next_q(self, current_q, truth_assignment):
         """
-        Valuta le condizioni logiche (guardie) delle transizioni in uscita dallo 
-        stato corrente e restituisce il prossimo stato dell'automa.
+        Evaluate outgoing transition guards and return the next DFA state.
         """
         if current_q not in self.transitions:
             return current_q
@@ -89,53 +86,72 @@ class LTLfAutomaton:
 
     def _eval_guard(self, guard, truth_assignment):
         """
-        Converte una guardia dal formato DOT (es. "wp1 & ~wp2") in Python 
-        e la valuta rispetto al dizionario di verità attuale.
+        Convert a DOT guard such as "wp1 & ~wp2" to Python syntax and evaluate
+        it against the current truth assignment.
         """
         guard = guard.strip()
         
-        # 1. Intercettiamo le costanti universali (sia formati numerici che testuali)
+        # Handle numeric and textual Boolean constants.
         if guard.lower() in ["1", "true"]: return True
         if guard.lower() in ["0", "false"]: return False
         
-        # Mappiamo gli operatori logici standard in sintassi Python
+        # Convert the standard Boolean operators to Python syntax.
         expr = guard.replace('&', ' and ').replace('|', ' or ').replace('~', ' not ').replace('!', ' not ')
         
         try:
-            # 2. FIX: Usare un dizionario vuoto {} al posto di None per i builtins
+            # Disable built-ins while evaluating the Boolean expression.
             return eval(expr, {"__builtins__": {}}, truth_assignment)
         except Exception as e:
-            print(f"[Errore LTLfAutomaton] Impossibile valutare la transizione '{guard}': {e}")
+            print(f"[LTLfAutomaton error] Could not evaluate transition guard '{guard}': {e}")
             return False
 
     def render_graph(self, filename="ltlf_automaton", directory="img"):
-        """
-        Renderizza e salva il DFA come immagine PNG.
-        """
+        """Render the DFA and save it as a PNG image."""
         try:
-            src = Source(self.dot_string)
+            # ltlf2dfa emits a left-to-right graph.  With complex formulae the
+            # transition guards become wide, leaving the resulting PNG only a
+            # few pixels high.  A top-to-bottom layout gives labels enough room
+            # and keeps the automaton readable independently of formula length.
+            render_dot = re.sub(
+                r"rankdir\s*=\s*LR\s*;",
+                "rankdir = TB;",
+                self.dot_string,
+                count=1,
+            )
+            render_dot = re.sub(
+                r"(digraph[^{]*\{)",
+                (
+                    r"\1\n"
+                    r'graph [pad="0.35", nodesep="0.55", ranksep="0.75"];' "\n"
+                    r'node [width="0.55", height="0.55"];' "\n"
+                    r'edge [fontsize="10"];'
+                ),
+                render_dot,
+                count=1,
+            )
+            src = Source(render_dot)
             src.render(filename=filename, directory=directory, format='png', cleanup=True)
-            print(f"Grafo dell'automa salvato con successo in: {directory}/{filename}.png")
+            print(f"Automaton graph saved to: {directory}/{filename}.png")
         except Exception as e:
-            print(f"[Errore Graphviz] Impossibile renderizzare il grafo: {e}")
+            print(f"[Graphviz error] Could not render the automaton graph: {e}")
 
 
 class LTLfWaypointMDP:
     """
-    MDP per task sequenziali guidato da un automa LTLf.
-    Lo stato astratto è 3D: (x, y, q) dove q è l'ID dello stato del DFA.
+    Abstract MDP guided by an LTLf automaton.
+    Each abstract state is (x, y, q), where q is the DFA state identifier.
     """
     def __init__(self, waypoints_dict, ltlf_automaton, width=12, height=12, gamma=0.99, goal_reward=10000):
         self.width = width
         self.height = height
         self.gamma = gamma
-        self.actions = [0, 1, 2, 3, 4, 5, 6, 7] # Include i movimenti diagonali
+        self.actions = [0, 1, 2, 3, 4, 5, 6, 7] # Include diagonal movements.
         
         self.waypoints_dict = waypoints_dict
         self.automaton = ltlf_automaton
         self.num_phases = self.automaton.num_phases
         
-        # Generazione degli stati usando la griglia e tutti i possibili stati dell'automa
+        # Generate every combination of grid position and DFA state.
         self.states = [(x, y, q) for x in range(width) for y in range(height) for q in self.automaton.states]
         
         self.goal_reward = goal_reward
@@ -143,41 +159,18 @@ class LTLfWaypointMDP:
         
     def _get_truth_assignment(self, x, y):
         """
-        Mappa le coordinate (x,y) attuali nelle proposizioni logiche.
-        Restituisce un dizionario di verità per lo step dell'automa.
+        Map the current grid coordinates to a Boolean proposition assignment.
         """
         truth_assignment = {}
         for prop_name, (wp_x, wp_y) in self.waypoints_dict.items():
             truth_assignment[prop_name] = (x == wp_x and y == wp_y)
         return truth_assignment
 
-    def get_transitions_old(self, state, action):
-        x, y, q = state
-        next_y = y
-        reward = 0
-        
-        # Movimento asse Y
-        if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
-        elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
-            
-        # Movimento asse X
-        next_x = x
-        if action in [2, 4, 6]:    next_x = max(x - 1, 0)
-        elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
-        
-        truth_assignment = self._get_truth_assignment(x, y)
-        
-        # Otteniamo il prossimo stato dell'automa dal modulo LTLf
-        next_q = self.automaton.get_next_q(q, truth_assignment)
-        next_state = (next_x, next_y, next_q)
-        
-        return next_state, reward
-
     def get_transitions(self, state, action):
         x, y, q = state
         reward = 0
         
-        # 1. Calcola il movimento fisico NORMALE (come facevi prima)
+        # Apply the abstract physical movement.
         next_y = y
         if action in [0, 4, 5]:    next_y = min(y + 1, self.height - 1)
         elif action in [1, 6, 7]:  next_y = max(y - 1, 0)
@@ -186,18 +179,57 @@ class LTLfWaypointMDP:
         if action in [2, 4, 6]:    next_x = max(x - 1, 0)
         elif action in [3, 5, 7]:  next_x = min(x + 1, self.width - 1)
         
-        # 2. LA MODIFICA CHIAVE: Valuta le proposizioni sulle coordinate di ARRIVO
-        # (Esempio generico, adatta alla tua funzione di valutazione)
+        # Evaluate propositions at the arrival coordinates.
         truth_assignment = self._get_truth_assignment(next_x, next_y)
         
-        # 3. Aggiorna lo stato dell'automa basandoti su questa valutazione
+        # Advance the automaton using the arrival-state valuation.
         next_q = self.automaton.get_next_q(q, truth_assignment)
 
         next_state = (next_x, next_y, next_q)
         return next_state, reward
+
+    def print_policy(self):
+        arrows = {
+            0: "↑",
+            1: "↓",
+            2: "←",
+            3: "→",
+            4: "↖",
+            5: "↗",
+            6: "↙",
+            7: "↘"
+        }
+
+        for q in self.automaton.states:
+            print(f"\n===== POLICY - DFA STATE q={q} =====")
+
+            for y in reversed(range(self.height)):
+                row = []
+
+                for x in range(self.width):
+                    state = (x, y, q)
+
+                    if self.automaton.is_goal_reached(q):
+                        row.append(" G ")
+                        continue
+
+                    best_action = None
+                    best_value = -float("inf")
+
+                    for a in self.actions:
+                        next_state, reward = self.get_transitions(state, a)
+                        value = reward + self.gamma * self.v_star[next_state]
+
+                        if value > best_value:
+                            best_value = value
+                            best_action = a
+
+                    row.append(f" {arrows[best_action]} ")
+
+                print("".join(row))
     
     def value_iteration(self, theta=0.001):
-        print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
+        print(f"Value Iteration...")
         
         for s in self.states:
             if self.automaton.is_goal_reached(s[2]):
@@ -215,39 +247,5 @@ class LTLfWaypointMDP:
             self.v_star = new_v
             if delta < theta: break
 
-    def value_iteration_old(self, theta=0.001):
-        print(f"Risoluzione MDP con Automa LTLf ({self.num_phases} Stati) tramite Value Iteration...")
+        #self.print_policy()
         
-        terminal_states = set()
-        
-        # 1. Replichiamo la vecchia logica: ancoriamo il premio massimo allo stato 
-        # fisico che *causerà* la fine, invece di aspettare lo stato accettante logico.
-        for s in self.states:
-            x, y, q = s
-            truth_assignment = self._get_truth_assignment(x, y)
-            next_q = self.automaton.get_next_q(q, truth_assignment)
-            
-            # Se calpestare (x, y) nello stato logico 'q' soddisfa la formula:
-            if self.automaton.is_goal_reached(next_q):
-                terminal_states.add(s)
-                self.v_star[s] = self.goal_reward
-                
-            # Manteniamo a 10000 anche gli stati logici già accettanti per sicurezza
-            elif self.automaton.is_goal_reached(q):
-                terminal_states.add(s)
-                self.v_star[s] = self.goal_reward
-        
-        # 2. Ciclo di update identico al precedente
-        while True:
-            delta = 0
-            new_v = self.v_star.copy()
-            for s in self.states:
-                # Come nel vecchio codice (if s != self.goal_state:), 
-                # saltiamo l'update per gli stati terminali per non diluire il valore
-                if s not in terminal_states: 
-                    v_actions = [self.get_transitions(s, a)[1] + self.gamma * self.v_star[self.get_transitions(s, a)[0]] for a in self.actions]
-                    best_v = max(v_actions)
-                    delta = max(delta, abs(best_v - self.v_star[s]))
-                    new_v[s] = best_v
-            self.v_star = new_v
-            if delta < theta: break
