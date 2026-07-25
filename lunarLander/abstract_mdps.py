@@ -247,5 +247,5 @@ class LTLfWaypointMDP:
             self.v_star = new_v
             if delta < theta: break
 
-        #self.print_policy()
+        self.print_policy()
         

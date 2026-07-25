@@ -240,12 +240,69 @@ def _positive_int(value):
     return parsed
 
 
+def _select_files_graphically(policy_dir, config_path):
+    """Select policy checkpoints and the experiment configuration with native dialogs."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as error:
+        raise RuntimeError(
+            "The graphical selector requires tkinter. Install python3-tk or pass "
+            "the policy paths and --config from the command line."
+        ) from error
+
+    try:
+        root = tk.Tk()
+    except tk.TclError as error:
+        raise RuntimeError(
+            "The graphical selector could not be opened. Make sure a desktop "
+            "session is available, or use the command-line arguments."
+        ) from error
+    root.withdraw()
+    root.update()
+
+    try:
+        policies = filedialog.askopenfilenames(
+            parent=root,
+            title="Select one or more policy files",
+            initialdir=str(Path(policy_dir).expanduser()),
+            filetypes=[
+                ("PyTorch checkpoints", "*.pt *.pth *.ckpt"),
+                ("All files", "*"),
+            ],
+        )
+        if not policies:
+            raise RuntimeError("No policy file was selected.")
+
+        config = filedialog.askopenfilename(
+            parent=root,
+            title="Select trajectory.json",
+            initialdir=str(Path(config_path).expanduser().parent),
+            initialfile=Path(config_path).name,
+            filetypes=[
+                ("JSON files", "*.json"),
+                ("All files", "*"),
+            ],
+        )
+        if not config:
+            raise RuntimeError("No trajectory configuration was selected.")
+    finally:
+        root.destroy()
+
+    return list(policies), Path(config)
+
+
 def parse_args():
     """Build and parse the evaluator command-line arguments."""
     parser = argparse.ArgumentParser(description="Evaluate LTLf-guided DQN policies for LunarLander.")
-    parser.add_argument("policies", nargs="+", help="Checkpoint filenames or explicit checkpoint paths.")
+    parser.add_argument(
+        "policies",
+        nargs="*",
+        help="Checkpoint filenames or explicit checkpoint paths. If omitted, graphical file selectors are opened.",
+    )
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR / "trajectory.json", help="Experiment JSON configuration.")
     parser.add_argument("--policy-dir", type=Path, default=SCRIPT_DIR / "policy", help="Directory used to resolve checkpoint filenames.")
+    parser.add_argument("--gui", action="store_true", help="Select policies and trajectory.json using graphical dialogs.")
     parser.add_argument("--episodes", type=_positive_int, default=100)
     parser.add_argument("--window", type=_positive_int, default=10)
     parser.add_argument("--seed", type=int, default=None)
@@ -261,6 +318,13 @@ def parse_args():
 def main():
     """Load the configuration, evaluate the policies, and generate the plots."""
     args = parse_args()
+
+    # Open native file dialogs when requested or when no policy was supplied.
+    if args.gui or not args.policies:
+        try:
+            args.policies, args.config = _select_files_graphically(args.policy_dir, args.config)
+        except RuntimeError as error:
+            raise SystemExit(f"Selection cancelled: {error}") from error
 
     # Load the LTLf task shared with the trainer.
     with args.config.expanduser().open(encoding="utf-8") as config_file:
