@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import os
 from collections import defaultdict
 
@@ -9,8 +10,10 @@ import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import structlog
 from d3rlpy.algos import DiscreteSACConfig
 from d3rlpy.dataset import create_fifo_replay_buffer
+from d3rlpy.logging import NoopAdapterFactory
 from d3rlpy.models.encoders import VectorEncoderFactory
 
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
@@ -465,6 +468,12 @@ def make_environment(abstract_mdp, metrics, args, goal_reward):
 
 def train_discrete_sac(environment, metrics, args, gamma):
     """Train d3rlpy's DiscreteSAC for the requested environment steps."""
+    # Suppress d3rlpy's structured status messages. Exceptions still propagate
+    # normally, while all visible progress information comes from this project.
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.CRITICAL),
+    )
+
     device = args.device
     print(
         f"\nInitializing discrete SAC on {device} "
@@ -503,7 +512,8 @@ def train_discrete_sac(environment, metrics, args, gamma):
             random_steps=args.random_steps,
             experiment_name="ltlf_discrete_sac",
             with_timestamp=False,
-            show_progress=args.show_progress,
+            logger_adapter=NoopAdapterFactory(),
+            show_progress=False,
         )
         mode = "shaping" if args.use_shaping else "baseline"
         algorithm.save(f"{args.output_directory}/{mode}_discrete_sac.d3")
@@ -617,11 +627,6 @@ def build_argument_parser():
     parser.add_argument("--updates-per-interval", type=int, default=1)
     parser.add_argument("--steps-per-epoch", type=int, default=10000)
     parser.add_argument("--device", default="cpu:0")
-    parser.add_argument(
-        "--show-progress",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-    )
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=50)
     parser.add_argument("--output-directory", default="results")

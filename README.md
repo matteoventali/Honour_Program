@@ -20,6 +20,10 @@ python3 trainer.py --steps 250000 --config trajectory.json
 Use `--no-use-shaping` to train the corresponding unshaped baseline. Models,
 numeric episode metrics and plots are written to `results` and `img`.
 
+A streamlined Kaggle workflow is available in
+`notebook/discrete_sac_training_kaggle.ipynb`. It contains separate source,
+trajectory, training, validation, execution and result-export cells.
+
 
 ## Features
 
