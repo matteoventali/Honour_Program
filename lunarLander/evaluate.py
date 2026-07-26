@@ -20,6 +20,11 @@ import torch
 
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
 from agent import QNetwork
+from grid_overlay import (
+    abstract_cell_to_pixel,
+    draw_abstract_grid,
+    geometry_from_env,
+)
 from utils import phi_mapping_sequential
 
 
@@ -28,6 +33,7 @@ from utils import phi_mapping_sequential
 # ==============================
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+EXPERIMENTS_DIR = SCRIPT_DIR.parent / "experiments"
 
 
 def moving_average(data, window_size):
@@ -71,7 +77,8 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict, goal_reward, grid_w, grid_h, seed):
+def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict,
+                    goal_reward, grid_w, grid_h, seed, trace_episodes=0):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -82,7 +89,7 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
 
     # Create the environment and a network with one extra feature per DFA state.
-    render_mode = "human" if render else None
+    render_mode = "human" if render else ("rgb_array" if trace_episodes else None)
     env = gym.make("LunarLander-v3", continuous=False, render_mode=render_mode)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     network = QNetwork(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
@@ -100,12 +107,21 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
     episode_lengths = []
     successes = 0
     state_reach_counts = {q: 0 for q in automaton_states}
+    grid_traces = []
+    trace_frames = []
+    trace_geometries = []
 
     # Run every requested episode sequentially.
     try:
         for episode in range(episodes):
             episode_seed = None if seed is None else seed + episode
             observation, _ = env.reset(seed=episode_seed)
+            tracing = episode < trace_episodes
+            if tracing:
+                trace_frames.append(env.render())
+                trace_geometries.append(geometry_from_env(env))
+                initial_cell = _abstract_position(observation, automaton.get_initial_q(), grid_w, grid_h)
+                cell_trace = [initial_cell]
 
             # Training consumes the valuation at s0 before choosing the first action.
             initial_q = automaton.get_initial_q()
@@ -138,6 +154,8 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
 
                 # Advance the DFA using the propositions true in the arrival state.
                 x, y = _abstract_position(next_observation, q, grid_w, grid_h)
+                if tracing and (x, y) != cell_trace[-1]:
+                    cell_trace.append((x, y))
                 truth_assignment = abstract_mdp._get_truth_assignment(x, y)
                 next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
@@ -166,6 +184,8 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
             task_returns.append(float(goal_reward) if success else 0.0)
             environment_returns.append(environment_return)
             episode_lengths.append(steps)
+            if tracing:
+                grid_traces.append(cell_trace)
     finally:
         env.close()
 
@@ -177,6 +197,9 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
         "episode_lengths": episode_lengths,
         "successes": successes,
         "state_reach_counts": state_reach_counts,
+        "grid_traces": grid_traces,
+        "trace_frames": trace_frames,
+        "trace_geometries": trace_geometries,
     }
 
 
@@ -228,6 +251,82 @@ def plot_comparison(results, window_size, output_dir):
     return output_path
 
 
+def plot_grid_traces(result, waypoints_dict, grid_w, grid_h, output_dir):
+    """Save one abstract-grid path image for every recorded episode."""
+    output_paths = []
+    trace_data = zip(
+        result["grid_traces"],
+        result["trace_frames"],
+        result["trace_geometries"],
+    )
+    for episode_index, (cells, frame, geometry) in enumerate(trace_data, start=1):
+        figure = draw_abstract_grid(
+            frame=frame,
+            geometry=geometry,
+            grid_w=grid_w,
+            grid_h=grid_h,
+            waypoints=waypoints_dict,
+            title=f"Agent Abstract-Cell Trace — Episode {episode_index}",
+        )
+        axis = figure.axes[0]
+        points = [
+            abstract_cell_to_pixel(x, y, grid_w, grid_h, geometry)
+            for x, y in cells
+        ]
+        if points:
+            pixel_x, pixel_y = zip(*points)
+            axis.plot(
+                pixel_x,
+                pixel_y,
+                color="#00e5ff",
+                linewidth=2.8,
+                marker="o",
+                markersize=5,
+                label="Visited-cell path",
+                zorder=4,
+            )
+            for change_index, ((cell_x, cell_y), (point_x, point_y)) in enumerate(
+                zip(cells, points)
+            ):
+                axis.annotate(
+                    str(change_index),
+                    (point_x, point_y),
+                    ha="center",
+                    va="center",
+                    fontsize=7,
+                    fontweight="bold",
+                    color="black",
+                    zorder=7,
+                )
+        axis.legend(
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0),
+            borderaxespad=0.0,
+            frameon=True,
+        )
+        figure.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
+        output_path = output_dir / (
+            f"grid_trace_{_safe_stem(result['policy'])}_episode_{episode_index}.png"
+        )
+        figure.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(figure)
+        output_paths.append(output_path)
+    return output_paths
+
+
+def format_waypoint_trace(cells, waypoints_dict):
+    """Report the first cell-change index at which each waypoint was visited."""
+    first_visit = {}
+    for index, cell in enumerate(cells):
+        first_visit.setdefault(tuple(cell), index)
+    return ", ".join(
+        f"{name}=reached@{first_visit[tuple(position)]}"
+        if tuple(position) in first_visit
+        else f"{name}=missed"
+        for name, position in waypoints_dict.items()
+    )
+
+
 # ==============================
 # Command-line interface
 # ==============================
@@ -262,10 +361,11 @@ def _select_files_graphically(policy_dir, config_path):
     root.update()
 
     try:
+        initial_directory = EXPERIMENTS_DIR if EXPERIMENTS_DIR.is_dir() else SCRIPT_DIR
         policies = filedialog.askopenfilenames(
             parent=root,
             title="Select one or more policy files",
-            initialdir=str(Path(policy_dir).expanduser()),
+            initialdir=str(initial_directory),
             filetypes=[
                 ("PyTorch checkpoints", "*.pt *.pth *.ckpt"),
                 ("All files", "*"),
@@ -277,7 +377,7 @@ def _select_files_graphically(policy_dir, config_path):
         config = filedialog.askopenfilename(
             parent=root,
             title="Select trajectory.json",
-            initialdir=str(Path(config_path).expanduser().parent),
+            initialdir=str(initial_directory),
             initialfile=Path(config_path).name,
             filetypes=[
                 ("JSON files", "*.json"),
@@ -307,6 +407,17 @@ def parse_args():
     parser.add_argument("--window", type=_positive_int, default=10)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--render", action="store_true")
+    parser.add_argument(
+        "--trace-grid",
+        action="store_true",
+        help="Save the sequence of abstract cells visited during evaluation.",
+    )
+    parser.add_argument(
+        "--trace-episodes",
+        type=_positive_int,
+        default=1,
+        help="Number of episodes to trace when --trace-grid is enabled (default: 1).",
+    )
     parser.add_argument("--output-dir", type=Path, default=SCRIPT_DIR / "img" / "evaluation")
     return parser.parse_args()
 
@@ -318,6 +429,11 @@ def parse_args():
 def main():
     """Load the configuration, evaluate the policies, and generate the plots."""
     args = parse_args()
+    if args.render and args.trace_grid:
+        raise SystemExit(
+            "--render and --trace-grid cannot be used together because Gymnasium "
+            "requires a single render mode. Run them as separate evaluations."
+        )
 
     # Open native file dialogs when requested or when no policy was supplied.
     if args.gui or not args.policies:
@@ -340,7 +456,12 @@ def main():
     # Evaluate policies one at a time to keep rendering and output deterministic.
     results = []
     for policy in args.policies:
-        result = evaluate_policy(policy, args.policy_dir, args.episodes, args.render, formula, waypoints_dict, goal_reward, grid_w, grid_h, args.seed)
+        traced_episodes = min(args.trace_episodes, args.episodes) if args.trace_grid else 0
+        result = evaluate_policy(
+            policy, args.policy_dir, args.episodes, args.render, formula,
+            waypoints_dict, goal_reward, grid_w, grid_h, args.seed,
+            trace_episodes=traced_episodes,
+        )
         results.append(result)
 
     # Print the summary and create one plot for each evaluated policy.
@@ -352,6 +473,18 @@ def main():
         reached = ", ".join(f"q={q}: {count}/{args.episodes}" for q, count in result["state_reach_counts"].items())
         print(f"[{result['policy']}] success={success_rate:.1%}, mean Gym return={mean_gym_return:.2f}, mean length={mean_length:.1f} | reached: {reached}")
         print(f"Plot saved to: {plot_policy(result, args.window, args.output_dir)}")
+        if args.trace_grid:
+            trace_paths = plot_grid_traces(
+                result, waypoints_dict, grid_w, grid_h, args.output_dir
+            )
+            for episode_index, (cells, trace_path) in enumerate(
+                zip(result["grid_traces"], trace_paths), start=1
+            ):
+                waypoint_status = format_waypoint_trace(cells, waypoints_dict)
+                print(
+                    f"Grid trace episode {episode_index}: {waypoint_status} | "
+                    f"saved to: {trace_path}"
+                )
 
     # Add a combined comparison when more than one policy was requested.
     if len(results) > 1:

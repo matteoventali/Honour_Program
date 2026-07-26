@@ -35,6 +35,36 @@ trajectory, training, validation, execution and result-export cells.
 - **Visualization**: Generates plots for training progress (raw rewards and moving averages) and policy comparisons.
 - **Parallel Execution**: Supports multiprocessing for training and evaluating multiple policies concurrently.
 
+## Abstract grid overlay
+
+To render the same abstract grid used by the trainer directly over a
+LunarLander RGB frame, run:
+
+```bash
+cd lunarLander
+python3 grid_overlay.py --config trajectory.json \
+  --output img/abstract_grid_overlay.png --seed 0
+```
+
+The generated image includes the configured waypoints and highlights the
+abstract cell occupied by the lander after reset. The reusable
+`draw_abstract_grid` function can also annotate frames captured later in an
+episode.
+
+During policy evaluation, the cells visited by the agent can be recorded and
+drawn over the same grid:
+
+```bash
+cd lunarLander
+python3 evaluate.py policy/example.pt --config trajectory.json \
+  --episodes 10 --trace-grid --trace-episodes 3
+```
+
+This saves one numbered cell path per traced episode under `img/evaluation`
+and prints whether each configured waypoint was reached or missed. Grid
+tracing and interactive `--render` use different Gymnasium render modes and
+must be run separately.
+
 
 ## Project Structure
 
