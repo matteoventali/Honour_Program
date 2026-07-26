@@ -35,9 +35,11 @@ def save_training_data(filename, **kwargs):
     print(f"\nTraining data saved to: {filename}")
 
 
-def _abstract_position(observation):
+def _abstract_position(observation, abstract_mdp):
     """Map a raw environment observation to its abstract spatial coordinates."""
-    x, y, _ = phi_mapping_sequential(observation, 0)
+    x, y, _ = phi_mapping_sequential(
+        observation, 0, abstract_mdp.width, abstract_mdp.height
+    )
     return x, y
 
 
@@ -50,7 +52,7 @@ def _augment_state(observation, q, state_to_index):
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
     """Consume the initial observation from the DFA pre-trace state and return the first active state."""
-    initial_x, initial_y = _abstract_position(observation)
+    initial_x, initial_y = _abstract_position(observation, abstract_mdp)
     initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
     return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
@@ -280,8 +282,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 next_raw_state, _ignored_env_reward, env_terminated, env_truncated, _ = env.step(action)
 
                 # Map the transition to abstract spatial states.
-                x, y = _abstract_position(raw_state)
-                next_x, next_y = _abstract_position(next_raw_state)
+                x, y = _abstract_position(raw_state, abstract_mdp)
+                next_x, next_y = _abstract_position(next_raw_state, abstract_mdp)
                 abstract_state = (x, y, q)
 
                 # Advance the DFA using propositions true in the arrival state.

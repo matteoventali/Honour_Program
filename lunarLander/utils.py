@@ -2,16 +2,94 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.patches import Rectangle
 
-def phi_mapping_grid(obs, grid_w=12, grid_h=12):
+
+ABSTRACT_X_MIN = -1.0
+ABSTRACT_X_MAX = 1.0
+ABSTRACT_Y_MIN = 0.0
+ABSTRACT_Y_MAX = 2.0
+
+
+def phi_mapping_grid_backup(obs, grid_w=12, grid_h=12):
+    """Legacy mapping kept for reproducing policies trained before the grid update."""
     x, y = obs[0], obs[1]
     abstract_x = int(np.clip((x + 1) / 2 * (grid_w - 1), 0, grid_w - 1))
     abstract_y = int(np.clip(y / 1.5 * (grid_h - 1), 0, grid_h - 1))
     return abstract_x, abstract_y
 
-def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
+
+def phi_mapping_grid(obs, grid_w=12, grid_h=16):
+    """Map LunarLander coordinates to uniform bins over the new spatial domain."""
+    if grid_w <= 0 or grid_h <= 0:
+        raise ValueError("grid_w and grid_h must be positive")
+
+    x, y = float(obs[0]), float(obs[1])
+    scaled_x = (x - ABSTRACT_X_MIN) / (ABSTRACT_X_MAX - ABSTRACT_X_MIN)
+    scaled_y = (y - ABSTRACT_Y_MIN) / (ABSTRACT_Y_MAX - ABSTRACT_Y_MIN)
+    abstract_x = int(np.clip(np.floor(scaled_x * grid_w), 0, grid_w - 1))
+    abstract_y = int(np.clip(np.floor(scaled_y * grid_h), 0, grid_h - 1))
+    return abstract_x, abstract_y
+
+
+def phi_mapping_sequential_backup(obs, q, grid_w=12, grid_h=12):
+    """Legacy sequential mapping retained for old experiments."""
+    abstract_x, abstract_y = phi_mapping_grid_backup(obs, grid_w, grid_h)
+    return abstract_x, abstract_y, q
+
+
+def phi_mapping_sequential(obs, q, grid_w=12, grid_h=16):
     abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
     return abstract_x, abstract_y, q
+
+
+def lunar_lander_visible_observation_bounds():
+    """Return the normalised x/y bounds covered by LunarLander's RGB viewport."""
+    from gymnasium.envs.box2d import lunar_lander
+
+    viewport_world_width = lunar_lander.VIEWPORT_W / lunar_lander.SCALE
+    viewport_world_height = lunar_lander.VIEWPORT_H / lunar_lander.SCALE
+    helipad_y = viewport_world_height / 4.0
+    lander_y_offset = helipad_y + lunar_lander.LEG_DOWN / lunar_lander.SCALE
+    half_world_height = viewport_world_height / 2.0
+    visible_y_min = (0.0 - lander_y_offset) / half_world_height
+    visible_y_max = (viewport_world_height - lander_y_offset) / half_world_height
+    return -1.0, 1.0, visible_y_min, visible_y_max
+
+
+def _draw_visible_area_overlay(axis, width, height):
+    """Mark which portion of the active abstract grid lies in the RGB viewport."""
+    visible_x_min, visible_x_max, visible_y_min, visible_y_max = (
+        lunar_lander_visible_observation_bounds()
+    )
+
+    def to_plot_x(value):
+        fraction = (value - ABSTRACT_X_MIN) / (ABSTRACT_X_MAX - ABSTRACT_X_MIN)
+        return np.clip(fraction * width - 0.5, -0.5, width - 0.5)
+
+    def to_plot_y(value):
+        fraction = (value - ABSTRACT_Y_MIN) / (ABSTRACT_Y_MAX - ABSTRACT_Y_MIN)
+        return np.clip(fraction * height - 0.5, -0.5, height - 0.5)
+
+    left = float(to_plot_x(visible_x_min))
+    right = float(to_plot_x(visible_x_max))
+    bottom = float(to_plot_y(visible_y_min))
+    top = float(to_plot_y(visible_y_max))
+
+    axis.add_patch(
+        Rectangle(
+            (left, bottom),
+            right - left,
+            top - bottom,
+            fill=False,
+            edgecolor="#ff1744",
+            linewidth=1.4,
+            linestyle="--",
+            label="Visible RGB viewport",
+            zorder=5,
+        )
+    )
+    axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
 
 def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
     """
@@ -60,10 +138,11 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
         ax.set_xticks(np.arange(-.5, width, 1), minor=True)
         ax.set_yticks(np.arange(-.5, height, 1), minor=True)
         ax.grid(which='minor', color='w', linestyle='-', linewidth=1, alpha=0.4)
+        _draw_visible_area_overlay(ax, width, height)
         
         # Keep the heatmap free of waypoint and goal markers.
             
-        plt.tight_layout()
+        plt.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
         plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
         plt.close()
         print(f" -> Generated V* Heatmap for DFA State q={current_q}")
