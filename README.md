@@ -55,6 +55,10 @@ The project uses a uniform `12 x 12` discretization by default. The `x`
 domain `[-1, 1]` and the `y` domain `[0, 1.5]` are each divided into twelve
 equal-width bins; values outside these domains are clipped into the nearest
 edge cell. Training, evaluation and the overlay all use this same mapping.
+The previous `grid_size - 1` implementation remains as a commented
+`phi_mapping_grid` block in `utils.py`. Swapping the comments between the two
+implementations automatically updates training, evaluation, heatmaps and the
+grid overlay.
 
 During policy evaluation, the cells visited by the agent can be recorded and
 drawn over the same grid:

@@ -5,6 +5,17 @@ import pandas as pd
 from matplotlib.patches import Rectangle
 
 
+# Legacy discretization. To reactivate it, uncomment this function and comment
+# out the active phi_mapping_grid implementation immediately below.
+#
+# def phi_mapping_grid(obs, grid_w=12, grid_h=12):
+#     """Map coordinates using the original grid_size - 1 discretization."""
+#     x, y = float(obs[0]), float(obs[1])
+#     abstract_x = int(np.clip((x + 1.0) / 2.0 * (grid_w - 1), 0, grid_w - 1))
+#     abstract_y = int(np.clip(y / 1.5 * (grid_h - 1), 0, grid_h - 1))
+#     return abstract_x, abstract_y
+
+
 def phi_mapping_grid(obs, grid_w=12, grid_h=12):
     """Map LunarLander coordinates to uniform bins over x=[-1,1], y=[0,1.5]."""
     if grid_w <= 0 or grid_h <= 0:
@@ -16,6 +27,43 @@ def phi_mapping_grid(obs, grid_w=12, grid_h=12):
     abstract_x = int(np.clip(abstract_x, 0, grid_w - 1))
     abstract_y = int(np.clip(abstract_y, 0, grid_h - 1))
     return abstract_x, abstract_y
+
+
+def _axis_boundaries(map_axis, size, lower, upper):
+    """Infer bin boundaries from the active mapper."""
+    if size <= 0:
+        raise ValueError("grid dimensions must be positive")
+
+    boundaries = [float(lower)]
+    iterations = 60
+    for target_index in range(1, size):
+        left, right = float(lower), float(upper)
+        for _ in range(iterations):
+            midpoint = (left + right) / 2.0
+            if map_axis(midpoint) < target_index:
+                left = midpoint
+            else:
+                right = midpoint
+        boundaries.append(right)
+    boundaries.append(float(upper))
+    return np.asarray(boundaries, dtype=float)
+
+
+def spatial_grid_boundaries(grid_w=12, grid_h=12):
+    """Return x/y bin boundaries implied by the active phi_mapping_grid."""
+    x_boundaries = _axis_boundaries(
+        lambda x: phi_mapping_grid((x, 0.0), grid_w, grid_h)[0],
+        grid_w,
+        -1.0,
+        1.0,
+    )
+    y_boundaries = _axis_boundaries(
+        lambda y: phi_mapping_grid((0.0, y), grid_w, grid_h)[1],
+        grid_h,
+        0.0,
+        1.5,
+    )
+    return x_boundaries, y_boundaries
 
 
 def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
@@ -42,19 +90,20 @@ def _draw_visible_area_overlay(axis, width, height):
     visible_x_min, visible_x_max, visible_y_min, visible_y_max = (
         lunar_lander_visible_observation_bounds()
     )
+    x_boundaries, y_boundaries = spatial_grid_boundaries(width, height)
 
-    def to_plot_x(value):
-        fraction = (value + 1.0) / 2.0
-        return np.clip(fraction * width - 0.5, -0.5, width - 0.5)
+    def to_plot(value, boundaries):
+        value = float(np.clip(value, boundaries[0], boundaries[-1]))
+        index = int(np.searchsorted(boundaries, value, side="right") - 1)
+        index = int(np.clip(index, 0, len(boundaries) - 2))
+        lower, upper = boundaries[index], boundaries[index + 1]
+        fraction = 0.0 if upper <= lower else (value - lower) / (upper - lower)
+        return index - 0.5 + fraction
 
-    def to_plot_y(value):
-        fraction = value / 1.5
-        return np.clip(fraction * height - 0.5, -0.5, height - 0.5)
-
-    left = float(to_plot_x(visible_x_min))
-    right = float(to_plot_x(visible_x_max))
-    bottom = float(to_plot_y(visible_y_min))
-    top = float(to_plot_y(visible_y_max))
+    left = float(to_plot(visible_x_min, x_boundaries))
+    right = float(to_plot(visible_x_max, x_boundaries))
+    bottom = float(to_plot(visible_y_min, y_boundaries))
+    top = float(to_plot(visible_y_max, y_boundaries))
 
     axis.add_patch(
         Rectangle(

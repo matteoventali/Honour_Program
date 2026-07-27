@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
-from utils import phi_mapping_grid
+from utils import phi_mapping_grid, spatial_grid_boundaries
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -74,9 +74,8 @@ def _grid_boundaries(
     grid_h: int,
     geometry: LunarLanderGeometry,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return the boundaries of the uniform spatial discretization."""
-    x_normalised = np.linspace(-1.0, 1.0, grid_w + 1)
-    y_normalised = np.linspace(0.0, 1.5, grid_h + 1)
+    """Return the boundaries implied by the active spatial discretizer."""
+    x_normalised, y_normalised = spatial_grid_boundaries(grid_w, grid_h)
     x_pixels = np.array(
         [observation_to_pixel((x, 0.0), geometry)[0] for x in x_normalised]
     )
