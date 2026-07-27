@@ -51,24 +51,10 @@ abstract cell occupied by the lander after reset. The reusable
 `draw_abstract_grid` function can also annotate frames captured later in an
 episode.
 
-The active abstraction uses 12 uniform columns over `x = [-1, 1]` and 16
-uniform rows over `y = [0, 2]`. The former mapping is retained as
-`phi_mapping_grid_backup` (and `phi_mapping_sequential_backup`) in `utils.py`
-for reproducing older experiments. Policies trained with the old mapping
-should be evaluated with the corresponding backup mapping rather than mixed
-with the new abstraction.
-
-To render the former abstraction with its actual non-uniform boundary
-semantics, use:
-
-```bash
-cd lunarLander
-python3 grid_overlay.py --config trajectory.json --legacy
-```
-
-The result is saved as `img/legacy_abstract_grid_overlay.png`. Unless
-`legacy_grid_w` and `legacy_grid_h` are explicitly provided in the JSON, the
-legacy renderer uses the original `12 x 12` dimensions.
+The project uses a uniform `12 x 12` discretization by default. The `x`
+domain `[-1, 1]` and the `y` domain `[0, 1.5]` are each divided into twelve
+equal-width bins; values outside these domains are clipped into the nearest
+edge cell. Training, evaluation and the overlay all use this same mapping.
 
 During policy evaluation, the cells visited by the agent can be recorded and
 drawn over the same grid:

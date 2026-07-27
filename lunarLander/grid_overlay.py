@@ -18,14 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
-from utils import (
-    ABSTRACT_X_MAX,
-    ABSTRACT_X_MIN,
-    ABSTRACT_Y_MAX,
-    ABSTRACT_Y_MIN,
-    phi_mapping_grid,
-    phi_mapping_grid_backup,
-)
+from utils import phi_mapping_grid
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -80,18 +73,10 @@ def _grid_boundaries(
     grid_w: int,
     grid_h: int,
     geometry: LunarLanderGeometry,
-    legacy: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return the spatial boundaries of the selected abstraction."""
-    if legacy:
-        # The old mapper multiplied by grid_size - 1. Its final index therefore
-        # had no interval inside the configured domain and acted as a clipped
-        # overflow state. Repeating the upper boundary depicts that faithfully.
-        x_normalised = np.append(np.linspace(-1.0, 1.0, grid_w), 1.0)
-        y_normalised = np.append(np.linspace(0.0, 1.5, grid_h), 1.5)
-    else:
-        x_normalised = np.linspace(ABSTRACT_X_MIN, ABSTRACT_X_MAX, grid_w + 1)
-        y_normalised = np.linspace(ABSTRACT_Y_MIN, ABSTRACT_Y_MAX, grid_h + 1)
+    """Return the boundaries of the uniform spatial discretization."""
+    x_normalised = np.linspace(-1.0, 1.0, grid_w + 1)
+    y_normalised = np.linspace(0.0, 1.5, grid_h + 1)
     x_pixels = np.array(
         [observation_to_pixel((x, 0.0), geometry)[0] for x in x_normalised]
     )
@@ -107,12 +92,11 @@ def abstract_cell_to_pixel(
     grid_w: int,
     grid_h: int,
     geometry: LunarLanderGeometry,
-    legacy: bool = False,
 ) -> tuple[float, float]:
     """Return the pixel coordinates of an abstract cell's centre."""
     if not (0 <= grid_x < grid_w and 0 <= grid_y < grid_h):
         raise ValueError(f"Abstract cell ({grid_x}, {grid_y}) is outside the grid")
-    x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry, legacy)
+    x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry)
     return (
         float((x_lines[grid_x] + x_lines[grid_x + 1]) / 2.0),
         float((y_lines[grid_y] + y_lines[grid_y + 1]) / 2.0),
@@ -127,7 +111,6 @@ def draw_abstract_grid(
     waypoints: Mapping[str, Sequence[int]] | None = None,
     observation: Sequence[float] | None = None,
     title: str = "LunarLander with Abstract Grid",
-    legacy: bool = False,
 ):
     """Create a Matplotlib figure containing frame, grid, waypoints and state."""
     if grid_w < 2 or grid_h < 2:
@@ -135,7 +118,7 @@ def draw_abstract_grid(
 
     figure, axis = plt.subplots(figsize=(12, 8))
     axis.imshow(frame)
-    x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry, legacy)
+    x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry)
     grid_color = "#ff1744"
 
     for x_pixel in x_lines:
@@ -146,8 +129,7 @@ def draw_abstract_grid(
     # The mapping clips everything outside its stated observation domain into
     # an edge cell; tint the currently occupied abstract cell when requested.
     if observation is not None:
-        mapping = phi_mapping_grid_backup if legacy else phi_mapping_grid
-        abstract_x, abstract_y = mapping(observation, grid_w, grid_h)
+        abstract_x, abstract_y = phi_mapping_grid(observation, grid_w, grid_h)
         x0, x1 = sorted((x_lines[abstract_x], x_lines[abstract_x + 1]))
         y0, y1 = sorted((y_lines[abstract_y], y_lines[abstract_y + 1]))
         x0, x1 = np.clip((x0, x1), 0, geometry.viewport_width)
@@ -172,7 +154,7 @@ def draw_abstract_grid(
         if not (0 <= grid_x < grid_w and 0 <= grid_y < grid_h):
             raise ValueError(f"Waypoint {name!r} is outside the abstract grid")
         pixel_x, pixel_y = abstract_cell_to_pixel(
-            grid_x, grid_y, grid_w, grid_h, geometry, legacy
+            grid_x, grid_y, grid_w, grid_h, geometry
         )
         axis.scatter(pixel_x, pixel_y, s=150, marker="o", color="#ffca28",
                      edgecolor="black", linewidth=1.3, zorder=5)
@@ -233,7 +215,6 @@ def generate_overlay(
     output_path: str | Path,
     config_path: str | Path = DEFAULT_CONFIG,
     seed: int | None = 0,
-    legacy: bool = False,
 ) -> Path:
     """Reset LunarLander and save one annotated RGB frame as a PNG."""
     config_path = Path(config_path)
@@ -247,21 +228,13 @@ def generate_overlay(
         observation, _ = env.reset(seed=seed)
         frame = env.render()
         geometry = geometry_from_env(env)
-        grid_w = int(config.get("legacy_grid_w", 12) if legacy else config["grid_w"])
-        grid_h = int(config.get("legacy_grid_h", 12) if legacy else config["grid_h"])
         figure = draw_abstract_grid(
             frame=frame,
             geometry=geometry,
-            grid_w=grid_w,
-            grid_h=grid_h,
+            grid_w=int(config.get("grid_w", 12)),
+            grid_h=int(config.get("grid_h", 12)),
             waypoints=config.get("waypoints_dict", {}),
             observation=observation,
-            title=(
-                "LunarLander with Legacy Abstract Grid"
-                if legacy
-                else "LunarLander with Abstract Grid"
-            ),
-            legacy=legacy,
         )
         figure.savefig(output_path, dpi=180, bbox_inches="tight")
         plt.close(figure)
@@ -277,18 +250,9 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Render the previous grid mapping retained for old experiments.",
-    )
     args = parser.parse_args()
-    output_path = args.output or SCRIPT_DIR / "img" / (
-        "legacy_abstract_grid_overlay.png"
-        if args.legacy
-        else "abstract_grid_overlay.png"
-    )
-    saved_path = generate_overlay(output_path, args.config, args.seed, args.legacy)
+    output_path = args.output or SCRIPT_DIR / "img" / "abstract_grid_overlay.png"
+    saved_path = generate_overlay(output_path, args.config, args.seed)
     print(f"Image saved to: {saved_path}")
 
 

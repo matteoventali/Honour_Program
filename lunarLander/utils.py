@@ -5,40 +5,20 @@ import pandas as pd
 from matplotlib.patches import Rectangle
 
 
-ABSTRACT_X_MIN = -1.0
-ABSTRACT_X_MAX = 1.0
-ABSTRACT_Y_MIN = 0.0
-ABSTRACT_Y_MAX = 2.0
-
-
-def phi_mapping_grid_backup(obs, grid_w=12, grid_h=12):
-    """Legacy mapping kept for reproducing policies trained before the grid update."""
-    x, y = obs[0], obs[1]
-    abstract_x = int(np.clip((x + 1) / 2 * (grid_w - 1), 0, grid_w - 1))
-    abstract_y = int(np.clip(y / 1.5 * (grid_h - 1), 0, grid_h - 1))
-    return abstract_x, abstract_y
-
-
-def phi_mapping_grid(obs, grid_w=12, grid_h=16):
-    """Map LunarLander coordinates to uniform bins over the new spatial domain."""
+def phi_mapping_grid(obs, grid_w=12, grid_h=12):
+    """Map LunarLander coordinates to uniform bins over x=[-1,1], y=[0,1.5]."""
     if grid_w <= 0 or grid_h <= 0:
         raise ValueError("grid_w and grid_h must be positive")
 
     x, y = float(obs[0]), float(obs[1])
-    scaled_x = (x - ABSTRACT_X_MIN) / (ABSTRACT_X_MAX - ABSTRACT_X_MIN)
-    scaled_y = (y - ABSTRACT_Y_MIN) / (ABSTRACT_Y_MAX - ABSTRACT_Y_MIN)
-    abstract_x = int(np.clip(np.floor(scaled_x * grid_w), 0, grid_w - 1))
-    abstract_y = int(np.clip(np.floor(scaled_y * grid_h), 0, grid_h - 1))
+    abstract_x = int(np.floor((x + 1.0) / 2.0 * grid_w))
+    abstract_y = int(np.floor(y / 1.5 * grid_h))
+    abstract_x = int(np.clip(abstract_x, 0, grid_w - 1))
+    abstract_y = int(np.clip(abstract_y, 0, grid_h - 1))
     return abstract_x, abstract_y
 
 
-def phi_mapping_sequential_backup(obs, q, grid_w=12, grid_h=12):
-    """Legacy sequential mapping retained for old experiments."""
-    abstract_x, abstract_y = phi_mapping_grid_backup(obs, grid_w, grid_h)
-    return abstract_x, abstract_y, q
-
-
-def phi_mapping_sequential(obs, q, grid_w=12, grid_h=16):
+def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
     abstract_x, abstract_y = phi_mapping_grid(obs, grid_w, grid_h)
     return abstract_x, abstract_y, q
 
@@ -64,11 +44,11 @@ def _draw_visible_area_overlay(axis, width, height):
     )
 
     def to_plot_x(value):
-        fraction = (value - ABSTRACT_X_MIN) / (ABSTRACT_X_MAX - ABSTRACT_X_MIN)
+        fraction = (value + 1.0) / 2.0
         return np.clip(fraction * width - 0.5, -0.5, width - 0.5)
 
     def to_plot_y(value):
-        fraction = (value - ABSTRACT_Y_MIN) / (ABSTRACT_Y_MAX - ABSTRACT_Y_MIN)
+        fraction = value / 1.5
         return np.clip(fraction * height - 0.5, -0.5, height - 0.5)
 
     left = float(to_plot_x(visible_x_min))
