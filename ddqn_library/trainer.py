@@ -496,7 +496,7 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--config", default="trajectory.json")
     parser.add_argument("--eps-decay", type=float, default=0.9996)
-    parser.add_argument("--target-update-freq", type=int, default=100)
+    parser.add_argument("--target-update-freq", type=int, default=1)
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)

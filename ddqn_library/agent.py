@@ -128,7 +128,7 @@ class HierarchicalDQNLearner:
         gamma=0.99,
         policy_name="policy",
         extra_state_dims=0,
-        target_update_freq=100,
+        target_update_freq=1,
     ):
         if target_update_freq <= 0:
             raise ValueError("target_update_freq must be greater than zero for DDQN")
