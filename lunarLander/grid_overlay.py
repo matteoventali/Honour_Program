@@ -69,6 +69,23 @@ def observation_to_pixel(
     return pixel_x, pixel_y
 
 
+def pixel_to_observation(
+    pixel_x: float,
+    pixel_y: float,
+    geometry: LunarLanderGeometry,
+) -> tuple[float, float]:
+    """Invert the frame projection for the two discretised coordinates."""
+    half_world_width = geometry.viewport_width / geometry.scale / 2.0
+    half_world_height = geometry.viewport_height / geometry.scale / 2.0
+    world_x = float(pixel_x) / geometry.scale
+    world_y = (geometry.viewport_height - float(pixel_y)) / geometry.scale
+    observation_x = world_x / half_world_width - 1.0
+    observation_y = (
+        world_y - geometry.helipad_y - geometry.leg_down / geometry.scale
+    ) / half_world_height
+    return observation_x, observation_y
+
+
 def _grid_boundaries(
     grid_w: int,
     grid_h: int,
@@ -82,6 +99,26 @@ def _grid_boundaries(
     y_pixels = np.array(
         [observation_to_pixel((0.0, y), geometry)[1] for y in y_normalised]
     )
+
+    # phi_mapping_grid clips observations outside its nominal domain into its
+    # edge cells. Extend those cells to the RGB viewport edges whenever the
+    # corresponding border observation maps to index 0 or to the last index.
+    # Internal boundaries remain entirely inferred from the active mapper.
+    left_observation_x, top_observation_y = pixel_to_observation(
+        0.0, 0.0, geometry
+    )
+    right_observation_x, bottom_observation_y = pixel_to_observation(
+        geometry.viewport_width, geometry.viewport_height, geometry
+    )
+    if phi_mapping_grid((left_observation_x, 0.0), grid_w, grid_h)[0] == 0:
+        x_pixels[0] = min(x_pixels[0], 0.0)
+    if phi_mapping_grid((right_observation_x, 0.0), grid_w, grid_h)[0] == grid_w - 1:
+        x_pixels[-1] = max(x_pixels[-1], float(geometry.viewport_width))
+    if phi_mapping_grid((0.0, bottom_observation_y), grid_w, grid_h)[1] == 0:
+        y_pixels[0] = max(y_pixels[0], float(geometry.viewport_height))
+    if phi_mapping_grid((0.0, top_observation_y), grid_w, grid_h)[1] == grid_h - 1:
+        y_pixels[-1] = min(y_pixels[-1], 0.0)
+
     return x_pixels, y_pixels
 
 
@@ -111,13 +148,15 @@ def draw_abstract_grid(
     observation: Sequence[float] | None = None,
     title: str = "LunarLander with Abstract Grid",
 ):
-    """Create a Matplotlib figure containing frame, grid, waypoints and state."""
+    """Create a figure containing the effective clipped grid and its markers."""
     if grid_w < 2 or grid_h < 2:
         raise ValueError("grid_w and grid_h must both be at least 2")
 
     figure, axis = plt.subplots(figsize=(12, 8))
     axis.imshow(frame)
     x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry)
+    x_centres = (x_lines[:-1] + x_lines[1:]) / 2.0
+    y_centres = (y_lines[:-1] + y_lines[1:]) / 2.0
     grid_color = "#ff1744"
 
     for x_pixel in x_lines:
@@ -179,8 +218,6 @@ def draw_abstract_grid(
     # Put the abstract coordinates at cell centres. Since image coordinates
     # grow downwards while abstract y grows upwards, y_centres is descending:
     # label 0 consequently appears at the bottom and grid_h - 1 at the top.
-    x_centres = (x_lines[:-1] + x_lines[1:]) / 2.0
-    y_centres = (y_lines[:-1] + y_lines[1:]) / 2.0
     axis.set_xticks(x_centres, labels=range(grid_w))
     axis.set_yticks(y_centres, labels=range(grid_h))
     axis.set_xlabel("Abstract x-coordinate")
