@@ -256,7 +256,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
             # Reset counters local to the current episode.
             succeeded = automaton.is_goal_reached(q)
-            done = succeeded
+            episode_done = succeeded
             episode_steps = 0
             episode_task_reward = float(goal_reward) if succeeded else 0.0
             episode_shaping_reward = 0.0
@@ -273,7 +273,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             cumulative_state_visits[q] += 1
             cumulative_state_entries[q] += 1
 
-            while not done:
+            while not episode_done:
                 # Select an action using the single global epsilon.
                 agent.eps = epsilon_history[-1] if epsilon_history else agent.eps
                 action = agent.select_action(augmented_state)
@@ -317,8 +317,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     synthetic_goal_reward = float(goal_reward)
                     succeeded = True
 
-                # A successful DFA transition ends the episode even if Gym would continue.
-                done = env_terminated or env_truncated or succeeded
+                # Stop data collection on any Gym ending or DFA success.
+                # A truncation (for example Gym's time limit) ends data
+                # collection, but it is not an MDP terminal state: DDQN must
+                # still bootstrap from its final observation.
+                episode_done = env_terminated or env_truncated or succeeded
+                bootstrap_terminal = env_terminated or succeeded
                 next_augmented_state = _augment_state(next_raw_state, next_q, state_to_index)
 
                 # Evaluate shaping only when the complete abstract state changes.
@@ -330,7 +334,13 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
                 # Store the transition and perform one DDQN optimization step.
                 learning_reward = synthetic_goal_reward + shaping_signal
-                agent.memory.push(augmented_state, action, learning_reward, next_augmented_state, done)
+                agent.memory.push(
+                    augmented_state,
+                    action,
+                    learning_reward,
+                    next_augmented_state,
+                    bootstrap_terminal,
+                )
                 agent.optimize_model()
 
                 # Update the episode totals and move to the next state.
