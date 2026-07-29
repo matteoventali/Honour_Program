@@ -443,7 +443,16 @@ def main(args):
             save_sequential_heatmaps(abstract_mdp, filename_prefix="single_epsilon_exp")
 
             # Initialize one DDQN agent with a single exploration schedule.
-            agent = HierarchicalDQNLearner(env=env, max_episodes=args.episodes, eps_decay=args.eps_decay, use_ddqn=True, extra_state_dims=len(automaton.states))
+            agent = HierarchicalDQNLearner(
+                env=env,
+                max_episodes=args.episodes,
+                eps_decay=args.eps_decay,
+                gamma=gamma,
+                extra_state_dims=len(automaton.states),
+                use_polyak=args.polyak,
+                tau=args.polyak_tau,
+                target_update_freq=args.target_update_freq,
+            )
 
             # Run training and persist all collected metrics.
             metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training.log", log_interval=args.log_interval)
@@ -472,6 +481,19 @@ if __name__ == "__main__":
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)
+    parser.add_argument(
+        "--polyak",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use Polyak target updates (disable with --no-polyak).",
+    )
+    parser.add_argument("--polyak-tau", type=float, default=0.005)
+    parser.add_argument(
+        "--target-update-freq",
+        type=int,
+        default=1000,
+        help="Hard target-network update interval used with --no-polyak.",
+    )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
     main(parser.parse_args())

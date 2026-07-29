@@ -20,6 +20,8 @@ class QNetwork(nn.Module):
 
 class ReplayBuffer:
     def __init__(self, capacity, num_phases):
+        if num_phases < 0:
+            raise ValueError("num_phases cannot be negative")
         self.capacity = capacity
         self.num_phases = num_phases
         self.buffer = []
@@ -30,18 +32,24 @@ class ReplayBuffer:
     def push(self, state, action, reward, next_state, done):
         """Insert a transition and update DFA-state counts in constant time."""
         transition = (state, action, reward, next_state, done)
-        phase_index = int(np.argmax(state[-self.num_phases:]))
+        phase_index = (
+            int(np.argmax(state[-self.num_phases:]))
+            if self.num_phases > 0
+            else None
+        )
 
         if len(self.buffer) < self.capacity:
             self.buffer.append(transition)
             self.phase_indices.append(phase_index)
         else:
             replaced_phase_index = self.phase_indices[self.position]
-            self.phase_counts[replaced_phase_index] -= 1
+            if replaced_phase_index is not None:
+                self.phase_counts[replaced_phase_index] -= 1
             self.buffer[self.position] = transition
             self.phase_indices[self.position] = phase_index
 
-        self.phase_counts[phase_index] += 1
+        if phase_index is not None:
+            self.phase_counts[phase_index] += 1
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
@@ -64,18 +72,39 @@ class ReplayBuffer:
         return float(self.phase_counts[q_index] / len(self.buffer))
 
 class HierarchicalDQNLearner:
-    def __init__(self, env, abstract_mdp=None, max_episodes=1000, eps_decay = 0.995, gamma=0.99, policy_name="policy", use_ddqn=False, extra_state_dims=0):
+    def __init__(
+        self,
+        env,
+        abstract_mdp=None,
+        max_episodes=1000,
+        eps_decay=0.995,
+        gamma=0.99,
+        policy_name="policy",
+        extra_state_dims=0,
+        use_polyak=True,
+        tau=0.005,
+        target_update_freq=1000,
+    ):
+        if extra_state_dims < 0:
+            raise ValueError("extra_state_dims cannot be negative")
+        if not 0.0 < tau <= 1.0:
+            raise ValueError("tau must be in the interval (0, 1]")
+        if target_update_freq <= 0:
+            raise ValueError("target_update_freq must be greater than zero")
+
         self.env = env
         self.abstract_mdp = abstract_mdp
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
-        self.use_ddqn = use_ddqn
-        self.algo_name = "DDQN" if use_ddqn else "TRUE_SINGLE_DQN"
+        self.algo_name = "DDQN"
         
         self.batch_size = 64
         self.lr = 1e-3
-        self.tau = 0.005 
+        self.use_polyak = use_polyak
+        self.tau = tau
+        self.target_update_freq = target_update_freq
+        self.optimization_steps = 0
         self.eps = 1.0
         self.eps_min = 0.01
         self.eps_decay = eps_decay
@@ -88,9 +117,9 @@ class HierarchicalDQNLearner:
         self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
         print(f"Using device:{self.device}")
         
-        if self.use_ddqn:
-            self.target_net = QNetwork(state_dim, action_dim).to(self.device)
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net = QNetwork(state_dim, action_dim).to(self.device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
         self.memory = ReplayBuffer(capacity=300000, num_phases=extra_state_dims)
@@ -118,12 +147,8 @@ class HierarchicalDQNLearner:
         q_values = self.policy_net(states).gather(1, actions)
         
         with torch.no_grad():
-            if self.use_ddqn:
-                best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
-                next_q_values = self.target_net(next_states).gather(1, best_actions)
-            else:
-                next_q_values = self.policy_net(next_states).max(1)[0].unsqueeze(1)
-                
+            best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
+            next_q_values = self.target_net(next_states).gather(1, best_actions)
             target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
             
         loss = F.mse_loss(q_values, target_q_values)
@@ -131,9 +156,12 @@ class HierarchicalDQNLearner:
         loss.backward()
         self.optimizer.step()
         
-        if self.use_ddqn:
+        self.optimization_steps += 1
+        if self.use_polyak:
             for target_param, policy_param in zip(self.target_net.parameters(), self.policy_net.parameters()):
                 target_param.data.copy_(self.tau * policy_param.data + (1.0 - self.tau) * target_param.data)
+        elif self.optimization_steps % self.target_update_freq == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def _save_policy(self):
         os.makedirs("./policy", exist_ok=True)
