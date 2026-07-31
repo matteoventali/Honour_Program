@@ -479,6 +479,7 @@ def main(args):
                 use_polyak=args.polyak,
                 tau=args.polyak_tau,
                 target_update_freq=args.target_update_freq,
+                network_type=args.network_type,
             )
 
             # Run training and persist all collected metrics.
@@ -520,6 +521,12 @@ if __name__ == "__main__":
         type=int,
         default=1000,
         help="Hard target-network update interval used with --no-polyak.",
+    )
+    parser.add_argument(
+        "--network-type",
+        choices=["standard", "dueling"],
+        default="standard",
+        help="Q-network architecture: standard MLP or dueling value/advantage streams.",
     )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")

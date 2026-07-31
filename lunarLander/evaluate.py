@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
-from agent import QNetwork
+from agent import DuelingQNetwork, QNetwork
 from grid_overlay import (
     abstract_cell_to_pixel,
     draw_abstract_grid,
@@ -78,7 +78,7 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # ==============================
 
 def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict,
-                    goal_reward, grid_w, grid_h, seed, trace_episodes=0):
+                    goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard"):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -92,7 +92,10 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
     render_mode = "human" if render else ("rgb_array" if trace_episodes else None)
     env = gym.make("LunarLander-v3", continuous=False, render_mode=render_mode)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    network = QNetwork(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
+    if network_type not in {"standard", "dueling"}:
+        raise ValueError("network_type must be one of: standard, dueling")
+    network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
+    network = network_cls(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
 
     # Load the trained parameters before starting any episode.
     try:
@@ -419,6 +422,12 @@ def parse_args():
         help="Number of episodes to trace when --trace-grid is enabled (default: 1).",
     )
     parser.add_argument("--output-dir", type=Path, default=SCRIPT_DIR / "img" / "evaluation")
+    parser.add_argument(
+        "--network-type",
+        choices=["standard", "dueling"],
+        default="standard",
+        help="Q-network architecture used by the checkpoint.",
+    )
     return parser.parse_args()
 
 
@@ -461,6 +470,7 @@ def main():
             policy, args.policy_dir, args.episodes, args.render, formula,
             waypoints_dict, goal_reward, grid_w, grid_h, args.seed,
             trace_episodes=traced_episodes,
+            network_type=args.network_type,
         )
         results.append(result)
 

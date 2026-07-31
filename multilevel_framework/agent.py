@@ -18,6 +18,24 @@ class QNetwork(nn.Module):
         x = F.relu(self.fc2(x))
         return self.fc3(x)
 
+class DuelingQNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(DuelingQNetwork, self).__init__()
+        self.feature = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+        )
+        self.value_stream = nn.Linear(128, 1)
+        self.advantage_stream = nn.Linear(128, action_dim)
+
+    def forward(self, x):
+        features = self.feature(x)
+        value = self.value_stream(features)
+        advantages = self.advantage_stream(features)
+        return value + advantages - advantages.mean(dim=1, keepdim=True)
+
 class ReplayBuffer:
     def __init__(self, capacity, num_phases):
         if num_phases < 0:
@@ -84,6 +102,7 @@ class HierarchicalDQNLearner:
         use_polyak=True,
         tau=0.005,
         target_update_freq=1000,
+        network_type="standard",
     ):
         if extra_state_dims < 0:
             raise ValueError("extra_state_dims cannot be negative")
@@ -91,13 +110,16 @@ class HierarchicalDQNLearner:
             raise ValueError("tau must be in the interval (0, 1]")
         if target_update_freq <= 0:
             raise ValueError("target_update_freq must be greater than zero")
+        if network_type not in {"standard", "dueling"}:
+            raise ValueError("network_type must be one of: standard, dueling")
 
         self.env = env
         self.abstract_mdp = abstract_mdp
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
-        self.algo_name = "DDQN"
+        self.network_type = network_type
+        self.algo_name = "Dueling DDQN" if network_type == "dueling" else "DDQN"
         
         self.batch_size = 64
         self.lr = 1e-3
@@ -114,10 +136,11 @@ class HierarchicalDQNLearner:
         action_dim = self.env.action_space.n
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
+        network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
+        self.policy_net = network_cls(state_dim, action_dim).to(self.device)
         print(f"Using device:{self.device}")
         
-        self.target_net = QNetwork(state_dim, action_dim).to(self.device)
+        self.target_net = network_cls(state_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         
