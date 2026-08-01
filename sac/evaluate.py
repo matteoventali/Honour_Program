@@ -6,7 +6,8 @@
 
 import argparse
 import json
-import time
+import os
+import sys
 from pathlib import Path
 
 # ==============================
@@ -64,11 +65,47 @@ def _abstract_position(observation, q, grid_w, grid_h):
     return x, y
 
 
+def _require_graphical_display():
+    """Fail clearly when live rendering is requested from a headless Linux session."""
+    if sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        raise RuntimeError("Live rendering requires DISPLAY or WAYLAND_DISPLAY. In Kaggle, SSH or another headless session, use --trace-grid instead.")
+
+
+class MatplotlibFrameRenderer:
+    """Display RGB frames without asking LunarLander to open an SDL window."""
+
+    def __init__(self, frame, fps):
+        _require_graphical_display()
+        plt.ion()
+        self.delay = 1.0 / max(float(fps), 1.0)
+        self.figure, self.axis = plt.subplots(figsize=(9, 6))
+        self.image = self.axis.imshow(frame)
+        self.axis.set_title("LunarLander SAC policy")
+        self.axis.axis("off")
+        self.figure.tight_layout()
+        plt.show(block=False)
+        self.figure.canvas.draw_idle()
+        self.figure.canvas.flush_events()
+
+    def update(self, frame):
+        """Replace the displayed frame and process pending GUI events."""
+        if not plt.fignum_exists(self.figure.number):
+            raise KeyboardInterrupt("The rendering window was closed")
+        self.image.set_data(frame)
+        self.figure.canvas.draw_idle()
+        self.figure.canvas.flush_events()
+        plt.pause(self.delay)
+
+    def close(self):
+        """Close only the figure owned by this renderer."""
+        plt.close(self.figure)
+
+
 # ==============================
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict, goal_reward, grid_w, grid_h, seed, trace_episodes=0, device="auto"):
+def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict, goal_reward, grid_w, grid_h, seed, trace_episodes=0, device="auto", render_fps=60.0):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -80,7 +117,9 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
 
     # Keep LunarLander discrete internally while exposing the Box action space
     # used when the SAC policy was trained.
-    render_mode = "human" if render else ("rgb_array" if trace_episodes else None)
+    if render:
+        _require_graphical_display()
+    render_mode = "rgb_array" if render or trace_episodes else None
     base_env = gym.make(
         "LunarLander-v3", continuous=False, render_mode=render_mode
     )
@@ -101,6 +140,7 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
     grid_traces = []
     trace_frames = []
     trace_geometries = []
+    frame_renderer = None
 
     # Run every requested episode sequentially.
     try:
@@ -108,8 +148,14 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
             episode_seed = None if seed is None else seed + episode
             observation, _ = env.reset(seed=episode_seed)
             tracing = episode < trace_episodes
+            initial_frame = env.render() if render or tracing else None
+            if render:
+                if frame_renderer is None:
+                    frame_renderer = MatplotlibFrameRenderer(initial_frame, render_fps)
+                else:
+                    frame_renderer.update(initial_frame)
             if tracing:
-                trace_frames.append(env.render())
+                trace_frames.append(initial_frame)
                 trace_geometries.append(geometry_from_env(env))
                 initial_cell = _abstract_position(observation, automaton.get_initial_q(), grid_w, grid_h)
                 cell_trace = [initial_cell]
@@ -164,7 +210,7 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
                 success = automaton.is_goal_reached(q)
 
                 if render:
-                    time.sleep(0.02)
+                    frame_renderer.update(env.render())
 
             # Store episode-level metrics and count every DFA state reached at least once.
             successes += int(success)
@@ -176,6 +222,8 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
             if tracing:
                 grid_traces.append(cell_trace)
     finally:
+        if frame_renderer is not None:
+            frame_renderer.close()
         env.close()
 
     return {
@@ -328,6 +376,14 @@ def _positive_int(value):
     return parsed
 
 
+def _positive_float(value):
+    """Parse and validate a strictly positive floating-point value."""
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
 def _select_files_graphically(policy_dir, config_path):
     """Select policy checkpoints and the experiment configuration with native dialogs."""
     try:
@@ -396,7 +452,8 @@ def parse_args():
     parser.add_argument("--window", type=_positive_int, default=10)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--render", action="store_true")
+    parser.add_argument("--render", action="store_true", help="Display RGB frames live through Matplotlib, avoiding LunarLander's native SDL window.")
+    parser.add_argument("--render-fps", type=_positive_float, default=60.0, help="Target live-rendering frame rate (default: 60).")
     parser.add_argument(
         "--trace-grid",
         action="store_true",
@@ -452,6 +509,7 @@ def main():
             waypoints_dict, goal_reward, grid_w, grid_h, args.seed,
             trace_episodes=traced_episodes,
             device=args.device,
+            render_fps=args.render_fps,
         )
         results.append(result)
 
