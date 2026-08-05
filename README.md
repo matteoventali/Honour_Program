@@ -75,6 +75,34 @@ tracing and interactive `--render` use different Gymnasium render modes and
 must be run separately.
 
 
+## Manual cycles with N waypoints
+
+The `manual_experiment` variant accepts an ordered cycle of any positive length.
+Declare waypoint coordinates in `waypoints_dict` and their required visit order
+in `waypoint_cycle`:
+
+```json
+{
+  "grid_w": 12,
+  "grid_h": 12,
+  "goal_reward": 10000,
+  "waypoint_cycle": ["g1", "g2", "g3", "g4"],
+  "waypoints_dict": {
+    "g1": [1, 8],
+    "g2": [4, 10],
+    "g3": [8, 10],
+    "g4": [10, 8]
+  }
+}
+```
+
+The reward is emitted only after the last waypoint, then the automaton resets
+immediately and starts the next cycle. If `waypoint_cycle` is omitted, the
+insertion order of `waypoints_dict` is used. Existing two-waypoint experiments
+remain valid. Because N determines the neural network input size, a checkpoint
+must be evaluated with the same `waypoint_cycle` used during its training.
+
+
 ## Project Structure
 
 ````

@@ -16,7 +16,7 @@ import numpy as np
 
 from abstract_mdps import ManualWaypointMDP
 from agent import HierarchicalDQNLearner
-from manual_automaton import AlternatingGoalsAutomaton
+from manual_automaton import CyclicWaypointsAutomaton
 from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, save_sequential_heatmaps
 
 
@@ -312,7 +312,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     cumulative_state_entries[next_q] += 1
                     cumulative_transitions[transition] += 1
 
-                # Reward every q2 -> q3 transition, once per completed cycle.
+                # Reward the final waypoint once per completed cycle.
                 completed_cycle = automaton_step.completed_cycle
                 synthetic_goal_reward = (
                     float(goal_reward) if completed_cycle else 0.0
@@ -440,8 +440,10 @@ def main(args):
     grid_w = int(config.get("grid_w", 12))
     grid_h = int(config.get("grid_h", 12))
 
-    # Build and validate the fixed three-state automaton.
-    automaton = AlternatingGoalsAutomaton()
+    # The cycle order is explicit; when omitted, JSON waypoint insertion order
+    # provides a convenient backwards-compatible default.
+    waypoint_cycle = config.get("waypoint_cycle", list(waypoints))
+    automaton = CyclicWaypointsAutomaton(waypoint_cycle)
     automaton.validate_waypoints(waypoints, width=grid_w, height=grid_h)
     print(
         "=== MANUAL AUTOMATON TRAINING (single epsilon) ===\n"
@@ -449,7 +451,7 @@ def main(args):
         f"Automaton: states={automaton.states}, stable={automaton.active_states}, "
         f"initial={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
-        "Cycle: q1 --g1--> q2 --g2/reward--> q3 --epsilon--> q1\n"
+        f"Cycle: {automaton.describe_cycle()}\n"
         "Gym reward is ignored; acceptance does not end an episode."
     )
 

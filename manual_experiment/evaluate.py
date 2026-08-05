@@ -1,4 +1,4 @@
-"""Evaluate policies trained with the manual alternating-goals automaton."""
+"""Evaluate policies trained with the manual cyclic-waypoints automaton."""
 
 # ==============================
 # Standard library imports
@@ -25,7 +25,7 @@ from grid_overlay import (
     draw_abstract_grid,
     geometry_from_env,
 )
-from manual_automaton import AlternatingGoalsAutomaton
+from manual_automaton import CyclicWaypointsAutomaton
 from utils import phi_mapping_sequential
 
 
@@ -78,24 +78,13 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(
-    policy,
-    policy_dir,
-    episodes,
-    render,
-    waypoints_dict,
-    goal_reward,
-    grid_w,
-    grid_h,
-    seed,
-    trace_episodes=0,
-    network_type="standard",
-):
+def evaluate_policy(policy, policy_dir, episodes, render, waypoints_dict, goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard", waypoint_cycle=None):
     """Load and evaluate one policy using the training automaton semantics."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
     policy_name = policy_path.name
-    automaton = AlternatingGoalsAutomaton()
+    cycle = list(waypoints_dict) if waypoint_cycle is None else waypoint_cycle
+    automaton = CyclicWaypointsAutomaton(cycle)
     automaton.validate_waypoints(waypoints_dict, width=grid_w, height=grid_h)
     abstract_mdp = ManualWaypointMDP(
         waypoints_dict=waypoints_dict,
@@ -192,25 +181,23 @@ def evaluate_policy(
                 if completed_cycle:
                     episode_completed_cycles += 1
 
-                # Report every effective automaton transition during evaluation.
-                if next_q != q:
+                # Report every consumed waypoint, including a one-waypoint cycle
+                # whose epsilon reset leaves the same stable state active.
+                if automaton_step.reached_waypoint is not None:
+                    transition = f"{q} -> {next_q}"
                     if completed_cycle:
-                        print(
-                            f"[{policy_name} | Episode {episode + 1}] "
-                            f"automaton transition {q} -> q3 -> {next_q}: "
-                            f"g2 reached, cycle {episode_completed_cycles} "
-                            "completed with immediate epsilon reset."
-                        )
-                    elif next_q == automaton.WAITING_FOR_G2:
-                        print(
-                            f"[{policy_name} | Episode {episode + 1}] "
-                            f"automaton transition {q} -> {next_q}: g1 reached."
-                        )
-                    else:
-                        print(
-                            f"[{policy_name} | Episode {episode + 1}] "
-                            f"automaton transition {q} -> {next_q}: new cycle."
-                        )
+                        transition = f"{q} -> {automaton.accepting_state} -> {next_q}"
+                    suffix = (
+                        f", cycle {episode_completed_cycles} completed with "
+                        "immediate epsilon reset"
+                        if completed_cycle
+                        else ""
+                    )
+                    print(
+                        f"[{policy_name} | Episode {episode + 1}] "
+                        f"automaton transition {transition}: "
+                        f"{automaton_step.reached_waypoint} reached{suffix}."
+                    )
 
                 reached_states.add(next_q)
 
@@ -503,6 +490,7 @@ def main():
     grid_w = int(config.get("grid_w", 12))
     grid_h = int(config.get("grid_h", 12))
     goal_reward = float(config.get("goal_reward", 10000.0))
+    waypoint_cycle = config.get("waypoint_cycle", list(waypoints_dict))
 
     # Evaluate policies one at a time to keep rendering and output deterministic.
     results = []
@@ -520,6 +508,7 @@ def main():
             args.seed,
             trace_episodes=traced_episodes,
             network_type=args.network_type,
+            waypoint_cycle=waypoint_cycle,
         )
         results.append(result)
 
