@@ -78,7 +78,7 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(policy, policy_dir, episodes, render, waypoints_dict, goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard", waypoint_cycle=None):
+def evaluate_policy(policy, policy_dir, episodes, render, waypoints_dict, goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard", waypoint_cycle=None, no_limit=False):
     """Load and evaluate one policy using the training automaton semantics."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -98,8 +98,10 @@ def evaluate_policy(policy, policy_dir, episodes, render, waypoints_dict, goal_r
 
     # Create the environment and one extra network feature per automaton state.
     render_mode = "human" if render else ("rgb_array" if trace_episodes else None)
-    #env = gym.make("LunarLander-v3", continuous=False, render_mode=render_mode, max_episode_steps=5000)
-    env = gym.make("LunarLander-v3", continuous=False, render_mode=render_mode)
+    environment_options = {"continuous": False, "render_mode": render_mode}
+    if no_limit:
+        environment_options["max_episode_steps"] = 5000
+    env = gym.make("LunarLander-v3", **environment_options)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if network_type not in {"standard", "dueling"}:
         raise ValueError("network_type must be one of: standard, dueling")
@@ -440,6 +442,7 @@ def parse_args():
     parser.add_argument("--window", type=_positive_int, default=10)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--render", action="store_true")
+    parser.add_argument("--no-limit", action="store_true", help="Increase the environment episode limit to 5000 steps.")
     parser.add_argument(
         "--trace-grid",
         action="store_true",
@@ -509,6 +512,7 @@ def main():
             trace_episodes=traced_episodes,
             network_type=args.network_type,
             waypoint_cycle=waypoint_cycle,
+            no_limit=args.no_limit,
         )
         results.append(result)
 
