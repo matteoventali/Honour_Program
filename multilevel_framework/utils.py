@@ -318,6 +318,52 @@ def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=No
     print(f"\n>>> Mean/Std plot successfully saved to: {filename}")
     plt.close(fig)
 
+
+def plot_training_variance(reward_histories, window_size=100, title="Training Performance Across Seeds", filename="img/training_variance.png", label="Learning reward"):
+    """Plot the smoothed mean reward and its variance across training seeds."""
+    runs = np.asarray(reward_histories, dtype=np.float64)
+    if runs.ndim == 1:
+        runs = runs[np.newaxis, :]
+    if runs.ndim != 2 or runs.shape[0] == 0 or runs.shape[1] == 0:
+        raise ValueError("reward_histories must have shape (num_seeds, episodes)")
+    if window_size <= 0:
+        raise ValueError("window_size must be greater than zero")
+
+    smoothed_runs = (
+        pd.DataFrame(runs.T)
+        .rolling(window=window_size, min_periods=1, center=True)
+        .mean()
+        .to_numpy()
+        .T
+    )
+    mean_reward = np.mean(smoothed_runs, axis=0)
+    variance = np.var(smoothed_runs, axis=0)
+    std_reward = np.sqrt(variance)
+    episodes = np.arange(1, runs.shape[1] + 1)
+
+    output_directory = os.path.dirname(os.fspath(filename))
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.plot(episodes, mean_reward, color="tab:blue", linewidth=2.5, label=f"Mean {label}")
+    ax.fill_between(
+        episodes,
+        mean_reward - std_reward,
+        mean_reward + std_reward,
+        color="tab:blue",
+        alpha=0.2,
+        label="±1 std across seeds (variance = σ²)",
+    )
+    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
+    ax.set_xlabel(f"Episode (moving-average window = {window_size})", fontsize=12)
+    ax.set_ylabel(label, fontsize=12)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="best", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    print(f"\n>>> Training variance plot saved to: {filename}")
+    plt.close(fig)
+
 def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None):
     """
     Plots the replay buffer composition for N phases dynamically.
@@ -336,10 +382,7 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     ax.set_ylabel("Fraction in Buffer", fontsize=12)
     ax.set_ylim(0, 1.05)
     
-    ideal_balance = 1.0 / len(buffer_histories)
-    ax.axhline(y=ideal_balance, color='gray', linestyle=':', alpha=0.7, label=f'Ideal Balance ({ideal_balance:.0%})')
-    
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=len(buffer_histories)+1, fontsize=11)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=len(buffer_histories), fontsize=11)
     fig.tight_layout()
     fig.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close(fig)

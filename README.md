@@ -35,6 +35,35 @@ trajectory, training, validation, execution and result-export cells.
 - **Visualization**: Generates plots for training progress (raw rewards and moving averages) and policy comparisons.
 - **Parallel Execution**: Supports multiprocessing for training and evaluating multiple policies concurrently.
 
+## Multi-seed training and variance plots
+
+Every active trainer accepts `--num-seeds` and `--seed`. The first option is
+the number of independent training runs; the second is the first seed (42 by
+default), and the following runs use consecutive values. For example:
+
+```bash
+cd lunarLander
+python3 trainer.py --episodes 1000 --num-seeds 5 --seed 42
+```
+
+Each run saves its own metrics and policy. The combined `.npz` file also stores
+the seed list, every stacked metric under a `_runs` key, and reward summaries
+under `_mean` and `_variance` keys. At the end of training, the trainer writes
+a `training_variance_*.png` plot with the smoothed mean learning reward and a
+shaded `±1σ` band across seeds (`σ²` is the cross-seed variance). The same
+options are available in `manual_experiment`,
+`multilevel_framework`, `multilevel_framework_convention`,
+`multilevel_multieps`, and `sac`.
+
+The original reward-breakdown plot is preserved, and an additional
+`reward_breakdown_*_seed_<seed>.png` is generated for every individual run.
+Replay-buffer plots show only the observed DFA-state fractions, without an
+ideal-load-balance reference line.
+
+The Kaggle notebooks expose the same settings as `NUM_SEEDS` and `SEED` in
+their configuration cell. Their embedded trainers and plotting utilities can
+be refreshed after source changes with `python3 notebook/sync_training_notebooks.py`.
+
 ## Abstract grid overlay
 
 To render the same abstract grid used by the trainer directly over a

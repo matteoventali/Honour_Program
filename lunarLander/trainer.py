@@ -5,6 +5,7 @@
 import argparse
 import json
 import os
+import random
 from collections import Counter
 
 # ==============================
@@ -13,16 +14,25 @@ from collections import Counter
 
 import gymnasium as gym
 import numpy as np
+import torch
 
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
 from agent import HierarchicalDQNLearner
 from automaton_validator import validate_automaton
-from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, save_sequential_heatmaps
+from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, plot_training_variance, save_sequential_heatmaps
 
 
 # ==============================
 # Data and state helpers
 # ==============================
+
+def _positive_int(value):
+    """Parse a strictly positive command-line integer."""
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
 
 def save_training_data(filename, **kwargs):
     """Convert training metrics to arrays and save them in a compressed NPZ file."""
@@ -33,6 +43,39 @@ def save_training_data(filename, **kwargs):
         raise ValueError("Training metrics must be rectangular numeric arrays")
     np.savez_compressed(filename, **np_data)
     print(f"\nTraining data saved to: {filename}")
+
+
+def _set_training_seed(seed, env=None):
+    """Seed every random generator used by DDQN and LunarLander."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if env is not None:
+        env.action_space.seed(seed)
+
+
+def _aggregate_seed_metrics(seed_metrics, seeds):
+    """Keep first-run compatibility and add every metric stacked by seed."""
+    if not seed_metrics:
+        raise ValueError("At least one seed run is required")
+    aggregated = dict(seed_metrics[0])
+    aggregated["seeds"] = np.asarray(seeds, dtype=np.int64)
+    for key in seed_metrics[0]:
+        if key == "automaton_states":
+            continue
+        try:
+            aggregated[f"{key}_runs"] = np.stack(
+                [np.asarray(metrics[key]) for metrics in seed_metrics]
+            )
+        except ValueError as error:
+            raise ValueError(f"Metric {key!r} has inconsistent shapes across seeds") from error
+    for key in ("task_rewards", "learning_rewards", "shaping_rewards"):
+        runs = aggregated[f"{key}_runs"]
+        aggregated[f"{key}_mean"] = np.mean(runs, axis=0)
+        aggregated[f"{key}_variance"] = np.var(runs, axis=0)
+    return aggregated
 
 
 def _abstract_position(observation, abstract_mdp):
@@ -186,7 +229,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, seed=None, policy_suffix=""):
     """
     Train the DDQN agent with the LTLf automaton and one global epsilon.
 
@@ -248,7 +291,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
     try:
         for episode in range(episodes):
             # Reset the environment and consume s0 before selecting the first action.
-            raw_state, _ = env.reset()
+            raw_state, _ = env.reset(seed=seed if episode == 0 else None)
             q = _evaluate_initial_automaton_state(raw_state, abstract_mdp)
             if q not in state_to_index:
                 raise RuntimeError(f"DFA returned unknown initial state {q!r} after evaluating s0")
@@ -391,12 +434,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     best_mean_reward = monitored_mean_reward
                     best_policy_episode = episode + 1
                     if save_policy:
-                        _save_named_policy(agent, "best_policy.pth")
+                        _save_named_policy(agent, f"best_policy{policy_suffix}.pth")
                         _write_log(f"Best policy updated at episode {best_policy_episode}: mean learning reward={best_mean_reward:.3f}\n", log_handle)
 
         # Save the final policy independently from its monitored performance.
         if save_policy:
-            _save_named_policy(agent, "last_policy.pth")
+            _save_named_policy(agent, f"last_policy{policy_suffix}.pth")
             _write_log(f"Last policy saved after episode {episodes}. Best policy: episode {best_policy_episode}, mean learning reward={best_mean_reward:.3f}\n", log_handle)
     finally:
         # Always close the log, including when training raises an exception.
@@ -413,6 +456,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
 def main(args):
     """Configure the experiment, run or load training, and generate diagnostic plots."""
+    if args.num_seeds <= 0:
+        raise ValueError("num_seeds must be greater than zero")
     # Prepare output directories shared by training and post-processing.
     data_dir = "results"
     image_dir = "img"
@@ -446,36 +491,51 @@ def main(args):
     if not args.post_process:
         # Create the environment and abstract MDP used to compute the potential.
         automaton.render_graph()
-        env = gym.make("LunarLander-v3", continuous=False)
-        try:
-            abstract_mdp = LTLfWaypointMDP(waypoints_dict=waypoints, ltlf_automaton=automaton, width=int(config.get("grid_w", 12)), height=int(config.get("grid_h", 12)), gamma=gamma, goal_reward=goal_reward)
-            abstract_mdp.value_iteration()
-            save_sequential_heatmaps(abstract_mdp, filename_prefix="single_epsilon_exp")
+        abstract_mdp = LTLfWaypointMDP(waypoints_dict=waypoints, ltlf_automaton=automaton, width=int(config.get("grid_w", 12)), height=int(config.get("grid_h", 12)), gamma=gamma, goal_reward=goal_reward)
+        abstract_mdp.value_iteration()
+        save_sequential_heatmaps(abstract_mdp, filename_prefix="single_epsilon_exp")
 
-            # Initialize one DDQN agent with a single exploration schedule.
-            agent = HierarchicalDQNLearner(
-                env=env,
-                max_episodes=args.episodes,
-                eps_decay=args.eps_decay,
-                gamma=gamma,
-                extra_state_dims=len(automaton.states),
-                use_polyak=args.polyak,
-                tau=args.polyak_tau,
-                target_update_freq=args.target_update_freq,
-                network_type=args.network_type,
-            )
-
-            # Run training and persist all collected metrics.
-            metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training.log", log_interval=args.log_interval)
-            save_training_data(f"{data_dir}/single_epsilon_data.npz", **metrics)
-        finally:
-            # Release environment resources even if training fails.
-            env.close()
+        seeds = [args.seed + index for index in range(args.num_seeds)]
+        seed_metrics = []
+        for run_index, run_seed in enumerate(seeds, start=1):
+            print(f"\n=== SEED RUN {run_index}/{args.num_seeds}: seed={run_seed} ===")
+            _set_training_seed(run_seed)
+            env = gym.make("LunarLander-v3", continuous=False)
+            try:
+                _set_training_seed(run_seed, env)
+                agent = HierarchicalDQNLearner(
+                    env=env,
+                    max_episodes=args.episodes,
+                    eps_decay=args.eps_decay,
+                    gamma=gamma,
+                    extra_state_dims=len(automaton.states),
+                    use_polyak=args.polyak,
+                    tau=args.polyak_tau,
+                    target_update_freq=args.target_update_freq,
+                    network_type=args.network_type,
+                )
+                policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)
+                seed_metrics.append(metrics)
+                save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
+            finally:
+                env.close()
+        save_training_data(
+            f"{data_dir}/single_epsilon_data.npz",
+            **_aggregate_seed_metrics(seed_metrics, seeds),
+        )
 
     # Load saved metrics and generate the final diagnostic plots.
     data = np.load(f"{data_dir}/single_epsilon_data.npz", allow_pickle=False)
     plot_buffer_fractions(data["buffer_histories"], filename=f"{plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"])
     plot_shaping_reward_breakdown(data["task_rewards"], data["learning_rewards"], data["epsilon_history"], window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon.png")
+    task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]
+    learning_reward_runs = data["learning_rewards_runs"] if "learning_rewards_runs" in data else data["learning_rewards"][np.newaxis, :]
+    epsilon_runs = data["epsilon_history_runs"] if "epsilon_history_runs" in data else data["epsilon_history"][np.newaxis, ...]
+    seed_values = data["seeds"] if "seeds" in data else np.asarray([args.seed])
+    for run_seed, task_rewards, learning_rewards, epsilon_history in zip(seed_values, task_reward_runs, learning_reward_runs, epsilon_runs):
+        plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon_seed_{int(run_seed)}.png")
+    plot_training_variance(learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_single_epsilon.png")
     print("\nFinished.")
 
 
@@ -487,6 +547,8 @@ if __name__ == "__main__":
     # Expose the main training and post-processing options.
     parser = argparse.ArgumentParser(description="LTLf DDQN training with one global epsilon.")
     parser.add_argument("--episodes", type=int, default=1000)
+    parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
+    parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--config", default="trajectory.json")
     parser.add_argument("--eps-decay", type=float, default=0.9996)
     parser.add_argument("--shaping-scale", type=float, default=1.0)

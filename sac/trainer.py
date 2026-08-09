@@ -25,6 +25,7 @@ from automaton_validator import validate_automaton
 from utils import (
     plot_buffer_fractions,
     plot_shaping_reward_breakdown,
+    plot_training_variance,
     save_sequential_heatmaps,
 )
 
@@ -35,6 +36,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ==============================
 # Data helpers
 # ==============================
+
+def _positive_int(value):
+    """Parse a strictly positive command-line integer."""
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
 
 def _parse_entropy_coefficient(value):
     """Accept SB3's automatic modes or a positive fixed coefficient."""
@@ -74,6 +83,28 @@ def save_training_data(filename, **kwargs):
         raise ValueError("Training metrics must be rectangular numeric arrays")
     np.savez_compressed(filename, **np_data)
     print(f"\nTraining data saved to: {filename}")
+
+
+def _aggregate_seed_metrics(seed_metrics, seeds):
+    """Keep first-run compatibility and add every metric stacked by seed."""
+    if not seed_metrics:
+        raise ValueError("At least one seed run is required")
+    aggregated = dict(seed_metrics[0])
+    aggregated["seeds"] = np.asarray(seeds, dtype=np.int64)
+    for key in seed_metrics[0]:
+        if key == "automaton_states":
+            continue
+        try:
+            aggregated[f"{key}_runs"] = np.stack(
+                [np.asarray(metrics[key]) for metrics in seed_metrics]
+            )
+        except ValueError as error:
+            raise ValueError(f"Metric {key!r} has inconsistent shapes across seeds") from error
+    for key in ("task_rewards", "learning_rewards", "shaping_rewards"):
+        runs = aggregated[f"{key}_runs"]
+        aggregated[f"{key}_mean"] = np.mean(runs, axis=0)
+        aggregated[f"{key}_variance"] = np.var(runs, axis=0)
+    return aggregated
 
 
 def _format_counter(counter):
@@ -374,6 +405,8 @@ def run_sequential_training(env, task_wrapper, abstract_mdp, episodes, policy_di
 
 def main(args):
     """Configure SAC training or regenerate plots from saved numeric metrics."""
+    if args.num_seeds <= 0:
+        raise ValueError("num_seeds must be greater than zero")
     data_dir = SCRIPT_DIR / "results"
     image_dir = SCRIPT_DIR / "img"
     log_dir = SCRIPT_DIR / "logs"
@@ -415,8 +448,6 @@ def main(args):
     data_path = data_dir / "sac_data.npz"
     if not args.post_process:
         automaton.render_graph()
-        base_env = gym.make("LunarLander-v3", continuous=False)
-        continuous_env = DiscreteToContinuousActionWrapper(base_env)
         abstract_mdp = LTLfWaypointMDP(
             waypoints_dict=waypoints,
             ltlf_automaton=automaton,
@@ -437,34 +468,43 @@ def main(args):
         finally:
             os.chdir(previous_directory)
 
-        task_env = LTLfTaskWrapper(
-            continuous_env,
-            abstract_mdp,
-            use_shaping=not args.no_shaping,
-            shaping_scale=args.shaping_scale,
-            goal_reward=goal_reward,
-        )
-        try:
-            metrics = run_sequential_training(
-                env=task_env,
-                task_wrapper=task_env,
-                abstract_mdp=abstract_mdp,
-                episodes=args.episodes,
-                policy_dir=policy_dir,
-                log_file=log_dir / "sac_training.log",
-                log_interval=args.log_interval,
-                learning_rate=args.learning_rate,
-                buffer_size=args.buffer_size,
-                learning_starts=args.learning_starts,
-                batch_size=args.batch_size,
-                tau=args.tau,
-                ent_coef=args.ent_coef,
-                seed=args.seed,
-                device=args.device,
+        seeds = [args.seed + index for index in range(args.num_seeds)]
+        seed_metrics = []
+        for run_index, run_seed in enumerate(seeds, start=1):
+            print(f"\n=== SEED RUN {run_index}/{args.num_seeds}: seed={run_seed} ===")
+            base_env = gym.make("LunarLander-v3", continuous=False)
+            continuous_env = DiscreteToContinuousActionWrapper(base_env)
+            task_env = LTLfTaskWrapper(
+                continuous_env,
+                abstract_mdp,
+                use_shaping=not args.no_shaping,
+                shaping_scale=args.shaping_scale,
+                goal_reward=goal_reward,
             )
-            save_training_data(data_path, **metrics)
-        finally:
-            task_env.close()
+            run_policy_dir = policy_dir if args.num_seeds == 1 else policy_dir / f"seed_{run_seed}"
+            try:
+                metrics = run_sequential_training(
+                    env=task_env,
+                    task_wrapper=task_env,
+                    abstract_mdp=abstract_mdp,
+                    episodes=args.episodes,
+                    policy_dir=run_policy_dir,
+                    log_file=log_dir / f"sac_training_seed_{run_seed}.log",
+                    log_interval=args.log_interval,
+                    learning_rate=args.learning_rate,
+                    buffer_size=args.buffer_size,
+                    learning_starts=args.learning_starts,
+                    batch_size=args.batch_size,
+                    tau=args.tau,
+                    ent_coef=args.ent_coef,
+                    seed=run_seed,
+                    device=args.device,
+                )
+                seed_metrics.append(metrics)
+                save_training_data(data_dir / f"sac_data_seed_{run_seed}.npz", **metrics)
+            finally:
+                task_env.close()
+        save_training_data(data_path, **_aggregate_seed_metrics(seed_metrics, seeds))
 
     data = np.load(data_path, allow_pickle=False)
     plot_buffer_fractions(
@@ -481,6 +521,24 @@ def main(args):
         filename=plot_dir / "reward_breakdown_sac.png",
         exploration_label="Entropy coefficient (alpha)",
     )
+    task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]
+    learning_reward_runs = data["learning_rewards_runs"] if "learning_rewards_runs" in data else data["learning_rewards"][np.newaxis, :]
+    entropy_runs = data["entropy_coefficient_history_runs"] if "entropy_coefficient_history_runs" in data else data["entropy_coefficient_history"][np.newaxis, :]
+    seed_values = data["seeds"] if "seeds" in data else np.asarray([args.seed])
+    for run_seed, task_rewards, learning_rewards, entropy_history in zip(seed_values, task_reward_runs, learning_reward_runs, entropy_runs):
+        plot_shaping_reward_breakdown(
+            task_rewards,
+            learning_rewards,
+            entropy_history,
+            window_size=args.plot_window,
+            filename=plot_dir / f"reward_breakdown_sac_seed_{int(run_seed)}.png",
+            exploration_label="Entropy coefficient (alpha)",
+        )
+    plot_training_variance(
+        learning_reward_runs,
+        window_size=args.plot_window,
+        filename=plot_dir / "training_variance_sac.png",
+    )
     print("\nFinished.")
 
 
@@ -493,6 +551,7 @@ if __name__ == "__main__":
         description="LTLf LunarLander training with Stable-Baselines3 SAC."
     )
     parser.add_argument("--episodes", type=int, default=1000)
+    parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR / "trajectory.json")
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
@@ -508,7 +567,7 @@ if __name__ == "__main__":
         default="auto",
         help="SAC entropy coefficient, for example 'auto', 'auto_0.1' or 0.05.",
     )
-    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
