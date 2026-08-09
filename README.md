@@ -54,6 +54,7 @@ Per esempio, dalla radice della repository:
 ```bash
 docker build -t tesi-lunar-lander lunarLander
 docker run --rm \
+  --gpus all \
   --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath lunarLander)",target=/workspace \
   tesi-lunar-lander \
@@ -69,42 +70,45 @@ Lo stesso schema vale per gli altri framework. Per esempio:
 
 ```bash
 docker build -t tesi-manual manual_experiment
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath manual_experiment)",target=/workspace \
   tesi-manual --episodes 1000
 
 docker build -t tesi-multilevel multilevel_framework
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
   tesi-multilevel --episodes 1000
 
 docker build -t tesi-multilevel-convention multilevel_framework_convention
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework_convention)",target=/workspace \
   tesi-multilevel-convention --episodes 1000
 
 docker build -t tesi-multilevel-multieps multilevel_multieps
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_multieps)",target=/workspace \
   tesi-multilevel-multieps --episodes 1000
 
 docker build -t tesi-sac sac
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath sac)",target=/workspace \
-  tesi-sac --episodes 1000 --device cpu
+  tesi-sac --episodes 1000 --device auto
 ```
 
 Gli argomenti posti dopo il nome dell'immagine vengono inoltrati direttamente
 a `trainer.py`, quindi sono disponibili anche opzioni come `--config`,
-`--no-shaping` e `--post-process`. Le immagini installano la versione CPU di
-PyTorch e configurano Matplotlib e SDL per l'esecuzione headless.
+`--no-shaping` e `--post-process`. Le immagini installano PyTorch con supporto
+CUDA 12.8 e configurano Matplotlib e SDL per l'esecuzione headless. Il server
+deve avere NVIDIA Container Toolkit configurato per usare `--gpus all`.
 
 ### Script di avvio
 
 Ogni framework contiene anche un `run_experiment.sh`. Lo script costruisce
 l'immagine, avvia il container in background, monta la directory del framework
-e inoltra gli argomenti al trainer. Può essere eseguito dalla radice della
-repository, per esempio:
+e inoltra gli argomenti al trainer. Prima dell'avvio verifica che PyTorch rilevi
+CUDA e stampa il modello della GPU; se CUDA non è disponibile, termina senza
+avviare un training destinato a ricadere sulla CPU. Può essere eseguito dalla
+radice della repository, per esempio:
 
 ```bash
 ./lunarLander/run_experiment.sh \
@@ -114,7 +118,7 @@ repository, per esempio:
   --episodes 1000 --epsilon-strategy visited
 
 ./sac/run_experiment.sh \
-  --episodes 1000 --device cpu
+  --episodes 1000 --device auto
 ```
 
 Al termine dell'avvio lo script stampa il nome univoco del container e i

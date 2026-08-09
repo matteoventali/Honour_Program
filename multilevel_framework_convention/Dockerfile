@@ -16,7 +16,7 @@ WORKDIR /workspace
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir \
-        --index-url https://download.pytorch.org/whl/cpu \
+        --index-url https://download.pytorch.org/whl/cu128 \
         "torch==2.7.1"
 
 COPY requirements-docker.txt /tmp/requirements-docker.txt
