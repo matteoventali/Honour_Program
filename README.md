@@ -35,6 +35,99 @@ trajectory, training, validation, execution and result-export cells.
 - **Visualization**: Generates plots for training progress (raw rewards and moving averages) and policy comparisons.
 - **Parallel Execution**: Supports multiprocessing for training and evaluating multiple policies concurrently.
 
+## Esecuzione degli esperimenti con Docker
+
+Ogni framework attivo contiene un `Dockerfile` indipendente e usa la propria
+directory come contesto di build:
+
+| Framework | Immagine suggerita |
+| --- | --- |
+| `lunarLander` | `tesi-lunar-lander` |
+| `manual_experiment` | `tesi-manual` |
+| `multilevel_framework` | `tesi-multilevel` |
+| `multilevel_framework_convention` | `tesi-multilevel-convention` |
+| `multilevel_multieps` | `tesi-multilevel-multieps` |
+| `sac` | `tesi-sac` |
+
+Per esempio, dalla radice della repository:
+
+```bash
+docker build -t tesi-lunar-lander lunarLander
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath lunarLander)",target=/workspace \
+  tesi-lunar-lander \
+  --episodes 1000 --num-seeds 5 --seed 42
+```
+
+Il bind mount collega `/workspace` alla directory fisica `lunarLander`
+dell'host. Di conseguenza, i file prodotti dal container sono disponibili
+direttamente nelle sottodirectory host `results`, `img`, `logs` e `policy`.
+L'opzione `--user` fa sì che i nuovi file appartengano all'utente corrente.
+
+Lo stesso schema vale per gli altri framework. Per esempio:
+
+```bash
+docker build -t tesi-manual manual_experiment
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath manual_experiment)",target=/workspace \
+  tesi-manual --episodes 1000
+
+docker build -t tesi-multilevel multilevel_framework
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
+  tesi-multilevel --episodes 1000
+
+docker build -t tesi-multilevel-convention multilevel_framework_convention
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath multilevel_framework_convention)",target=/workspace \
+  tesi-multilevel-convention --episodes 1000
+
+docker build -t tesi-multilevel-multieps multilevel_multieps
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath multilevel_multieps)",target=/workspace \
+  tesi-multilevel-multieps --episodes 1000
+
+docker build -t tesi-sac sac
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath sac)",target=/workspace \
+  tesi-sac --episodes 1000 --device cpu
+```
+
+Gli argomenti posti dopo il nome dell'immagine vengono inoltrati direttamente
+a `trainer.py`, quindi sono disponibili anche opzioni come `--config`,
+`--no-shaping` e `--post-process`. Le immagini installano la versione CPU di
+PyTorch e configurano Matplotlib e SDL per l'esecuzione headless.
+
+### Script di avvio
+
+Ogni framework contiene anche un `run_experiment.sh`. Lo script costruisce
+l'immagine, avvia il container in background, monta la directory del framework
+e inoltra gli argomenti al trainer. Può essere eseguito dalla radice della
+repository, per esempio:
+
+```bash
+./lunarLander/run_experiment.sh \
+  --episodes 1000 --num-seeds 5 --seed 42
+
+./multilevel_multieps/run_experiment.sh \
+  --episodes 1000 --epsilon-strategy visited
+
+./sac/run_experiment.sh \
+  --episodes 1000 --device cpu
+```
+
+Al termine dell'avvio lo script stampa il nome univoco del container e i
+comandi per seguirne i log, controllarne lo stato e fermarlo. Per assegnare un
+nome esplicito al container:
+
+```bash
+CONTAINER_NAME=esperimento-seed-42 \
+  ./lunarLander/run_experiment.sh --episodes 1000 --seed 42
+
+docker logs -f esperimento-seed-42
+```
+
 ## Multi-seed training and variance plots
 
 Every active trainer accepts `--num-seeds` and `--seed`. The first option is
