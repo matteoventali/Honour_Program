@@ -182,13 +182,13 @@ def save_sequential_heatmaps(
 def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history=None, window_size=100, filename="img/baseline_vs_shaping.png", title="Learning Curve Comparison", baseline_label="Baseline", shaping_label="Shaping"):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     fig, ax1 = plt.subplots(figsize=(12, 7))
-    baseline_ma = pd.Series(baseline_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
-    shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
+    baseline_ma = pd.Series(baseline_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
+    shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
     x_axis = np.arange(len(baseline_rewards))
     ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label=baseline_label)
     ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label=shaping_label)
     ax1.set_title(title, fontsize=15, fontweight='bold')
-    ax1.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
+    ax1.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
     
@@ -225,12 +225,11 @@ def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=No
         padded_histories = [np.pad(h, (0, max_len - len(h)), 'constant', constant_values=np.nan) for h in reward_histories]
         
         rewards_df = pd.DataFrame(padded_histories).T
-        mean_rewards = rewards_df.mean(axis=1)
-        std_rewards = rewards_df.std(axis=1)
-
-        # Apply moving average
-        mean_ma = mean_rewards.rolling(window=window_size, min_periods=1, center=True).mean()
-        std_ma = std_rewards.rolling(window=window_size, min_periods=1, center=True).mean()
+        smoothed_rewards = rewards_df.rolling(
+            window=window_size, min_periods=1, center=False
+        ).mean()
+        mean_ma = smoothed_rewards.mean(axis=1)
+        std_ma = smoothed_rewards.std(axis=1, ddof=0)
 
         x_axis = np.arange(len(mean_ma))
         ax.plot(x_axis, mean_ma, label=f"Mean {label}", color=color, linewidth=2.5)
@@ -243,7 +242,7 @@ def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=No
         plot_single_curve(reward_histories_multi, "Multi Epsilon", "blue")
 
     ax.set_title(title, fontsize=15, fontweight='bold')
-    ax.set_xlabel(f"Episode # (Moving Average Window = {window_size})", fontsize=12)
+    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
     ax.set_ylabel("Mean Episode Reward", fontsize=12)
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.legend(loc="lower right", fontsize=11)
@@ -265,7 +264,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
 
     smoothed_runs = (
         pd.DataFrame(runs.T)
-        .rolling(window=window_size, min_periods=1, center=True)
+        .rolling(window=window_size, min_periods=1, center=False)
         .mean()
         .to_numpy()
         .T
@@ -289,7 +288,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
         label="±1 std across seeds (variance = σ²)",
     )
     ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
-    ax.set_xlabel(f"Episode (moving-average window = {window_size})", fontsize=12)
+    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
     ax.set_ylabel(label, fontsize=12)
     ax.grid(True, linestyle="--", alpha=0.5)
     ax.legend(loc="best", fontsize=11)
@@ -308,7 +307,7 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     
     colors = plt.cm.tab10(np.linspace(0, 1, len(buffer_histories)))
     for idx, history in enumerate(buffer_histories):
-        ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=True).mean()
+        ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=False).mean()
         state_label = state_labels[idx] if state_labels is not None else idx
         ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Automaton state {state_label}')
     
@@ -329,12 +328,8 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     fig, ax1 = plt.subplots(figsize=(12, 7))
     
     # Moving Average Calculation
-    if len(true_rewards) >= window_size:
-        true_ma = pd.Series(true_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
-        total_ma = pd.Series(total_rewards).rolling(window=window_size, min_periods=1, center=True).mean()
-    else:
-        true_ma = true_rewards
-        total_ma = total_rewards
+    true_ma = pd.Series(true_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
+    total_ma = pd.Series(total_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
         
     x_axis = np.arange(len(true_rewards))
         

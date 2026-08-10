@@ -124,15 +124,19 @@ def _as_runs(array: np.ndarray, source: Path, key: str) -> np.ndarray:
     return runs
 
 
-def _centered_moving_average(runs: np.ndarray, window: int) -> np.ndarray:
-    """Apply a centered, NaN-aware moving average while preserving length."""
+def _trailing_moving_average(runs: np.ndarray, window: int) -> np.ndarray:
+    """Average the current and previous N-1 episodes for every training run."""
     window = min(window, runs.shape[1])
-    kernel = np.ones(window, dtype=np.float64)
     smoothed = np.empty_like(runs, dtype=np.float64)
     for index, run in enumerate(runs):
         valid = np.isfinite(run)
-        sums = np.convolve(np.where(valid, run, 0.0), kernel, mode="same")
-        counts = np.convolve(valid.astype(np.float64), kernel, mode="same")
+        values = np.where(valid, run, 0.0)
+        cumulative_sum = np.concatenate(([0.0], np.cumsum(values)))
+        cumulative_count = np.concatenate(([0], np.cumsum(valid)))
+        ends = np.arange(1, run.size + 1)
+        starts = np.maximum(0, ends - window)
+        sums = cumulative_sum[ends] - cumulative_sum[starts]
+        counts = cumulative_count[ends] - cumulative_count[starts]
         smoothed[index] = np.divide(
             sums,
             counts,
@@ -145,7 +149,7 @@ def _centered_moving_average(runs: np.ndarray, window: int) -> np.ndarray:
 def _summary_from_runs(
     runs: np.ndarray, window: int, source: str
 ) -> TrainingSummary:
-    smoothed = _centered_moving_average(runs, window)
+    smoothed = _trailing_moving_average(runs, window)
     with np.errstate(invalid="ignore"):
         mean = np.nanmean(smoothed, axis=0)
         variance = np.nanvar(smoothed, axis=0)
@@ -220,10 +224,10 @@ def load_training_summary(
                     mean = np.asarray(data[mean_key], dtype=np.float64)
                     variance = np.asarray(data[variance_key], dtype=np.float64)
                     if mean.ndim == variance.ndim == 1 and mean.size == variance.size:
-                        smoothed_mean = _centered_moving_average(
+                        smoothed_mean = _trailing_moving_average(
                             mean[np.newaxis, :], window
                         )[0]
-                        smoothed_std = _centered_moving_average(
+                        smoothed_std = _trailing_moving_average(
                             np.sqrt(np.maximum(variance, 0.0))[np.newaxis, :], window
                         )[0]
                         return TrainingSummary(
@@ -310,10 +314,10 @@ def plot_comparison(
 
     metric_label = METRIC_LABELS[metric]
     axes.set_title(f"Experiment comparison — {metric_label}", fontweight="bold")
-    axes.set_xlabel(f"Episode (centered moving average, window={window})")
+    axes.set_xlabel(f"Episode (mean over the last {window} episodes)")
     axes.set_ylabel(metric_label)
     axes.grid(True, linestyle="--", alpha=0.35)
-    axes.legend(title="Mean and ±1σ band (variance across seeds)")
+    axes.legend(title="Mean ±1 standard deviation across seeds")
     figure.tight_layout()
 
     output = _png_output_path(output)
@@ -399,7 +403,7 @@ def launch_gui(experiments: Sequence[Experiment], results_dir: Path) -> None:
     metric_box.grid(row=0, column=1, sticky="ew", padx=(10, 0))
 
     window_var = tk.IntVar(value=500)
-    ttk.Label(options, text="Smoothing window:").grid(
+    ttk.Label(options, text="Episodes in moving average:").grid(
         row=1, column=0, sticky="w", pady=(8, 0)
     )
     ttk.Spinbox(options, from_=1, to=100000, textvariable=window_var).grid(
@@ -506,7 +510,12 @@ def build_parser(framework_dir: Path) -> argparse.ArgumentParser:
         choices=tuple(METRIC_LABELS),
         default=DEFAULT_METRIC,
     )
-    parser.add_argument("--window", type=_positive_int, default=500)
+    parser.add_argument(
+        "--window",
+        type=_positive_int,
+        default=500,
+        help="Number of most recent episodes in the moving average (default: 500).",
+    )
     parser.add_argument("--output", type=Path, help="Path of the final PNG.")
     parser.add_argument(
         "--no-gui",
