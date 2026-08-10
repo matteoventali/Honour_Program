@@ -211,13 +211,24 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
     ):
         trainer_source = _multilevel_trainer_variant(trainer_source)
     utils_source = (PROJECT_ROOT / source_directory / "utils.py").read_text(encoding="utf-8")
+    evaluate_source = (PROJECT_ROOT / source_directory / "evaluate.py").read_text(
+        encoding="utf-8"
+    )
+    grid_overlay_source = (
+        PROJECT_ROOT / source_directory / "grid_overlay.py"
+    ).read_text(encoding="utf-8")
     agent_source = None
     if source_directory == "sac/src":
         agent_source = (PROJECT_ROOT / source_directory / "agent.py").read_text(
             encoding="utf-8"
         )
 
-    replaced = {"trainer.py": 0, "utils.py": 0}
+    replaced = {
+        "trainer.py": 0,
+        "utils.py": 0,
+        "evaluate.py": 0,
+        "grid_overlay.py": 0,
+    }
     if agent_source is not None:
         replaced["agent.py"] = 0
     for cell in notebook["cells"]:
@@ -228,6 +239,12 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         elif source.startswith("%%writefile utils.py"):
             cell["source"] = _writefile_source("utils.py", utils_source)
             replaced["utils.py"] += 1
+        elif source.startswith("%%writefile evaluate.py"):
+            cell["source"] = _writefile_source("evaluate.py", evaluate_source)
+            replaced["evaluate.py"] += 1
+        elif source.startswith("%%writefile grid_overlay.py"):
+            cell["source"] = _writefile_source("grid_overlay.py", grid_overlay_source)
+            replaced["grid_overlay.py"] += 1
         elif agent_source is not None and source.startswith("%%writefile agent.py"):
             cell["source"] = _writefile_source("agent.py", agent_source)
             replaced["agent.py"] += 1

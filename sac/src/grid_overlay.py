@@ -129,7 +129,7 @@ def draw_abstract_grid(frame: np.ndarray, geometry: LunarLanderGeometry, grid_w:
     if grid_w < 2 or grid_h < 2:
         raise ValueError("grid_w and grid_h must both be at least 2")
 
-    figure, axis = plt.subplots(figsize=(12, 8))
+    figure, axis = plt.subplots(figsize=(7.2, 4.8), constrained_layout=True)
     axis.imshow(frame)
     x_lines, y_lines = _grid_boundaries(grid_w, grid_h, geometry)
     x_centres = (x_lines[:-1] + x_lines[1:]) / 2.0
@@ -190,8 +190,6 @@ def draw_abstract_grid(frame: np.ndarray, geometry: LunarLanderGeometry, grid_w:
     # Keep it in view so that no abstract row or coordinate label disappears.
     visible_top = min(0.0, float(np.min(y_lines)))
     axis.set_ylim(geometry.viewport_height, visible_top)
-    axis.set_title(title)
-
     # Put the abstract coordinates at cell centres. Since image coordinates
     # grow downwards while abstract y grows upwards, y_centres is descending:
     # label 0 consequently appears at the bottom and grid_h - 1 at the top.
@@ -245,7 +243,7 @@ def generate_overlay(output_path: str | Path, config_path: str | Path = DEFAULT_
             waypoints=config.get("waypoints_dict", {}),
             observation=observation,
         )
-        figure.savefig(output_path, dpi=180, bbox_inches="tight")
+        figure.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(figure)
     finally:
         env.close()

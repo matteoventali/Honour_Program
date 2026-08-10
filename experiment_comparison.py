@@ -28,7 +28,18 @@ METRIC_LABELS = {
     "dfa_transitions": "DFA transitions",
 }
 DEFAULT_METRIC = "learning_rewards"
+METRICS_WITH_EPSILON = {"learning_rewards", "task_rewards", "successes"}
 SEED_FILE_RE = re.compile(r"_seed_-?\d+\.npz$")
+EPSILON_COLOR = "#E6AB02"
+EXPERIMENT_COLORS = (
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7",
+    "#009E73",
+    "#56B4E9",
+    "#000000",
+)
+EPSILON_LINESTYLES = ("--", (0, (5, 2, 1, 2)), ":", "-.")
 
 
 @dataclass(frozen=True)
@@ -254,6 +265,121 @@ def load_training_summary(
     )
 
 
+def _epsilon_from_array(
+    array: np.ndarray,
+    *,
+    includes_runs: bool,
+) -> np.ndarray | None:
+    """Convert stored raw epsilon histories to one curve per epsilon series."""
+    values = np.asarray(array, dtype=np.float64)
+    if includes_runs:
+        if values.ndim == 2:
+            return np.nanmean(values, axis=0, keepdims=True)
+        if values.ndim == 3:
+            return np.nanmean(values, axis=0)
+        return None
+    if values.ndim == 1:
+        return values[np.newaxis, :]
+    if values.ndim == 2:
+        return values
+    return None
+
+
+def load_epsilon_curves(
+    experiment: Experiment,
+    episode_count: int,
+) -> tuple[np.ndarray, tuple[str, ...]] | None:
+    """Load unsmoothed epsilon curves, preferring aggregate multi-seed data."""
+    aggregate_candidates: list[tuple[int, Path, np.ndarray, np.ndarray | None]] = []
+    for path in experiment.files:
+        try:
+            with np.load(path, allow_pickle=False) as data:
+                if "epsilon_history_runs" not in data:
+                    continue
+                stored = np.asarray(data["epsilon_history_runs"], dtype=np.float64)
+                curves = _epsilon_from_array(stored, includes_runs=True)
+                if curves is None or curves.shape[1] == 0:
+                    continue
+                states = (
+                    np.asarray(data["automaton_states"])
+                    if "automaton_states" in data
+                    else None
+                )
+                aggregate_candidates.append((stored.shape[0], path, curves, states))
+        except (OSError, ValueError):
+            continue
+
+    if aggregate_candidates:
+        _, _, curves, states = max(
+            aggregate_candidates,
+            key=lambda item: (
+                item[0],
+                not bool(SEED_FILE_RE.search(item[1].name)),
+                -len(item[1].parts),
+            ),
+        )
+    else:
+        seed_curves: list[np.ndarray] = []
+        states = None
+        for path in experiment.files:
+            if not SEED_FILE_RE.search(path.name):
+                continue
+            try:
+                with np.load(path, allow_pickle=False) as data:
+                    if "epsilon_history" not in data:
+                        continue
+                    curves = _epsilon_from_array(
+                        data["epsilon_history"],
+                        includes_runs=False,
+                    )
+                    if curves is not None:
+                        seed_curves.append(curves)
+                        if states is None and "automaton_states" in data:
+                            states = np.asarray(data["automaton_states"])
+            except (OSError, ValueError):
+                continue
+        if seed_curves:
+            series_count = seed_curves[0].shape[0]
+            compatible = [curves for curves in seed_curves if curves.shape[0] == series_count]
+            shortest = min(curves.shape[1] for curves in compatible)
+            curves = np.nanmean(
+                np.stack([item[:, :shortest] for item in compatible]),
+                axis=0,
+            )
+        else:
+            curves = None
+            for path in experiment.files:
+                if SEED_FILE_RE.search(path.name):
+                    continue
+                try:
+                    with np.load(path, allow_pickle=False) as data:
+                        if "epsilon_history" not in data:
+                            continue
+                        curves = _epsilon_from_array(
+                            data["epsilon_history"],
+                            includes_runs=False,
+                        )
+                        if curves is not None and "automaton_states" in data:
+                            states = np.asarray(data["automaton_states"])
+                        if curves is not None:
+                            break
+                except (OSError, ValueError):
+                    continue
+            if curves is None:
+                return None
+
+    curves = curves[:, :episode_count]
+    if curves.shape[0] == 1:
+        labels = ("Epsilon",)
+    elif states is not None and len(states) == curves.shape[0]:
+        labels = tuple(f"Epsilon q={state}" for state in states)
+    else:
+        labels = tuple(
+            f"Epsilon {index + 1}" for index in range(curves.shape[0])
+        )
+    return curves, labels
+
+
 def default_output_path(results_dir: Path, metric: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return results_dir / "comparisons" / f"comparison_{metric}_{timestamp}.png"
@@ -287,11 +413,25 @@ def plot_comparison(
         for experiment in experiments
     ]
 
-    figure, axes = plt.subplots(figsize=(13, 7.5))
-    colors = plt.get_cmap("tab10")
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"],
+            "font.size": 10,
+            "axes.labelsize": 10,
+            "legend.fontsize": 9,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "xtick.direction": "in",
+            "ytick.direction": "in",
+        }
+    )
+    figure, axes = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    epsilon_axis = axes.twinx() if metric in METRICS_WITH_EPSILON else None
+    epsilon_entries: list[tuple[np.ndarray, str, str, str]] = []
     for index, (experiment, summary) in enumerate(zip(experiments, summaries)):
         episodes = np.arange(1, summary.mean.size + 1)
-        color = colors(index % 10)
+        color = EXPERIMENT_COLORS[index % len(EXPERIMENT_COLORS)]
         if summary.run_count:
             seed_label = "seed" if summary.run_count == 1 else "seeds"
             run_text = f"{summary.run_count} {seed_label}"
@@ -301,7 +441,7 @@ def plot_comparison(
             episodes,
             summary.mean,
             color=color,
-            linewidth=2.2,
+            linewidth=1.7,
             label=f"{experiment.name} ({run_text})",
         )
         axes.fill_between(
@@ -311,18 +451,91 @@ def plot_comparison(
             color=color,
             alpha=0.18,
         )
+        if epsilon_axis is not None:
+            epsilon_data = load_epsilon_curves(experiment, summary.mean.size)
+            if epsilon_data is not None:
+                epsilon_curves, epsilon_labels = epsilon_data
+                for epsilon_curve, epsilon_label in zip(
+                    epsilon_curves,
+                    epsilon_labels,
+                ):
+                    epsilon_entries.append(
+                        (epsilon_curve, experiment.name, epsilon_label, color)
+                    )
+
+    if epsilon_axis is not None:
+        epsilon_groups: list[list[tuple[np.ndarray, str, str, str]]] = []
+        for entry in epsilon_entries:
+            matching_group = next(
+                (
+                    group
+                    for group in epsilon_groups
+                    if group[0][0].shape == entry[0].shape
+                    and np.allclose(group[0][0], entry[0], equal_nan=True)
+                ),
+                None,
+            )
+            if matching_group is None:
+                epsilon_groups.append([entry])
+            else:
+                matching_group.append(entry)
+
+        for group_index, group in enumerate(epsilon_groups):
+            epsilon_curve, experiment_name, epsilon_label, _ = group[0]
+            if len(group) > 1:
+                group_labels = {entry[2] for entry in group}
+                epsilon_label = (
+                    f"{epsilon_label} (shared)"
+                    if len(group_labels) == 1
+                    else "Epsilon (shared)"
+                )
+            else:
+                epsilon_label = f"{experiment_name} — {epsilon_label}"
+            epsilon_axis.plot(
+                np.arange(1, epsilon_curve.size + 1),
+                epsilon_curve,
+                color=EPSILON_COLOR,
+                linestyle=EPSILON_LINESTYLES[
+                    group_index % len(EPSILON_LINESTYLES)
+                ],
+                linewidth=1.3,
+                label=epsilon_label,
+            )
 
     metric_label = METRIC_LABELS[metric]
-    axes.set_title(f"Experiment comparison — {metric_label}", fontweight="bold")
-    axes.set_xlabel(f"Episode (mean over the last {window} episodes)")
+    axes.set_xlabel("#Episode")
     axes.set_ylabel(metric_label)
-    axes.grid(True, linestyle="--", alpha=0.35)
-    axes.legend(title="Mean ±1 standard deviation across seeds")
-    figure.tight_layout()
+    for spine in axes.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.8)
+    axes.set_axisbelow(True)
+    axes.grid(axis="y", color="#d9d9d9", linewidth=0.6, alpha=0.8)
+    legend_handles, legend_labels = axes.get_legend_handles_labels()
+    if epsilon_axis is not None and epsilon_axis.lines:
+        epsilon_axis.set_ylabel("Epsilon")
+        epsilon_axis.set_ylim(0.0, 1.0)
+        epsilon_axis.grid(False)
+        epsilon_axis.spines["top"].set_visible(True)
+        epsilon_axis.spines["right"].set_visible(True)
+        epsilon_handles, epsilon_legend_labels = (
+            epsilon_axis.get_legend_handles_labels()
+        )
+        legend_handles += epsilon_handles
+        legend_labels += epsilon_legend_labels
+    elif epsilon_axis is not None:
+        epsilon_axis.set_visible(False)
+    axes.legend(
+        legend_handles,
+        legend_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=min(len(legend_labels), 3),
+        frameon=False,
+    )
 
     output = _png_output_path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(output, dpi=220, bbox_inches="tight")
+    figure.savefig(output, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
     else:

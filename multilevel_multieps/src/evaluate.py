@@ -31,7 +31,12 @@ from grid_overlay import (
     draw_abstract_grid,
     geometry_from_env,
 )
-from utils import phi_mapping_sequential
+from utils import (
+    LEARNING_REWARD_COLOR,
+    RAW_DATA_COLOR,
+    SERIES_COLORS,
+    phi_mapping_sequential,
+)
 
 
 # ==============================
@@ -268,37 +273,40 @@ def plot_policy(result, window_size, output_dir):
     returns = result["environment_returns"]
     smooth = moving_average(returns, window_size)
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(returns, alpha=0.3, color="gray", label="Raw Gym return")
+    figure, axis = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    episodes = np.arange(1, len(returns) + 1)
+    axis.plot(episodes, returns, alpha=0.28, color=RAW_DATA_COLOR, linewidth=0.8, label="Raw Gym return")
     start = window_size - 1 if len(returns) >= window_size else 0
-    plt.plot(range(start, start + len(smooth)), smooth, color="blue", linewidth=2, label=f"Moving average (window={window_size})")
-    plt.title(f"Evaluation: {result['policy']}")
-    plt.xlabel("Episode")
-    plt.ylabel("Gym return")
-    plt.legend()
-    plt.grid(True, linestyle="--", alpha=0.7)
+    axis.plot(np.arange(start + 1, start + len(smooth) + 1), smooth, color=LEARNING_REWARD_COLOR, linewidth=1.7, label=f"Trailing mean (N={window_size})")
+    axis.set_xlabel("#Episode")
+    axis.set_ylabel("Gym return")
+    axis.spines["top"].set_visible(True)
+    axis.spines["right"].set_visible(True)
+    axis.grid(axis="y", color="#d9d9d9", linewidth=0.6, alpha=0.8)
+    axis.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=2, frameon=False)
     output_path = output_dir / f"eval_{_safe_stem(result['policy'])}.png"
-    plt.savefig(output_path, bbox_inches="tight")
-    plt.close()
+    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(figure)
     return output_path
 
 
 def plot_comparison(results, window_size, output_dir):
     """Plot smoothed Gym returns for multiple policies."""
-    plt.figure(figsize=(12, 6))
-    for result in results:
+    figure, axis = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    for index, result in enumerate(results):
         returns = result["environment_returns"]
         smooth = moving_average(returns, window_size)
         start = window_size - 1 if len(returns) >= window_size else 0
-        plt.plot(range(start, start + len(smooth)), smooth, linewidth=2, label=result["policy"])
-    plt.title("Policy comparison")
-    plt.xlabel("Episode")
-    plt.ylabel("Gym return")
-    plt.legend()
-    plt.grid(True, linestyle="--", alpha=0.7)
+        axis.plot(np.arange(start + 1, start + len(smooth) + 1), smooth, color=SERIES_COLORS[index % len(SERIES_COLORS)], linewidth=1.7, label=result["policy"])
+    axis.set_xlabel("#Episode")
+    axis.set_ylabel("Gym return")
+    axis.spines["top"].set_visible(True)
+    axis.spines["right"].set_visible(True)
+    axis.grid(axis="y", color="#d9d9d9", linewidth=0.6, alpha=0.8)
+    axis.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncol=min(len(results), 3), frameon=False)
     output_path = output_dir / "policy_comparison.png"
-    plt.savefig(output_path, bbox_inches="tight")
-    plt.close()
+    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(figure)
     return output_path
 
 
@@ -359,7 +367,7 @@ def plot_grid_traces(result, waypoints_dict, grid_w, grid_h, output_dir):
         output_path = output_dir / (
             f"grid_trace_{_safe_stem(result['policy'])}_episode_{episode_index}.png"
         )
-        figure.savefig(output_path, dpi=180, bbox_inches="tight")
+        figure.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(figure)
         output_paths.append(output_path)
     return output_paths

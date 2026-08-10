@@ -16,6 +16,40 @@ import pandas as pd
 from matplotlib.patches import Rectangle
 
 
+LEARNING_REWARD_COLOR = "#0072B2"
+TASK_REWARD_COLOR = "#D55E00"
+EPSILON_COLOR = "#E6AB02"
+RAW_DATA_COLOR = "#777777"
+REFERENCE_LINE_COLOR = "#666666"
+SERIES_COLORS = (
+    LEARNING_REWARD_COLOR,
+    TASK_REWARD_COLOR,
+    "#CC79A7",
+    "#009E73",
+    "#56B4E9",
+    "#000000",
+)
+EPSILON_LINESTYLES = ("--", (0, (5, 2, 1, 2)), ":", "-.")
+PAPER_COLORS = SERIES_COLORS
+
+plt.rcParams.update(
+    {
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"],
+        "font.size": 10,
+        "axes.labelsize": 10,
+        "axes.linewidth": 0.8,
+        "legend.fontsize": 9,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "savefig.dpi": 300,
+        "savefig.facecolor": "white",
+    }
+)
+
+
 # ==============================
 # Spatial discretization and grid geometry
 # ==============================
@@ -88,12 +122,13 @@ def phi_mapping_sequential(obs, q, grid_w=12, grid_h=12):
 
 def lunar_lander_visible_observation_bounds():
     """Return the normalised x/y bounds covered by LunarLander's RGB viewport."""
-    from gymnasium.envs.box2d import lunar_lander
-
-    viewport_world_width = lunar_lander.VIEWPORT_W / lunar_lander.SCALE
-    viewport_world_height = lunar_lander.VIEWPORT_H / lunar_lander.SCALE
+    # Gymnasium's rendering geometry is constant; keeping the values here lets
+    # post-processing run without importing the optional Box2D runtime.
+    scale, viewport_width, viewport_height, leg_down = 30.0, 600.0, 400.0, 18.0
+    viewport_world_width = viewport_width / scale
+    viewport_world_height = viewport_height / scale
     helipad_y = viewport_world_height / 4.0
-    lander_y_offset = helipad_y + lunar_lander.LEG_DOWN / lunar_lander.SCALE
+    lander_y_offset = helipad_y + leg_down / scale
     half_world_height = viewport_world_height / 2.0
     visible_y_min = (0.0 - lander_y_offset) / half_world_height
     visible_y_max = (viewport_world_height - lander_y_offset) / half_world_height
@@ -133,7 +168,13 @@ def _draw_visible_area_overlay(axis, width, height):
             zorder=5,
         )
     )
-    axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
+    axis.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        borderaxespad=0.0,
+        frameon=False,
+        fontsize=8,
+    )
 
 
 # ==============================
@@ -167,7 +208,7 @@ def save_sequential_heatmaps(
             if q == current_q and 0 <= x < width and 0 <= y < height:
                 matrix[y, x] = value
                 
-        plt.figure(figsize=(9, 8))
+        plt.figure(figsize=(6.4, 5.4), constrained_layout=True)
         im = plt.imshow(matrix, cmap='viridis', origin='lower', vmin=computed_vmin, vmax=computed_vmax)
         
         for y in range(height):
@@ -179,11 +220,9 @@ def save_sequential_heatmaps(
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         
-        is_accepting = abstract_mdp.automaton.is_accepting(current_q)
-        phase_label = "Cycle completed" if is_accepting else "Seeking target"
-        plt.title(f"Potential Map (V*) - Automaton State {current_q} ({phase_label})", fontsize=14, fontweight='bold')
-        
         ax = plt.gca()
+        ax.set_xlabel("Grid x")
+        ax.set_ylabel("Grid y")
         ax.set_xticks(np.arange(-.5, width, 1), minor=True)
         ax.set_yticks(np.arange(-.5, height, 1), minor=True)
         ax.grid(which='minor', color='w', linestyle='-', linewidth=1, alpha=0.4)
@@ -191,8 +230,7 @@ def save_sequential_heatmaps(
         
         # Keep the heatmap free of waypoint and goal markers.
             
-        plt.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
-        plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
+        plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=300, bbox_inches='tight')
         plt.close()
         print(f" -> Generated V* Heatmap for automaton state {current_q}")
 
@@ -202,8 +240,34 @@ def save_sequential_heatmaps(
 # ==============================
 
 
-def plot_training_variance(reward_histories, window_size=100, title="Training Performance Across Seeds", filename="img/training_variance.png", label="Learning reward"):
-    """Plot the smoothed mean reward and its variance across training seeds."""
+def _prepare_plot_path(filename):
+    """Create the destination directory, if one was provided."""
+    output_directory = os.path.dirname(os.fspath(filename))
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+
+
+def _style_paper_axis(axis, grid_axis="y"):
+    """Apply the unobtrusive axis treatment used by all paper figures."""
+    for spine in axis.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.8)
+    axis.set_axisbelow(True)
+    axis.grid(axis=grid_axis, color="#d9d9d9", linewidth=0.6, alpha=0.8)
+
+
+def _trailing_mean(values, window_size):
+    """Return the mean of the current and previous N-1 episodes."""
+    return (
+        pd.Series(np.asarray(values, dtype=np.float64))
+        .rolling(window=window_size, min_periods=1, center=False)
+        .mean()
+        .to_numpy()
+    )
+
+
+def plot_training_variance(reward_histories, window_size=100, title="Training Performance Across Seeds", filename="img/training_variance.png", label="Learning reward", epsilon_histories=None, epsilon_labels=None):
+    """Plot aggregate rewards with variance and optional raw epsilon curves."""
     runs = np.asarray(reward_histories, dtype=np.float64)
     if runs.ndim == 1:
         runs = runs[np.newaxis, :]
@@ -220,30 +284,81 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
         .T
     )
     mean_reward = np.mean(smoothed_runs, axis=0)
-    variance = np.var(smoothed_runs, axis=0)
-    std_reward = np.sqrt(variance)
+    std_reward = np.std(smoothed_runs, axis=0)
     episodes = np.arange(1, runs.shape[1] + 1)
 
-    output_directory = os.path.dirname(os.fspath(filename))
-    if output_directory:
-        os.makedirs(output_directory, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(12, 7))
-    ax.plot(episodes, mean_reward, color="tab:blue", linewidth=2.5, label=f"Mean {label}")
+    _prepare_plot_path(filename)
+    fig, ax = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    ax.plot(episodes, mean_reward, color=LEARNING_REWARD_COLOR, linewidth=1.7, label=f"Mean {label}")
     ax.fill_between(
         episodes,
         mean_reward - std_reward,
         mean_reward + std_reward,
-        color="tab:blue",
-        alpha=0.2,
-        label="±1 std across seeds (variance = σ²)",
+        color=LEARNING_REWARD_COLOR,
+        alpha=0.18,
+        linewidth=0,
+        label="±1 SD across seeds",
     )
-    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
-    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
-    ax.set_ylabel(label, fontsize=12)
-    ax.grid(True, linestyle="--", alpha=0.5)
-    ax.legend(loc="best", fontsize=11)
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    ax.set_xlabel("#Episode")
+    ax.set_ylabel(label)
+    _style_paper_axis(ax)
+
+    legend_handles, legend_labels = ax.get_legend_handles_labels()
+    if epsilon_histories is not None:
+        epsilon_runs = np.asarray(epsilon_histories, dtype=np.float64)
+        if epsilon_runs.ndim == 1:
+            epsilon_curves = epsilon_runs[np.newaxis, :]
+        elif epsilon_runs.ndim == 2:
+            if epsilon_runs.shape[0] == runs.shape[0]:
+                epsilon_curves = np.mean(epsilon_runs, axis=0, keepdims=True)
+            else:
+                epsilon_curves = epsilon_runs
+        elif epsilon_runs.ndim == 3:
+            epsilon_curves = np.mean(epsilon_runs, axis=0)
+        else:
+            raise ValueError(
+                "epsilon_histories must have shape (episodes), "
+                "(seeds, episodes), or (seeds, epsilon_series, episodes)"
+            )
+        if epsilon_curves.shape[1] != runs.shape[1]:
+            raise ValueError("epsilon_histories must contain one value per episode")
+        if epsilon_labels is not None and len(epsilon_labels) != len(epsilon_curves):
+            raise ValueError("epsilon_labels must match the number of epsilon curves")
+
+        epsilon_axis = ax.twinx()
+        for index, epsilon_curve in enumerate(epsilon_curves):
+            if epsilon_labels is not None:
+                epsilon_label = f"Epsilon q={epsilon_labels[index]}"
+            elif len(epsilon_curves) == 1:
+                epsilon_label = "Epsilon"
+            else:
+                epsilon_label = f"Epsilon {index + 1}"
+            epsilon_axis.plot(
+                episodes,
+                epsilon_curve,
+                color=EPSILON_COLOR,
+                linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)],
+                linewidth=1.4,
+                label=epsilon_label,
+            )
+        epsilon_axis.set_ylabel("Epsilon")
+        epsilon_axis.set_ylim(0.0, 1.0)
+        epsilon_axis.grid(False)
+        epsilon_axis.spines["top"].set_visible(True)
+        epsilon_axis.spines["right"].set_visible(True)
+        epsilon_handles, epsilon_legend_labels = epsilon_axis.get_legend_handles_labels()
+        legend_handles += epsilon_handles
+        legend_labels += epsilon_legend_labels
+
+    ax.legend(
+        legend_handles,
+        legend_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=min(len(legend_labels), 4),
+        frameon=False,
+    )
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
 
@@ -272,33 +387,35 @@ def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/b
     mean_fractions = np.mean(smoothed_runs, axis=0)
     std_fractions = np.std(smoothed_runs, axis=0)
     episodes = np.arange(1, runs.shape[2] + 1)
-    colors = plt.cm.tab10(np.linspace(0, 1, runs.shape[1]))
-    output_directory = os.path.dirname(os.fspath(filename))
-    if output_directory:
-        os.makedirs(output_directory, exist_ok=True)
+    colors = [SERIES_COLORS[index % len(SERIES_COLORS)] for index in range(runs.shape[1])]
+    _prepare_plot_path(filename)
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
     for state_index, color in enumerate(colors):
         state_label = state_labels[state_index] if state_labels is not None else state_index
         mean = mean_fractions[state_index]
         std = std_fractions[state_index]
-        ax.plot(episodes, mean, color=color, linewidth=2.5, label=f"Automaton state {state_label}")
+        ax.plot(episodes, mean, color=color, linewidth=1.7, label=f"Automaton state {state_label}")
         ax.fill_between(
             episodes,
             np.clip(mean - std, 0.0, 1.0),
             np.clip(mean + std, 0.0, 1.0),
             color=color,
-            alpha=0.18,
+            alpha=0.16,
+            linewidth=0,
         )
 
-    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
-    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
-    ax.set_ylabel("Fraction in Buffer", fontsize=12)
-    ax.set_ylim(0, 1.05)
-    ax.grid(True, linestyle="--", alpha=0.5)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=runs.shape[1], title="Mean with ±1 std bands", fontsize=11)
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    ax.set_xlabel("#Episode")
+    ax.set_ylabel("Buffer fraction")
+    ax.set_ylim(0, 1.0)
+    _style_paper_axis(ax)
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=min(runs.shape[1], 3),
+        frameon=False,
+    )
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"\n>>> Buffer variance plot saved to: {filename}")
     plt.close(fig)
 
@@ -306,91 +423,77 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     """
     Plots the replay buffer composition for N phases dynamically.
     """
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    x_axis = np.arange(len(buffer_histories[0]))
+    _prepare_plot_path(filename)
+    fig, ax = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    x_axis = np.arange(1, len(buffer_histories[0]) + 1)
     
-    colors = plt.cm.tab10(np.linspace(0, 1, len(buffer_histories)))
+    colors = [SERIES_COLORS[index % len(SERIES_COLORS)] for index in range(len(buffer_histories))]
     for idx, history in enumerate(buffer_histories):
-        ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=False).mean()
+        ma = _trailing_mean(history, window_size)
         state_label = state_labels[idx] if state_labels is not None else idx
-        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Automaton state {state_label}')
+        ax.plot(x_axis, ma, color=colors[idx], linewidth=1.7, label=f'Automaton state {state_label}')
     
-    ax.set_title(f"{title} (MA Window = {window_size})", fontsize=14, fontweight='bold')
-    ax.set_ylabel("Fraction in Buffer", fontsize=12)
-    ax.set_ylim(0, 1.05)
-    
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=len(buffer_histories), fontsize=11)
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches='tight')
+    ax.set_xlabel("#Episode")
+    ax.set_ylabel("Buffer fraction")
+    ax.set_ylim(0, 1.0)
+    _style_paper_axis(ax)
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=min(len(buffer_histories), 3),
+        frameon=False,
+    )
+    fig.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
 def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png", title="Shaping Agent Reward Analysis"):
-    """
-    Plots the moving average of rewards (True vs Total) and overlays the N-phase Epsilon decay dynamically.
-    """
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax1 = plt.subplots(figsize=(12, 7))
-    
-    # Moving Average Calculation
-    true_ma = pd.Series(true_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
-    total_ma = pd.Series(total_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
-        
-    x_axis = np.arange(len(true_rewards))
-        
-    # Plot Rewards (Left Y-Axis)
-    ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Synthetic Goal Reward')
-    ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Learning Reward (Goal + Shaping)')
-    
-    ax1.set_title(f"{title} (MA Window = {window_size})", fontsize=15, fontweight='bold')
-    ax1.set_xlabel("Episode #", fontsize=12)
-    ax1.set_ylabel("Episode Reward", fontsize=12)
-    ax1.grid(True, linestyle='--', alpha=0.5)
-    
-    # Plot Epsilon Decays (Right Y-Axis)
-    ax2 = ax1.twinx()
-    
-    # Check if eps_histories is a list of lists/arrays (multi-epsilon case)
-    is_multi_eps = any(isinstance(i, (list, np.ndarray)) for i in eps_histories)
+    """Plot rewards and epsilon together using independent, well-defined axes."""
+    if window_size <= 0:
+        raise ValueError("window_size must be greater than zero")
+    true_rewards = np.asarray(true_rewards, dtype=np.float64)
+    total_rewards = np.asarray(total_rewards, dtype=np.float64)
+    if true_rewards.ndim != 1 or total_rewards.shape != true_rewards.shape:
+        raise ValueError("true_rewards and total_rewards must be equally sized vectors")
 
-    if is_multi_eps:
-        num_phases = len(eps_histories)
-        colors = plt.cm.plasma(np.linspace(0, 0.8, num_phases))
-        for idx in range(num_phases):
-            label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
-            ax2.plot(x_axis, eps_histories[idx], color=colors[idx], linestyle='--', linewidth=2, alpha=0.8, label=f'ε Decay (q={idx}: {label})')
-    else: # Single epsilon history
-        ax2.plot(x_axis, eps_histories, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
+    exploration_runs = np.asarray(eps_histories, dtype=np.float64)
+    if exploration_runs.ndim == 1:
+        exploration_runs = exploration_runs[np.newaxis, :]
+    elif exploration_runs.ndim == 2 and exploration_runs.shape[1] != len(true_rewards):
+        if exploration_runs.shape[0] == len(true_rewards):
+            exploration_runs = exploration_runs.T
+    if exploration_runs.ndim != 2 or exploration_runs.shape[1] != len(true_rewards):
+        raise ValueError("eps_histories must contain one value per episode")
 
-    # Align the zero of both y-axes for better visual comparison
-    y1_min, y1_max = ax1.get_ylim()
-    y2_min, y2_max = -0.05, 1.05 # Epsilon range is fixed
-    
-    # Align y-axes so that the zero points match.
-    if y1_min < 0 < y1_max:
-        # Calculate the proportional position of zero on the reward axis
-        zero_ratio = -y1_min / (y1_max - y1_min)
-        # Set the epsilon axis limits so its zero is at the same ratio
-        new_y2_min = -zero_ratio * y2_max / (1 - zero_ratio)
-        ax2.set_ylim(new_y2_min, y2_max)
-    else:
-        ax2.set_ylim(y2_min, y2_max)
+    _prepare_plot_path(filename)
+    figure, reward_axis = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
+    epsilon_axis = reward_axis.twinx()
+    episodes = np.arange(1, len(true_rewards) + 1)
+    reward_axis.plot(episodes, _trailing_mean(true_rewards, window_size), color=TASK_REWARD_COLOR, linewidth=1.6, label="Task reward")
+    reward_axis.plot(episodes, _trailing_mean(total_rewards, window_size), color=LEARNING_REWARD_COLOR, linewidth=1.7, label="Learning reward (goal + shaping)")
+    reward_axis.axhline(0.0, color=REFERENCE_LINE_COLOR, linewidth=0.7, alpha=0.7)
+    reward_axis.set_xlabel("#Episode")
+    reward_axis.set_ylabel("Episode Reward")
+    _style_paper_axis(reward_axis)
 
-    ax2.set_ylabel("Exploration Rate (ε)", color='black', fontsize=12)
+    for index, history in enumerate(exploration_runs):
+        phase = "Goal" if index == len(exploration_runs) - 1 else f"WP {index + 1}"
+        label = "Epsilon" if len(exploration_runs) == 1 else f"Epsilon q={index} ({phase})"
+        epsilon_axis.plot(episodes, history, color=EPSILON_COLOR, linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)], linewidth=1.4, label=label)
+    epsilon_axis.set_ylabel("Epsilon")
+    epsilon_axis.set_ylim(0.0, 1.0)
+    epsilon_axis.grid(False)
+    epsilon_axis.spines["top"].set_visible(True)
+    epsilon_axis.spines["right"].set_visible(True)
 
-    # Combine Legends from both axes
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    
-    # Dynamically calculate legend columns based on number of items to keep it compact
-    legend_cols = max(2, (len(labels1) + len(labels2)) // 2)
-    
-    ax1.legend(
-        lines1 + lines2, labels1 + labels2, 
-        loc="upper center", bbox_to_anchor=(0.5, -0.15), 
-        ncol=legend_cols, fontsize=11, framealpha=1.0
+    reward_lines, reward_labels = reward_axis.get_legend_handles_labels()
+    epsilon_lines, epsilon_labels = epsilon_axis.get_legend_handles_labels()
+    reward_axis.legend(
+        reward_lines + epsilon_lines,
+        reward_labels + epsilon_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.01),
+        ncol=min(len(reward_labels) + len(epsilon_labels), 4),
+        frameon=False,
     )
-    
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches='tight')
-    plt.close(fig)
+    figure.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.close(figure)
