@@ -183,6 +183,35 @@ The original reward-breakdown plot is preserved, and an additional
 Replay-buffer plots show only the observed DFA-state fractions, without an
 ideal-load-balance reference line.
 
+### Confronto grafico tra esperimenti
+
+Ogni framework attivo include `compare_experiments.py`. Avviato senza opzioni,
+lo script cerca automaticamente gli esperimenti nella propria directory
+`results/` e apre una finestra dalla quale è possibile selezionare due o più
+esperimenti, la metrica e la finestra di smoothing:
+
+```bash
+python3 multilevel_framework_convention/compare_experiments.py
+```
+
+Il grafico confronta le medie dei run e mostra per ogni esperimento una banda
+`±1σ`, dove `σ` è la radice della varianza tra seed. Il PNG viene salvato per
+default sotto `results/comparisons/`. Lo script usa i dati aggregati
+`*_runs` quando presenti e riconosce anche gli esperimenti storici composti da
+file separati `*_seed_<seed>.npz`.
+
+Su un server senza display si può usare la modalità non interattiva:
+
+```bash
+python3 multilevel_framework_convention/compare_experiments.py \
+  --no-gui --experiments traj2_with_variance_1liv traj2_with_variance_2liv \
+  --metric learning_rewards --window 500 \
+  --output results/comparisons/traj2_levels.png
+```
+
+Usare `--list` per vedere gli esperimenti e le metriche disponibili. La
+finestra grafica richiede Tkinter (su Debian/Ubuntu è fornito da `python3-tk`).
+
 The Kaggle notebooks expose the same settings as `NUM_SEEDS` and `SEED` in
 their configuration cell. Their embedded trainers and plotting utilities can
 be refreshed after source changes with `python3 notebook/sync_training_notebooks.py`.
