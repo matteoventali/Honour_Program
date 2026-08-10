@@ -1,9 +1,24 @@
+"""Spatial mapping and plotting utilities for the manual framework."""
+
+# ==============================
+# Standard library imports
+# ==============================
+
 import os
-import numpy as np
+
+# ==============================
+# External imports
+# ==============================
+
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
+
+# ==============================
+# Spatial discretization and grid geometry
+# ==============================
 
 # Legacy discretization. To reactivate it, uncomment this function and comment
 # out the active phi_mapping_grid implementation immediately below.
@@ -120,6 +135,12 @@ def _draw_visible_area_overlay(axis, width, height):
     )
     axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
 
+
+# ==============================
+# Abstract-potential heatmaps
+# ==============================
+
+
 def save_sequential_heatmaps(
     abstract_mdp,
     filename_prefix="v_star",
@@ -129,10 +150,6 @@ def save_sequential_heatmaps(
     Generates and saves a separate heatmap for V* for each phase defined in the MDP,
     without any waypoint or goal markers (clean heatmap).
     """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-
     output_dir = output_dir or os.path.join("img", "heatmaps")
     os.makedirs(output_dir, exist_ok=True)
     filename_prefix = os.path.basename(filename_prefix)
@@ -179,77 +196,10 @@ def save_sequential_heatmaps(
         plt.close()
         print(f" -> Generated V* Heatmap for automaton state {current_q}")
 
-def plot_comparison_curves(baseline_rewards, shaping_rewards, epsilon_history=None, window_size=100, filename="img/baseline_vs_shaping.png", title="Learning Curve Comparison", baseline_label="Baseline", shaping_label="Shaping"):
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax1 = plt.subplots(figsize=(12, 7))
-    baseline_ma = pd.Series(baseline_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
-    shaping_ma = pd.Series(shaping_rewards).rolling(window=window_size, min_periods=1, center=False).mean()
-    x_axis = np.arange(len(baseline_rewards))
-    ax1.plot(x_axis, baseline_ma, color='black', linestyle='-', linewidth=2, label=baseline_label)
-    ax1.plot(x_axis, shaping_ma, color='blue', linestyle='-', linewidth=2.5, label=shaping_label)
-    ax1.set_title(title, fontsize=15, fontweight='bold')
-    ax1.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
-    ax1.set_ylabel("Episode Reward", fontsize=12)
-    ax1.grid(True, linestyle='--', alpha=0.5)
-    
-    if epsilon_history:
-        ax2 = ax1.twinx()
-        ax2.plot(x_axis, epsilon_history, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
-        ax2.set_ylabel("Exploration Rate (ε)", color='orange', fontsize=12)
-        ax2.tick_params(axis='y', labelcolor='orange')
-        ax2.set_ylim(0, 1.05)
-        lines1, labels1 = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=11)
-    else:
-        ax1.legend(loc="lower right", fontsize=11)
 
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches='tight')
-    print(f"\n>>> Comparison plot successfully saved to: {filename}")
-    plt.close(fig)
-
-def plot_mean_std_curves(reward_histories_single=None, reward_histories_multi=None, window_size=100, title="Mean Performance with Variance", filename="img/mean_std_plot.png"):
-    """
-    Plots the mean and standard deviation of reward histories for one or two sets of runs.
-    """
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    fig, ax = plt.subplots(figsize=(12, 7))
-
-    def plot_single_curve(reward_histories, label, color):
-        if not reward_histories:
-            return
-        
-        # Ensure all histories have the same length by padding with NaNs if necessary
-        max_len = max(len(h) for h in reward_histories)
-        padded_histories = [np.pad(h, (0, max_len - len(h)), 'constant', constant_values=np.nan) for h in reward_histories]
-        
-        rewards_df = pd.DataFrame(padded_histories).T
-        smoothed_rewards = rewards_df.rolling(
-            window=window_size, min_periods=1, center=False
-        ).mean()
-        mean_ma = smoothed_rewards.mean(axis=1)
-        std_ma = smoothed_rewards.std(axis=1, ddof=0)
-
-        x_axis = np.arange(len(mean_ma))
-        ax.plot(x_axis, mean_ma, label=f"Mean {label}", color=color, linewidth=2.5)
-        ax.fill_between(x_axis, mean_ma - std_ma, mean_ma + std_ma, color=color, alpha=0.2, label=f"Std Dev {label}")
-
-    if reward_histories_single:
-        plot_single_curve(reward_histories_single, "Single Epsilon", "black")
-
-    if reward_histories_multi:
-        plot_single_curve(reward_histories_multi, "Multi Epsilon", "blue")
-
-    ax.set_title(title, fontsize=15, fontweight='bold')
-    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
-    ax.set_ylabel("Mean Episode Reward", fontsize=12)
-    ax.grid(True, linestyle='--', alpha=0.5)
-    ax.legend(loc="lower right", fontsize=11)
-    fig.tight_layout()
-    fig.savefig(filename, dpi=200, bbox_inches='tight')
-    print(f"\n>>> Mean/Std plot successfully saved to: {filename}")
-    plt.close(fig)
+# ==============================
+# Training diagnostics and learning curves
+# ==============================
 
 
 def plot_training_variance(reward_histories, window_size=100, title="Training Performance Across Seeds", filename="img/training_variance.png", label="Learning reward"):
