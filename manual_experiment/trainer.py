@@ -7,7 +7,9 @@ import json
 import os
 import random
 import re
+import shutil
 from collections import Counter
+from pathlib import Path
 
 # ==============================
 # External and project imports
@@ -45,6 +47,53 @@ def _experiment_name(value):
             "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
         )
     return name
+
+
+def _resolve_config_path(requested_path, default_filename, experiment_dir, post_process):
+    """Resolve a config, preferring the experiment snapshot during post-processing."""
+    requested = Path(requested_path).expanduser()
+    framework_default = Path(SCRIPT_DIR) / default_filename
+    uses_default = (
+        str(requested_path) == default_filename
+        or requested.resolve() == framework_default.resolve()
+    )
+    candidates = []
+    if post_process and uses_default:
+        candidates.extend(
+            [
+                Path(experiment_dir) / default_filename,
+                Path(experiment_dir) / "results" / default_filename,
+            ]
+        )
+    candidates.append(requested)
+    if not requested.is_absolute():
+        candidates.append(Path(SCRIPT_DIR) / requested)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    checked = "\n  - ".join(str(candidate) for candidate in candidates)
+    raise FileNotFoundError(f"Configuration file not found. Checked:\n  - {checked}")
+
+
+def _archive_config(config_path, experiment_dir, filename):
+    """Store the exact training configuration beside the experiment outputs."""
+    destination = Path(experiment_dir) / filename
+    if Path(config_path).resolve() != destination.resolve():
+        shutil.copy2(config_path, destination)
+
+
+def _resolve_metrics_path(experiment_dir, filename):
+    """Find metrics in the current layout or the legacy nested results folder."""
+    candidates = [
+        Path(experiment_dir) / filename,
+        Path(experiment_dir) / "results" / filename,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    checked = "\n  - ".join(str(candidate) for candidate in candidates)
+    raise FileNotFoundError(f"Training data not found. Checked:\n  - {checked}")
 
 
 def save_training_data(filename, **kwargs):
@@ -484,6 +533,8 @@ def main(args):
         raise ValueError("num_seeds must be greater than zero")
     # Keep every artifact isolated under results/<experiment-name>/.
     experiment_dir = os.path.join(SCRIPT_DIR, "results", args.experiment_name)
+    if args.post_process and not os.path.isdir(experiment_dir):
+        raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
     data_dir = experiment_dir
     image_dir = os.path.join(experiment_dir, "img")
     log_dir = os.path.join(experiment_dir, "logs")
@@ -494,8 +545,14 @@ def main(args):
     print(f"Experiment outputs: {experiment_dir}")
 
     # Load the manual task and optional training parameters.
-    with open(args.config, "r", encoding="utf-8") as config_file:
+    config_path = _resolve_config_path(
+        args.config, "trajectory.json", experiment_dir, args.post_process
+    )
+    print(f"Configuration: {config_path}")
+    with config_path.open(encoding="utf-8") as config_file:
         config = json.load(config_file)
+    if not args.post_process:
+        _archive_config(config_path, experiment_dir, "trajectory.json")
 
     waypoints = {
         name: tuple(coordinates)
@@ -573,7 +630,13 @@ def main(args):
         )
 
     # Load saved metrics and generate the final diagnostic plots.
-    data = np.load(f"{data_dir}/single_epsilon_data.npz", allow_pickle=False)
+    data_path = (
+        _resolve_metrics_path(experiment_dir, "single_epsilon_data.npz")
+        if args.post_process
+        else Path(data_dir) / "single_epsilon_data.npz"
+    )
+    print(f"Training data: {data_path}")
+    data = np.load(data_path, allow_pickle=False)
     plot_buffer_fractions(data["buffer_histories"], filename=f"{plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"])
     plot_shaping_reward_breakdown(data["task_rewards"], data["learning_rewards"], data["epsilon_history"], window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon.png")
     task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]

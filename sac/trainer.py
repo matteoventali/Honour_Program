@@ -7,6 +7,7 @@
 import argparse
 import json
 import re
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -53,6 +54,53 @@ def _experiment_name(value):
             "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
         )
     return name
+
+
+def _resolve_config_path(requested_path, default_filename, experiment_dir, post_process):
+    """Resolve a config, preferring the experiment snapshot during post-processing."""
+    requested = Path(requested_path).expanduser()
+    framework_default = SCRIPT_DIR / default_filename
+    uses_default = (
+        str(requested_path) == default_filename
+        or requested.resolve() == framework_default.resolve()
+    )
+    candidates = []
+    if post_process and uses_default:
+        candidates.extend(
+            [
+                Path(experiment_dir) / default_filename,
+                Path(experiment_dir) / "results" / default_filename,
+            ]
+        )
+    candidates.append(requested)
+    if not requested.is_absolute():
+        candidates.append(SCRIPT_DIR / requested)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    checked = "\n  - ".join(str(candidate) for candidate in candidates)
+    raise FileNotFoundError(f"Configuration file not found. Checked:\n  - {checked}")
+
+
+def _archive_config(config_path, experiment_dir, filename):
+    """Store the exact training configuration beside the experiment outputs."""
+    destination = Path(experiment_dir) / filename
+    if Path(config_path).resolve() != destination.resolve():
+        shutil.copy2(config_path, destination)
+
+
+def _resolve_metrics_path(experiment_dir, filename):
+    """Find metrics in the current layout or the legacy nested results folder."""
+    candidates = [
+        Path(experiment_dir) / filename,
+        Path(experiment_dir) / "results" / filename,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    checked = "\n  - ".join(str(candidate) for candidate in candidates)
+    raise FileNotFoundError(f"Training data not found. Checked:\n  - {checked}")
 
 
 def _parse_entropy_coefficient(value):
@@ -420,6 +468,8 @@ def main(args):
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
     experiment_dir = SCRIPT_DIR / "results" / args.experiment_name
+    if args.post_process and not experiment_dir.is_dir():
+        raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
     data_dir = experiment_dir
     image_dir = experiment_dir / "img"
     log_dir = experiment_dir / "logs"
@@ -429,8 +479,14 @@ def main(args):
     plot_dir = image_dir
     print(f"Experiment outputs: {experiment_dir}")
 
-    with Path(args.config).expanduser().open(encoding="utf-8") as config_file:
+    config_path = _resolve_config_path(
+        args.config, "trajectory.json", experiment_dir, args.post_process
+    )
+    print(f"Configuration: {config_path}")
+    with config_path.open(encoding="utf-8") as config_file:
         config = json.load(config_file)
+    if not args.post_process:
+        _archive_config(config_path, experiment_dir, "trajectory.json")
 
     formula = config.get("formula", "F(goal)")
     waypoints = {
@@ -459,7 +515,11 @@ def main(args):
         f"{validation_report.format()}"
     )
 
-    data_path = data_dir / "sac_data.npz"
+    data_path = (
+        _resolve_metrics_path(experiment_dir, "sac_data.npz")
+        if args.post_process
+        else data_dir / "sac_data.npz"
+    )
     if not args.post_process:
         automaton.render_graph(directory=image_dir)
         abstract_mdp = LTLfWaypointMDP(
@@ -517,6 +577,7 @@ def main(args):
                 task_env.close()
         save_training_data(data_path, **_aggregate_seed_metrics(seed_metrics, seeds))
 
+    print(f"Training data: {data_path}")
     data = np.load(data_path, allow_pickle=False)
     plot_buffer_fractions(
         data["buffer_histories"],

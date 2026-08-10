@@ -171,12 +171,36 @@ Il layout prodotto è:
 ```
 
 Per rigenerare i grafici di un esperimento esistente senza ripetere il
-training, usare lo stesso nome:
+training, eseguire il trainer dalla radice della repository con lo stesso nome
+dell'esperimento. Per esempio:
 
 ```bash
-./lunarLander/run_experiment.sh \
-  --experiment-name ddqn-seed42 --post-process
+python3 multilevel_framework/trainer.py \
+  --experiment-name traj2_with_variance_1liv \
+  --post-process --plot-window 500
 ```
+
+La stessa modalità è disponibile in `manual_experiment`,
+`multilevel_multieps` e `sac`. Il trainer carica automaticamente la copia di
+`trajectory.json` e, nei framework multilivello, di `abstraction.json`
+conservata nella cartella dell'esperimento. I dati vengono riconosciuti sia nel
+layout corrente:
+
+```text
+results/<experiment-name>/<data-file>.npz
+```
+
+sia nel layout storico con la cartella `results` annidata:
+
+```text
+results/<experiment-name>/results/<data-file>.npz
+```
+
+I grafici vengono riscritti in `results/<experiment-name>/img/`. L'opzione
+`--plot-window N` controlla la media mobile sugli ultimi `N` episodi; la banda
+ombreggiata nel grafico multi-seed rappresenta `±1` deviazione standard tra i
+seed. I nuovi training archiviano automaticamente nella cartella
+dell'esperimento le configurazioni effettivamente utilizzate.
 
 ## Multi-seed training and variance plots
 
@@ -185,8 +209,8 @@ the number of independent training runs; the second is the first seed (42 by
 default), and the following runs use consecutive values. For example:
 
 ```bash
-cd lunarLander
-python3 trainer.py --experiment-name ddqn-seed42 \
+cd multilevel_framework
+python3 trainer.py --experiment-name multilevel-seeds \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
@@ -195,8 +219,7 @@ the seed list, every stacked metric under a `_runs` key, and reward summaries
 under `_mean` and `_variance` keys. At the end of training, the trainer writes
 a `training_variance_*.png` plot with the smoothed mean learning reward and a
 shaded `±1σ` band across seeds (`σ²` is the cross-seed variance). The same
-options are available in `manual_experiment`,
-`multilevel_framework`, `multilevel_framework_convention`,
+options are available in `manual_experiment`, `multilevel_framework`,
 `multilevel_multieps`, and `sac`.
 
 The original reward-breakdown plot is preserved, and an additional
