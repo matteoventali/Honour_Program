@@ -232,6 +232,8 @@ class SACTrainingCallback(BaseCallback):
             f"episodes={self.episodes}, shaping={self.task_wrapper.use_shaping}, "
             f"K={self.task_wrapper.shaping_scale}, "
             f"goal_reward={self.task_wrapper.goal_reward}, gamma={abstract_mdp.gamma}\n"
+            f"training_shaping_gamma={self.task_wrapper.training_shaping_gamma}, "
+            f"shaping_formula={'K*(gamma*Phi(next)-Phi(state))' if self.task_wrapper.training_shaping_gamma else 'K*(Phi(next)-Phi(state))'}\n"
             f"formula={automaton.formula_str}\n"
             f"waypoints={abstract_mdp.waypoints_dict}\n"
             f"dfa_states={self.task_wrapper.automaton_states}, "
@@ -488,6 +490,7 @@ def main(args):
                 use_shaping=not args.no_shaping,
                 shaping_scale=args.shaping_scale,
                 goal_reward=goal_reward,
+                training_shaping_gamma=args.training_shaping_gamma,
             )
             run_policy_dir = policy_dir if args.num_seeds == 1 else policy_dir / f"seed_{run_seed}"
             try:
@@ -578,6 +581,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--training-shaping-gamma",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use gamma*Phi(next)-Phi(state) during training; disable to use Phi(next)-Phi(state).",
+    )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
     main(parser.parse_args())

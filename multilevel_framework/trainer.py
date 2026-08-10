@@ -140,14 +140,20 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states):
+def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
+    shaping_formula = (
+        "K*(gamma*Phi(next)-Phi(state))"
+        if training_shaping_gamma
+        else "K*(Phi(next)-Phi(state))"
+    )
     header = (
         "\n=== NEW RUN ===\n"
         f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
+        f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
         f"inter_level_K={abstract_mdp.inter_level_shaping_scale}\n"
         f"formula={automaton.formula_str}\n"
@@ -251,7 +257,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, seed=None, policy_suffix=""):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
     """
     Train the DDQN agent with the LTLf automaton and one global epsilon.
 
@@ -308,7 +314,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states)
+    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
 
     try:
         for episode in range(episodes):
@@ -395,7 +401,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 if use_shaping and abstract_changed:
                     phi_state = abstract_mdp.v_star.get(abstract_state, 0.0)
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
-                    shaping_signal = K * (abstract_mdp.gamma * phi_next_state - phi_state)
+                    training_discount = abstract_mdp.gamma if training_shaping_gamma else 1.0
+                    shaping_signal = K * (training_discount * phi_next_state - phi_state)
 
                 # Store the transition and perform one DDQN optimization step.
                 learning_reward = synthetic_goal_reward + shaping_signal
@@ -567,7 +574,7 @@ def main(args):
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -627,6 +634,12 @@ if __name__ == "__main__":
         choices=["standard", "dueling"],
         default="standard",
         help="Q-network architecture: standard MLP or dueling value/advantage streams.",
+    )
+    parser.add_argument(
+        "--training-shaping-gamma",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use gamma*Phi(next)-Phi(state) during training; disable to use Phi(next)-Phi(state).",
     )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")

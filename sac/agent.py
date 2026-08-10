@@ -56,13 +56,22 @@ class LTLfTaskWrapper(gym.Wrapper):
     ``trainer.py``.
     """
 
-    def __init__(self, env, abstract_mdp, use_shaping=True, shaping_scale=1.0, goal_reward=10000.0):
+    def __init__(
+        self,
+        env,
+        abstract_mdp,
+        use_shaping=True,
+        shaping_scale=1.0,
+        goal_reward=10000.0,
+        training_shaping_gamma=True,
+    ):
         super().__init__(env)
         self.abstract_mdp = abstract_mdp
         self.automaton = abstract_mdp.automaton
         self.use_shaping = bool(use_shaping)
         self.shaping_scale = float(shaping_scale)
         self.goal_reward = float(goal_reward)
+        self.training_shaping_gamma = bool(training_shaping_gamma)
         self.automaton_states = list(self.automaton.states)
         self.state_to_index = {
             q: index for index, q in enumerate(self.automaton_states)
@@ -217,8 +226,11 @@ class LTLfTaskWrapper(gym.Wrapper):
         if self.use_shaping and abstract_state != abstract_next_state:
             phi_state = self.abstract_mdp.v_star.get(abstract_state, 0.0)
             phi_next_state = self.abstract_mdp.v_star.get(abstract_next_state, 0.0)
+            training_discount = (
+                self.abstract_mdp.gamma if self.training_shaping_gamma else 1.0
+            )
             shaping_reward = self.shaping_scale * (
-                self.abstract_mdp.gamma * phi_next_state - phi_state
+                training_discount * phi_next_state - phi_state
             )
         learning_reward = task_reward + shaping_reward
 

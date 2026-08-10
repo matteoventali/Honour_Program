@@ -102,6 +102,27 @@ a `trainer.py`, quindi sono disponibili anche opzioni come `--config`,
 CUDA 12.8 e configurano Matplotlib e SDL per l'esecuzione headless. Il server
 deve avere NVIDIA Container Toolkit configurato per usare `--gpus all`.
 
+Tutti i trainer attivi permettono di scegliere la formula di shaping usata
+durante l'ottimizzazione. Per default il fattore gamma è abilitato:
+
+```text
+K * (gamma * Phi(next_state) - Phi(state))
+```
+
+Per disabilitarlo e usare `K * (Phi(next_state) - Phi(state))`, aggiungere:
+
+```bash
+--no-training-shaping-gamma
+```
+
+È possibile riabilitarlo esplicitamente con `--training-shaping-gamma`. La
+scelta e la formula effettiva vengono registrate nel log di ogni seed. Nei
+notebook Kaggle la stessa opzione è esposta come
+`TRAINING_USE_GAMMA = True/False`. Questa opzione modifica soltanto la formula
+del reward shaping applicato alle transizioni di training: non cambia il
+discount factor dell'algoritmo né quello usato per calcolare le funzioni di
+valore astratte.
+
 ### Script di avvio
 
 Ogni framework contiene anche un `run_experiment.sh`. Lo script costruisce

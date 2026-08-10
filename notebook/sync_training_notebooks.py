@@ -11,18 +11,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK_DIR = PROJECT_ROOT / "notebook"
 
 NOTEBOOK_SOURCES = {
-    "lunar_lander_ltlf_training_kaggle.ipynb": "lunarLander",
     "lunar_lander_manual_generalized_training_kaggle.ipynb": "manual_experiment",
     "lunar_lander_manual_training_kaggle.ipynb": "manual_experiment",
     "lunar_lander_multilevel_training_kaggle.ipynb": "multilevel_framework",
-    "lunar_lander_multilevel_convention_training_kaggle.ipynb": "multilevel_framework_convention",
     "lunar_lander_multilevel_multieps_multihead_training_kaggle.ipynb": "multilevel_multieps",
     "lunar_lander_dsac_training_kaggle.ipynb": "sac",
 }
 
 MULTILEVEL_NOTEBOOKS = {
     "lunar_lander_multilevel_training_kaggle.ipynb",
-    "lunar_lander_multilevel_convention_training_kaggle.ipynb",
 }
 
 
@@ -136,6 +133,21 @@ def _update_configuration(source: str) -> str:
             source,
             count=1,
         )
+
+    if not re.search(r"(?m)^TRAINING_USE_GAMMA\s*=", source):
+        source = re.sub(
+            r"(?m)^(SHAPING_SCALE\s*=.*\n)",
+            r"\1TRAINING_USE_GAMMA = True\n",
+            source,
+            count=1,
+        )
+    if 'print(f"Training uses gamma: {TRAINING_USE_GAMMA}")' not in source:
+        source = re.sub(
+            r'(?m)^(print\(f"Shaping scale: \{SHAPING_SCALE\}"\)\n)',
+            r'\1print(f"Training uses gamma: {TRAINING_USE_GAMMA}")\n',
+            source,
+            count=1,
+        )
     return source
 
 
@@ -151,6 +163,16 @@ def _update_training_command(source: str) -> str:
         if marker not in source:
             raise RuntimeError("Training command has no DISABLE_SHAPING marker")
         source = source.replace(marker, extension + marker, 1)
+
+    gamma_switch = (
+        "if not TRAINING_USE_GAMMA:\n"
+        '    command.append("--no-training-shaping-gamma")\n'
+    )
+    if gamma_switch not in source:
+        marker = "if DISABLE_SHAPING:\n"
+        if marker not in source:
+            raise RuntimeError("Training command has no DISABLE_SHAPING marker")
+        source = source.replace(marker, gamma_switch + marker, 1)
 
     if 'environment["PYTHONHASHSEED"]' not in source:
         source = source.replace(
@@ -179,11 +201,21 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
 
     trainer_source = (PROJECT_ROOT / source_directory / "trainer.py").read_text(encoding="utf-8")
-    if notebook_name in MULTILEVEL_NOTEBOOKS:
+    if (
+        notebook_name in MULTILEVEL_NOTEBOOKS
+        and "--training-shaping-gamma" not in trainer_source
+    ):
         trainer_source = _multilevel_trainer_variant(trainer_source)
     utils_source = (PROJECT_ROOT / source_directory / "utils.py").read_text(encoding="utf-8")
+    agent_source = None
+    if source_directory == "sac":
+        agent_source = (PROJECT_ROOT / source_directory / "agent.py").read_text(
+            encoding="utf-8"
+        )
 
     replaced = {"trainer.py": 0, "utils.py": 0}
+    if agent_source is not None:
+        replaced["agent.py"] = 0
     for cell in notebook["cells"]:
         source = "".join(cell.get("source", []))
         if source.startswith("%%writefile trainer.py"):
@@ -192,6 +224,9 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         elif source.startswith("%%writefile utils.py"):
             cell["source"] = _writefile_source("utils.py", utils_source)
             replaced["utils.py"] += 1
+        elif agent_source is not None and source.startswith("%%writefile agent.py"):
+            cell["source"] = _writefile_source("agent.py", agent_source)
+            replaced["agent.py"] += 1
         elif re.search(r"(?m)^EPISODES\s*=", source):
             cell["source"] = _update_configuration(source).splitlines(keepends=True)
         elif "trainer.py" in source and "subprocess" in source and "command" in source:
@@ -199,7 +234,8 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         elif "plot_paths = [" in source:
             cell["source"] = _update_result_preview(source).splitlines(keepends=True)
 
-    if replaced != {"trainer.py": 1, "utils.py": 1}:
+    expected = {filename: 1 for filename in replaced}
+    if replaced != expected:
         raise RuntimeError(f"Unexpected writefile cells in {notebook_name}: {replaced}")
 
     notebook_path.write_text(
