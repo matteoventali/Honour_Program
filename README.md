@@ -58,13 +58,14 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath lunarLander)",target=/workspace \
   tesi-lunar-lander \
+  --experiment-name ddqn-seed42 \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
 Il bind mount collega `/workspace` alla directory fisica `lunarLander`
-dell'host. Di conseguenza, i file prodotti dal container sono disponibili
-direttamente nelle sottodirectory host `results`, `img`, `logs` e `policy`.
-L'opzione `--user` fa sì che i nuovi file appartengano all'utente corrente.
+dell'host. Ogni trainer richiede `--experiment-name` e cataloga tutti gli
+artefatti sotto `results/<experiment-name>/`. L'opzione `--user` fa sì che i
+nuovi file appartengano all'utente corrente.
 
 Lo stesso schema vale per gli altri framework. Per esempio:
 
@@ -72,27 +73,27 @@ Lo stesso schema vale per gli altri framework. Per esempio:
 docker build -t tesi-manual manual_experiment
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath manual_experiment)",target=/workspace \
-  tesi-manual --episodes 1000
+  tesi-manual --experiment-name manual-cycle --episodes 1000
 
 docker build -t tesi-multilevel multilevel_framework
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
-  tesi-multilevel --episodes 1000
+  tesi-multilevel --experiment-name multilevel-base --episodes 1000
 
 docker build -t tesi-multilevel-convention multilevel_framework_convention
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework_convention)",target=/workspace \
-  tesi-multilevel-convention --episodes 1000
+  tesi-multilevel-convention --experiment-name convention-base --episodes 1000
 
 docker build -t tesi-multilevel-multieps multilevel_multieps
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_multieps)",target=/workspace \
-  tesi-multilevel-multieps --episodes 1000
+  tesi-multilevel-multieps --experiment-name multieps-visited --episodes 1000
 
 docker build -t tesi-sac sac
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath sac)",target=/workspace \
-  tesi-sac --episodes 1000 --device auto
+  tesi-sac --experiment-name sac-seed42 --episodes 1000 --device auto
 ```
 
 Gli argomenti posti dopo il nome dell'immagine vengono inoltrati direttamente
@@ -112,24 +113,48 @@ radice della repository, per esempio:
 
 ```bash
 ./lunarLander/run_experiment.sh \
+  --experiment-name ddqn-seed42 \
   --episodes 1000 --num-seeds 5 --seed 42
 
 ./multilevel_multieps/run_experiment.sh \
+  --experiment-name multieps-visited \
   --episodes 1000 --epsilon-strategy visited
 
 ./sac/run_experiment.sh \
+  --experiment-name sac-seed42 \
   --episodes 1000 --device auto
 ```
 
-Al termine dell'avvio lo script stampa il nome univoco del container e i
-comandi per seguirne i log, controllarne lo stato e fermarlo. Per assegnare un
-nome esplicito al container:
+Al termine dell'avvio lo script stampa il nome univoco del container, il
+percorso dell'esperimento e i comandi per seguirne i log, controllarne lo stato
+e fermarlo. Il nome del container include automaticamente il nome
+dell'esperimento. È comunque possibile sovrascriverlo con `CONTAINER_NAME`:
 
 ```bash
 CONTAINER_NAME=esperimento-seed-42 \
-  ./lunarLander/run_experiment.sh --episodes 1000 --seed 42
+  ./lunarLander/run_experiment.sh \
+    --experiment-name ddqn-seed42 --episodes 1000 --seed 42
 
 docker logs -f esperimento-seed-42
+```
+
+Il layout prodotto è:
+
+```text
+<framework>/results/<experiment-name>/
+├── *.npz
+├── img/
+│   └── heatmaps/
+├── logs/
+└── policy/
+```
+
+Per rigenerare i grafici di un esperimento esistente senza ripetere il
+training, usare lo stesso nome:
+
+```bash
+./lunarLander/run_experiment.sh \
+  --experiment-name ddqn-seed42 --post-process
 ```
 
 ## Multi-seed training and variance plots
@@ -140,7 +165,8 @@ default), and the following runs use consecutive values. For example:
 
 ```bash
 cd lunarLander
-python3 trainer.py --episodes 1000 --num-seeds 5 --seed 42
+python3 trainer.py --experiment-name ddqn-seed42 \
+  --episodes 1000 --num-seeds 5 --seed 42
 ```
 
 Each run saves its own metrics and policy. The combined `.npz` file also stores

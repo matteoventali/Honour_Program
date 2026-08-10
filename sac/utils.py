@@ -120,7 +120,11 @@ def _draw_visible_area_overlay(axis, width, height):
     )
     axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
 
-def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
+def save_sequential_heatmaps(
+    abstract_mdp,
+    filename_prefix="v_star",
+    output_dir=None,
+):
     """
     Generates and saves a separate heatmap for V* for each phase defined in the MDP,
     without any waypoint or goal markers (clean heatmap).
@@ -129,8 +133,7 @@ def save_sequential_heatmaps(abstract_mdp, filename_prefix="v_star"):
     import numpy as np
     import matplotlib.pyplot as plt
 
-    # Store every heatmap directly under img/heatmaps.
-    output_dir = os.path.join("img", "heatmaps")
+    output_dir = output_dir or os.path.join("img", "heatmaps")
     os.makedirs(output_dir, exist_ok=True)
     filename_prefix = os.path.basename(filename_prefix)
     

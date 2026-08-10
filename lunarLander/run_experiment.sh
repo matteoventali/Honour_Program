@@ -3,7 +3,19 @@ set -Eeuo pipefail
 
 framework_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 image_name="${IMAGE_NAME:-tesi-lunar-lander}"
-container_name="${CONTAINER_NAME:-tesi-lunar-lander-$(date +%Y%m%d-%H%M%S)-$$}"
+trainer_args=("$@")
+experiment_name=""
+for ((index = 0; index < ${#trainer_args[@]}; index++)); do
+  case "${trainer_args[index]}" in
+    --experiment-name) experiment_name="${trainer_args[index + 1]:-}" ;;
+    --experiment-name=*) experiment_name="${trainer_args[index]#*=}" ;;
+  esac
+done
+if [[ ! "$experiment_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]; then
+  printf 'Errore: specifica --experiment-name con un nome sicuro (lettere, numeri, punto, trattino o underscore).\n' >&2
+  exit 2
+fi
+container_name="${CONTAINER_NAME:-tesi-lunar-lander-$experiment_name-$(date +%Y%m%d-%H%M%S)-$$}"
 
 docker build -t "$image_name" "$framework_dir"
 docker run --rm --gpus all --entrypoint python "$image_name" -c \
@@ -13,10 +25,10 @@ docker run -d \
   --gpus all \
   --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$framework_dir,target=/workspace" \
-  "$image_name" "$@"
+  "$image_name" "${trainer_args[@]}"
 
 printf '\nEsperimento avviato: %s\n' "$container_name"
 printf 'Log:       docker logs -f %s\n' "$container_name"
 printf 'Stato:     docker ps -a --filter name=%s\n' "$container_name"
 printf 'Stop:      docker stop %s\n' "$container_name"
-printf 'Risultati: %s/{results,img,logs,policy}\n' "$framework_dir"
+printf 'Risultati: %s/results/%s\n' "$framework_dir" "$experiment_name"

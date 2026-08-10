@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import random
+import re
 from collections import Counter
 
 # ==============================
@@ -21,6 +22,8 @@ from agent import HierarchicalDQNLearner
 from manual_automaton import CyclicWaypointsAutomaton
 from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, plot_training_variance, save_sequential_heatmaps
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # ==============================
 # Data and state helpers
@@ -32,6 +35,16 @@ def _positive_int(value):
     if number <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
     return number
+
+
+def _experiment_name(value):
+    """Validate a safe single-directory experiment name."""
+    name = str(value).strip()
+    if len(name) > 100 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        raise argparse.ArgumentTypeError(
+            "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
+        )
+    return name
 
 
 def save_training_data(filename, **kwargs):
@@ -462,13 +475,16 @@ def main(args):
     """Configure the experiment, run or load training, and generate diagnostic plots."""
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
-    # Prepare output directories shared by training and post-processing.
-    data_dir = "results"
-    image_dir = "img"
-    log_dir = "logs"
-    for directory in (data_dir, image_dir, log_dir):
+    # Keep every artifact isolated under results/<experiment-name>/.
+    experiment_dir = os.path.join(SCRIPT_DIR, "results", args.experiment_name)
+    data_dir = experiment_dir
+    image_dir = os.path.join(experiment_dir, "img")
+    log_dir = os.path.join(experiment_dir, "logs")
+    policy_dir = os.path.join(experiment_dir, "policy")
+    for directory in (data_dir, image_dir, log_dir, policy_dir):
         os.makedirs(directory, exist_ok=True)
-    plot_dir = data_dir if args.post_process else image_dir
+    plot_dir = image_dir
+    print(f"Experiment outputs: {experiment_dir}")
 
     # Load the manual task and optional training parameters.
     with open(args.config, "r", encoding="utf-8") as config_file:
@@ -502,7 +518,7 @@ def main(args):
 
     if not args.post_process:
         # Create the environment and abstract MDP used to compute the potential.
-        automaton.render_graph()
+        automaton.render_graph(directory=image_dir)
         abstract_mdp = ManualWaypointMDP(
             waypoints_dict=waypoints,
             automaton=automaton,
@@ -512,7 +528,11 @@ def main(args):
             goal_reward=goal_reward,
         )
         abstract_mdp.value_iteration()
-        save_sequential_heatmaps(abstract_mdp, filename_prefix="single_epsilon_exp")
+        save_sequential_heatmaps(
+            abstract_mdp,
+            filename_prefix="single_epsilon_exp",
+            output_dir=os.path.join(image_dir, "heatmaps"),
+        )
 
         seeds = [args.seed + index for index in range(args.num_seeds)]
         seed_metrics = []
@@ -532,6 +552,7 @@ def main(args):
                     tau=args.polyak_tau,
                     target_update_freq=args.target_update_freq,
                     network_type=args.network_type,
+                    policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
                 metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)
@@ -565,6 +586,7 @@ def main(args):
 if __name__ == "__main__":
     # Expose the main training and post-processing options.
     parser = argparse.ArgumentParser(description="Manual-automaton DDQN training with one global epsilon.")
+    parser.add_argument("--experiment-name", type=_experiment_name, required=True, help="Output directory name under results/.")
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")

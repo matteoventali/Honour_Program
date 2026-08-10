@@ -6,7 +6,7 @@
 
 import argparse
 import json
-import os
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -43,6 +43,16 @@ def _positive_int(value):
     if number <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
     return number
+
+
+def _experiment_name(value):
+    """Validate a safe single-directory experiment name."""
+    name = str(value).strip()
+    if len(name) > 100 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        raise argparse.ArgumentTypeError(
+            "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
+        )
+    return name
 
 
 def _parse_entropy_coefficient(value):
@@ -407,13 +417,15 @@ def main(args):
     """Configure SAC training or regenerate plots from saved numeric metrics."""
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
-    data_dir = SCRIPT_DIR / "results"
-    image_dir = SCRIPT_DIR / "img"
-    log_dir = SCRIPT_DIR / "logs"
-    policy_dir = SCRIPT_DIR / "policy"
+    experiment_dir = SCRIPT_DIR / "results" / args.experiment_name
+    data_dir = experiment_dir
+    image_dir = experiment_dir / "img"
+    log_dir = experiment_dir / "logs"
+    policy_dir = experiment_dir / "policy"
     for directory in (data_dir, image_dir, log_dir, policy_dir):
         directory.mkdir(parents=True, exist_ok=True)
-    plot_dir = data_dir if args.post_process else image_dir
+    plot_dir = image_dir
+    print(f"Experiment outputs: {experiment_dir}")
 
     with Path(args.config).expanduser().open(encoding="utf-8") as config_file:
         config = json.load(config_file)
@@ -447,7 +459,7 @@ def main(args):
 
     data_path = data_dir / "sac_data.npz"
     if not args.post_process:
-        automaton.render_graph()
+        automaton.render_graph(directory=image_dir)
         abstract_mdp = LTLfWaypointMDP(
             waypoints_dict=waypoints,
             ltlf_automaton=automaton,
@@ -458,15 +470,11 @@ def main(args):
         )
         abstract_mdp.value_iteration()
 
-        previous_directory = Path.cwd()
-        try:
-            # Existing plotting utilities use relative output paths.
-            os.chdir(SCRIPT_DIR)
-            save_sequential_heatmaps(
-                abstract_mdp, filename_prefix="sac_experiment"
-            )
-        finally:
-            os.chdir(previous_directory)
+        save_sequential_heatmaps(
+            abstract_mdp,
+            filename_prefix="sac_experiment",
+            output_dir=image_dir / "heatmaps",
+        )
 
         seeds = [args.seed + index for index in range(args.num_seeds)]
         seed_metrics = []
@@ -550,6 +558,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="LTLf LunarLander training with Stable-Baselines3 SAC."
     )
+    parser.add_argument("--experiment-name", type=_experiment_name, required=True, help="Output directory name under results/.")
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR / "trajectory.json")

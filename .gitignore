@@ -2,3 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Training artifacts (one directory per named experiment)
+/lunarLander/results/
+/manual_experiment/results/
+/multilevel_framework/results/
+/multilevel_framework_convention/results/
+/multilevel_multieps/results/
+/sac/results/

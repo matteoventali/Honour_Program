@@ -105,6 +105,7 @@ class HierarchicalDQNLearner:
         tau=0.005,
         target_update_freq=1000,
         network_type="standard",
+        policy_dir="policy",
     ):
         if extra_state_dims < 0:
             raise ValueError("extra_state_dims cannot be negative")
@@ -120,6 +121,7 @@ class HierarchicalDQNLearner:
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
+        self.policy_dir = os.fspath(policy_dir)
         self.network_type = network_type
         self.algo_name = "Dueling DDQN" if network_type == "dueling" else "DDQN"
         
@@ -189,5 +191,8 @@ class HierarchicalDQNLearner:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def _save_policy(self):
-        os.makedirs("./policy", exist_ok=True)
-        torch.save(self.policy_net.state_dict(), f"./policy/{self.policy_name}")
+        os.makedirs(self.policy_dir, exist_ok=True)
+        torch.save(
+            self.policy_net.state_dict(),
+            os.path.join(self.policy_dir, self.policy_name),
+        )

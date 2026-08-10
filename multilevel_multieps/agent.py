@@ -184,6 +184,7 @@ class HierarchicalDQNLearner:
         target_update_freq=1000,
         network_architecture="multi-head",
         network_type="standard",
+        policy_dir="policy",
     ):
         if extra_state_dims <= 0:
             raise ValueError("DFA-guided DDQN requires at least one DFA state")
@@ -201,6 +202,7 @@ class HierarchicalDQNLearner:
         self.max_episodes = max_episodes
         self.gamma = gamma
         self.policy_name = policy_name
+        self.policy_dir = os.fspath(policy_dir)
         self.network_architecture = network_architecture
         self.network_type = network_type
         base_name = "Dueling DDQN" if network_type == "dueling" else "DDQN"
@@ -331,5 +333,8 @@ class HierarchicalDQNLearner:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def _save_policy(self):
-        os.makedirs("./policy", exist_ok=True)
-        torch.save(self.policy_net.state_dict(), f"./policy/{self.policy_name}")
+        os.makedirs(self.policy_dir, exist_ok=True)
+        torch.save(
+            self.policy_net.state_dict(),
+            os.path.join(self.policy_dir, self.policy_name),
+        )
