@@ -3,7 +3,8 @@
 from pathlib import Path
 import sys
 
-FRAMEWORK_DIR = Path(__file__).resolve().parent
+SOURCE_DIR = Path(__file__).resolve().parent
+FRAMEWORK_DIR = SOURCE_DIR.parent
 sys.path.insert(0, str(FRAMEWORK_DIR.parent))
 
 from experiment_comparison import main  # noqa: E402

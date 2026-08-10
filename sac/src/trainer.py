@@ -25,6 +25,7 @@ from agent import DiscreteToContinuousActionWrapper, LTLfTaskWrapper
 from automaton_validator import validate_automaton
 from utils import (
     plot_buffer_fractions,
+    plot_buffer_variance,
     plot_shaping_reward_breakdown,
     plot_training_variance,
     save_sequential_heatmaps,
@@ -32,6 +33,7 @@ from utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+FRAMEWORK_DIR = SCRIPT_DIR.parent if SCRIPT_DIR.name == "src" else SCRIPT_DIR
 
 
 # ==============================
@@ -101,6 +103,52 @@ def _resolve_metrics_path(experiment_dir, filename):
             return candidate
     checked = "\n  - ".join(str(candidate) for candidate in candidates)
     raise FileNotFoundError(f"Training data not found. Checked:\n  - {checked}")
+
+
+def _organize_policy_files(policy_dir):
+    """Move checkpoints from legacy layouts into policy/best and policy/last."""
+    policy_root = Path(policy_dir)
+    destinations = {
+        "best": policy_root / "best",
+        "last": policy_root / "last",
+    }
+    for destination in destinations.values():
+        destination.mkdir(parents=True, exist_ok=True)
+
+    for category, destination in destinations.items():
+        for source in policy_root.glob(f"{category}_policy*"):
+            if source.is_file() and not (destination / source.name).exists():
+                shutil.move(str(source), destination / source.name)
+
+    for seed_dir in policy_root.glob("seed_*"):
+        if not seed_dir.is_dir():
+            continue
+        for category, destination in destinations.items():
+            for source in seed_dir.glob(f"{category}_policy*"):
+                seed_name = source.stem
+                if seed_dir.name not in seed_name:
+                    seed_name = f"{seed_name}_{seed_dir.name}"
+                target = destination / f"{seed_name}{source.suffix}"
+                if source.is_file() and not target.exists():
+                    shutil.move(str(source), target)
+        try:
+            seed_dir.rmdir()
+        except OSError:
+            pass
+
+
+def _organize_legacy_seed_plots(image_dir):
+    """Move legacy per-seed plots from img/ into img/seed_<seed>/ folders."""
+    pattern = re.compile(r"^((?:reward_breakdown|buffer_fractions)_.+)_seed_(-?\d+)\.png$")
+    for source in Path(image_dir).glob("*.png"):
+        match = pattern.fullmatch(source.name)
+        if not match:
+            continue
+        destination_dir = Path(image_dir) / f"seed_{match.group(2)}"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / f"{match.group(1)}.png"
+        if not destination.exists():
+            shutil.move(str(source), destination)
 
 
 def _parse_entropy_coefficient(value):
@@ -234,7 +282,7 @@ def _build_training_results(task_wrapper, callback):
 class SACTrainingCallback(BaseCallback):
     """Collect episode metrics, print diagnostics and stop at an exact count."""
 
-    def __init__(self, task_wrapper, episodes, log_interval, policy_dir, save_policy=True, log_file=None):
+    def __init__(self, task_wrapper, episodes, log_interval, policy_dir, policy_suffix="", save_policy=True, log_file=None):
         super().__init__(verbose=0)
         if episodes <= 0:
             raise ValueError("episodes must be greater than zero")
@@ -245,6 +293,7 @@ class SACTrainingCallback(BaseCallback):
         self.episodes = int(episodes)
         self.log_interval = int(log_interval)
         self.policy_dir = Path(policy_dir)
+        self.policy_suffix = policy_suffix
         self.save_policy = bool(save_policy)
         self.log_file = Path(log_file) if log_file else None
         self.processed_episodes = 0
@@ -370,8 +419,9 @@ class SACTrainingCallback(BaseCallback):
         self.best_mean_reward = monitored_mean
         self.best_policy_episode = self.processed_episodes
         if self.save_policy:
-            self.policy_dir.mkdir(parents=True, exist_ok=True)
-            self.model.save(self.policy_dir / "best_policy")
+            best_policy_dir = self.policy_dir / "best"
+            best_policy_dir.mkdir(parents=True, exist_ok=True)
+            self.model.save(best_policy_dir / f"best_policy{self.policy_suffix}")
         self._write(
             f"Best policy updated at episode {self.best_policy_episode}: "
             f"mean learning reward={self.best_mean_reward:.3f}\n"
@@ -403,7 +453,7 @@ class SACTrainingCallback(BaseCallback):
             self._log_handle = None
 
 
-def run_sequential_training(env, task_wrapper, abstract_mdp, episodes, policy_dir, log_file, log_interval=100, learning_rate=3e-4, buffer_size=300000, learning_starts=100, batch_size=256, tau=0.005, ent_coef="auto", seed=None, device="auto", save_policy=True):
+def run_sequential_training(env, task_wrapper, abstract_mdp, episodes, policy_dir, log_file, log_interval=100, learning_rate=3e-4, buffer_size=300000, learning_starts=100, batch_size=256, tau=0.005, ent_coef="auto", seed=None, device="auto", save_policy=True, policy_suffix=""):
     """Construct and train SB3 SAC; all optimization logic lives here."""
     model = SAC(
         policy="MlpPolicy",
@@ -429,6 +479,7 @@ def run_sequential_training(env, task_wrapper, abstract_mdp, episodes, policy_di
         episodes=episodes,
         log_interval=log_interval,
         policy_dir=policy_dir,
+        policy_suffix=policy_suffix,
         save_policy=save_policy,
         log_file=log_file,
     )
@@ -448,8 +499,9 @@ def run_sequential_training(env, task_wrapper, abstract_mdp, episodes, policy_di
 
     if save_policy:
         policy_dir = Path(policy_dir)
-        policy_dir.mkdir(parents=True, exist_ok=True)
-        model.save(policy_dir / "last_policy")
+        last_policy_dir = policy_dir / "last"
+        last_policy_dir.mkdir(parents=True, exist_ok=True)
+        model.save(last_policy_dir / f"last_policy{policy_suffix}")
         print(
             f"Last policy saved after episode {episodes}. Best policy: episode "
             f"{callback.best_policy_episode}, mean learning reward="
@@ -467,15 +519,25 @@ def main(args):
     """Configure SAC training or regenerate plots from saved numeric metrics."""
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
-    experiment_dir = SCRIPT_DIR / "results" / args.experiment_name
+    experiment_dir = FRAMEWORK_DIR / "results" / args.experiment_name
     if args.post_process and not experiment_dir.is_dir():
         raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
     data_dir = experiment_dir
     image_dir = experiment_dir / "img"
     log_dir = experiment_dir / "logs"
     policy_dir = experiment_dir / "policy"
-    for directory in (data_dir, image_dir, log_dir, policy_dir):
+    best_policy_dir = policy_dir / "best"
+    last_policy_dir = policy_dir / "last"
+    for directory in (
+        data_dir,
+        image_dir,
+        log_dir,
+        best_policy_dir,
+        last_policy_dir,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
+    _organize_policy_files(policy_dir)
+    _organize_legacy_seed_plots(image_dir)
     plot_dir = image_dir
     print(f"Experiment outputs: {experiment_dir}")
 
@@ -522,22 +584,25 @@ def main(args):
     )
     if not args.post_process:
         automaton.render_graph(directory=image_dir)
-        abstract_mdp = LTLfWaypointMDP(
-            waypoints_dict=waypoints,
-            ltlf_automaton=automaton,
-            width=grid_w,
-            height=grid_h,
-            gamma=gamma,
-            goal_reward=goal_reward,
-        )
-        abstract_mdp.value_iteration()
 
-        save_sequential_heatmaps(
-            abstract_mdp,
-            filename_prefix="sac_experiment",
-            output_dir=image_dir / "heatmaps",
-        )
+    # Heatmaps depend only on the saved task configuration, not on agent training.
+    abstract_mdp = LTLfWaypointMDP(
+        waypoints_dict=waypoints,
+        ltlf_automaton=automaton,
+        width=grid_w,
+        height=grid_h,
+        gamma=gamma,
+        goal_reward=goal_reward,
+    )
+    abstract_mdp.value_iteration()
+    save_sequential_heatmaps(
+        abstract_mdp,
+        filename_prefix="sac_experiment",
+        output_dir=image_dir / "heatmaps",
+    )
 
+    if not args.post_process:
+        # Create LunarLander only when agent training is requested.
         seeds = [args.seed + index for index in range(args.num_seeds)]
         seed_metrics = []
         for run_index, run_seed in enumerate(seeds, start=1):
@@ -552,14 +617,14 @@ def main(args):
                 goal_reward=goal_reward,
                 training_shaping_gamma=args.training_shaping_gamma,
             )
-            run_policy_dir = policy_dir if args.num_seeds == 1 else policy_dir / f"seed_{run_seed}"
+            policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
             try:
                 metrics = run_sequential_training(
                     env=task_env,
                     task_wrapper=task_env,
                     abstract_mdp=abstract_mdp,
                     episodes=args.episodes,
-                    policy_dir=run_policy_dir,
+                    policy_dir=policy_dir,
                     log_file=log_dir / f"sac_training_seed_{run_seed}.log",
                     log_interval=args.log_interval,
                     learning_rate=args.learning_rate,
@@ -570,6 +635,7 @@ def main(args):
                     ent_coef=args.ent_coef,
                     seed=run_seed,
                     device=args.device,
+                    policy_suffix=policy_suffix,
                 )
                 seed_metrics.append(metrics)
                 save_training_data(data_dir / f"sac_data_seed_{run_seed}.npz", **metrics)
@@ -579,37 +645,43 @@ def main(args):
 
     print(f"Training data: {data_path}")
     data = np.load(data_path, allow_pickle=False)
-    plot_buffer_fractions(
-        data["buffer_histories"],
-        filename=plot_dir / "buffer_fractions_sac.png",
-        window_size=args.plot_window,
-        state_labels=data["automaton_states"],
-    )
-    plot_shaping_reward_breakdown(
-        data["task_rewards"],
-        data["learning_rewards"],
-        data["entropy_coefficient_history"],
-        window_size=args.plot_window,
-        filename=plot_dir / "reward_breakdown_sac.png",
-        exploration_label="Entropy coefficient (alpha)",
-    )
     task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]
     learning_reward_runs = data["learning_rewards_runs"] if "learning_rewards_runs" in data else data["learning_rewards"][np.newaxis, :]
     entropy_runs = data["entropy_coefficient_history_runs"] if "entropy_coefficient_history_runs" in data else data["entropy_coefficient_history"][np.newaxis, :]
+    buffer_runs = data["buffer_histories_runs"] if "buffer_histories_runs" in data else data["buffer_histories"][np.newaxis, ...]
     seed_values = data["seeds"] if "seeds" in data else np.asarray([args.seed])
-    for run_seed, task_rewards, learning_rewards, entropy_history in zip(seed_values, task_reward_runs, learning_reward_runs, entropy_runs):
+    for obsolete_name in ("buffer_fractions_sac.png", "reward_breakdown_sac.png"):
+        (plot_dir / obsolete_name).unlink(missing_ok=True)
+    for run_index, (run_seed, task_rewards, learning_rewards, entropy_history) in enumerate(zip(seed_values, task_reward_runs, learning_reward_runs, entropy_runs)):
+        seed_plot_dir = plot_dir / f"seed_{int(run_seed)}"
+        seed_plot_dir.mkdir(parents=True, exist_ok=True)
         plot_shaping_reward_breakdown(
             task_rewards,
             learning_rewards,
             entropy_history,
             window_size=args.plot_window,
-            filename=plot_dir / f"reward_breakdown_sac_seed_{int(run_seed)}.png",
+            filename=seed_plot_dir / "reward_breakdown_sac.png",
             exploration_label="Entropy coefficient (alpha)",
+            title=f"Reward Breakdown — Seed {int(run_seed)}",
         )
+        if run_index < len(buffer_runs):
+            plot_buffer_fractions(
+                buffer_runs[run_index],
+                filename=seed_plot_dir / "buffer_fractions_sac.png",
+                window_size=args.plot_window,
+                state_labels=data["automaton_states"],
+                title=f"Replay Buffer Composition — Seed {int(run_seed)}",
+            )
     plot_training_variance(
         learning_reward_runs,
         window_size=args.plot_window,
         filename=plot_dir / "training_variance_sac.png",
+    )
+    plot_buffer_variance(
+        buffer_runs,
+        window_size=args.plot_window,
+        filename=plot_dir / "buffer_variance_sac.png",
+        state_labels=data["automaton_states"],
     )
     print("\nFinished.")
 

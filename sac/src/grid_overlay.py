@@ -22,6 +22,7 @@ from utils import phi_mapping_grid, spatial_grid_boundaries
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+FRAMEWORK_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG = SCRIPT_DIR / "trajectory.json"
 
 
@@ -52,9 +53,7 @@ def geometry_from_env(env: gym.Env) -> LunarLanderGeometry:
     )
 
 
-def observation_to_pixel(
-    observation: Sequence[float], geometry: LunarLanderGeometry
-) -> tuple[float, float]:
+def observation_to_pixel(observation: Sequence[float], geometry: LunarLanderGeometry) -> tuple[float, float]:
     """Project LunarLander's normalised (x, y) observation onto RGB pixels."""
     half_world_width = geometry.viewport_width / geometry.scale / 2.0
     half_world_height = geometry.viewport_height / geometry.scale / 2.0
@@ -69,11 +68,7 @@ def observation_to_pixel(
     return pixel_x, pixel_y
 
 
-def pixel_to_observation(
-    pixel_x: float,
-    pixel_y: float,
-    geometry: LunarLanderGeometry,
-) -> tuple[float, float]:
+def pixel_to_observation(pixel_x: float, pixel_y: float, geometry: LunarLanderGeometry) -> tuple[float, float]:
     """Invert the frame projection for the two discretised coordinates."""
     half_world_width = geometry.viewport_width / geometry.scale / 2.0
     half_world_height = geometry.viewport_height / geometry.scale / 2.0
@@ -86,11 +81,7 @@ def pixel_to_observation(
     return observation_x, observation_y
 
 
-def _grid_boundaries(
-    grid_w: int,
-    grid_h: int,
-    geometry: LunarLanderGeometry,
-) -> tuple[np.ndarray, np.ndarray]:
+def _grid_boundaries(grid_w: int, grid_h: int, geometry: LunarLanderGeometry) -> tuple[np.ndarray, np.ndarray]:
     """Return the boundaries implied by the active spatial discretizer."""
     x_normalised, y_normalised = spatial_grid_boundaries(grid_w, grid_h)
     x_pixels = np.array(
@@ -122,13 +113,7 @@ def _grid_boundaries(
     return x_pixels, y_pixels
 
 
-def abstract_cell_to_pixel(
-    grid_x: int,
-    grid_y: int,
-    grid_w: int,
-    grid_h: int,
-    geometry: LunarLanderGeometry,
-) -> tuple[float, float]:
+def abstract_cell_to_pixel(grid_x: int, grid_y: int, grid_w: int, grid_h: int, geometry: LunarLanderGeometry) -> tuple[float, float]:
     """Return the pixel coordinates of an abstract cell's centre."""
     if not (0 <= grid_x < grid_w and 0 <= grid_y < grid_h):
         raise ValueError(f"Abstract cell ({grid_x}, {grid_y}) is outside the grid")
@@ -139,15 +124,7 @@ def abstract_cell_to_pixel(
     )
 
 
-def draw_abstract_grid(
-    frame: np.ndarray,
-    geometry: LunarLanderGeometry,
-    grid_w: int,
-    grid_h: int,
-    waypoints: Mapping[str, Sequence[int]] | None = None,
-    observation: Sequence[float] | None = None,
-    title: str = "LunarLander with Abstract Grid",
-):
+def draw_abstract_grid(frame: np.ndarray, geometry: LunarLanderGeometry, grid_w: int, grid_h: int, waypoints: Mapping[str, Sequence[int]] | None = None, observation: Sequence[float] | None = None, title: str = "LunarLander with Abstract Grid"):
     """Create a figure containing the effective clipped grid and its markers."""
     if grid_w < 2 or grid_h < 2:
         raise ValueError("grid_w and grid_h must both be at least 2")
@@ -247,11 +224,7 @@ def draw_abstract_grid(
     return figure
 
 
-def generate_overlay(
-    output_path: str | Path,
-    config_path: str | Path = DEFAULT_CONFIG,
-    seed: int | None = 0,
-) -> Path:
+def generate_overlay(output_path: str | Path, config_path: str | Path = DEFAULT_CONFIG, seed: int | None = 0) -> Path:
     """Reset LunarLander and save one annotated RGB frame as a PNG."""
     config_path = Path(config_path)
     with config_path.open(encoding="utf-8") as config_file:
@@ -287,7 +260,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    output_path = args.output or SCRIPT_DIR / "img" / "abstract_grid_overlay.png"
+    output_path = args.output or FRAMEWORK_DIR / "results" / "abstract_grid_overlay.png"
     saved_path = generate_overlay(output_path, args.config, args.seed)
     print(f"Image saved to: {saved_path}")
 

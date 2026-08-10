@@ -34,7 +34,8 @@ from utils import phi_mapping_sequential
 # ==============================
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXPERIMENTS_DIR = SCRIPT_DIR.parent / "experiments"
+FRAMEWORK_DIR = SCRIPT_DIR.parent
+EXPERIMENTS_DIR = FRAMEWORK_DIR / "results"
 
 
 def moving_average(data, window_size):
@@ -48,7 +49,13 @@ def moving_average(data, window_size):
 def _resolve_policy_path(policy, policy_dir):
     """Accept explicit paths as well as filenames relative to the policy directory."""
     supplied_path = Path(policy).expanduser()
-    candidates = [supplied_path, Path(policy_dir).expanduser() / supplied_path]
+    policy_root = Path(policy_dir).expanduser()
+    candidates = [
+        supplied_path,
+        policy_root / supplied_path,
+        policy_root / "best" / supplied_path,
+        policy_root / "last" / supplied_path,
+    ]
     for candidate in list(candidates):
         if candidate.suffix != ".zip":
             candidates.append(candidate.with_suffix(".zip"))
@@ -446,7 +453,7 @@ def parse_args():
         help="Checkpoint filenames or explicit checkpoint paths. If omitted, graphical file selectors are opened.",
     )
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR / "trajectory.json", help="Experiment JSON configuration.")
-    parser.add_argument("--policy-dir", type=Path, default=SCRIPT_DIR / "policy", help="Directory used to resolve checkpoint filenames.")
+    parser.add_argument("--policy-dir", type=Path, default=FRAMEWORK_DIR / "results", help="Directory used to resolve checkpoint filenames.")
     parser.add_argument("--gui", action="store_true", help="Select policies and trajectory.json using graphical dialogs.")
     parser.add_argument("--episodes", type=_positive_int, default=100)
     parser.add_argument("--window", type=_positive_int, default=10)
@@ -465,7 +472,7 @@ def parse_args():
         default=1,
         help="Number of episodes to trace when --trace-grid is enabled (default: 1).",
     )
-    parser.add_argument("--output-dir", type=Path, default=SCRIPT_DIR / "img" / "evaluation")
+    parser.add_argument("--output-dir", type=Path, default=FRAMEWORK_DIR / "results" / "evaluation")
     return parser.parse_args()
 
 

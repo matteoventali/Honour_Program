@@ -1,4 +1,4 @@
-"""Spatial mapping and plotting utilities for multi-epsilon training."""
+"""Spatial mapping and plotting utilities for the manual framework."""
 
 # ==============================
 # Standard library imports
@@ -133,12 +133,8 @@ def _draw_visible_area_overlay(axis, width, height):
             zorder=5,
         )
     )
-    axis.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.08),
-        borderaxespad=0.0,
-        frameon=True,
-    )
+    axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
+
 
 # ==============================
 # Abstract-potential heatmaps
@@ -154,77 +150,38 @@ def save_sequential_heatmaps(
     Generates and saves a separate heatmap for V* for each phase defined in the MDP,
     without any waypoint or goal markers (clean heatmap).
     """
-    # A caller can isolate each abstraction in img/heatmaps/level1, level2, ...
     output_dir = output_dir or os.path.join("img", "heatmaps")
     os.makedirs(output_dir, exist_ok=True)
     filename_prefix = os.path.basename(filename_prefix)
     
     width, height = abstract_mdp.width, abstract_mdp.height
     
-    # Exclude product states that are inconsistent with the proposition label
-    # of their current cell. Entering such a cell would already have advanced
-    # the DFA, so those states are unreachable in this abstraction.
-    def canonical_q(x, y, q):
-        truth_assignment = abstract_mdp._get_truth_assignment(x, y)
-        return abstract_mdp.automaton.get_next_q(q, truth_assignment)
+    # Extract global min/max for consistent colormap scaling
+    all_values = np.array(list(abstract_mdp.v_star.values()))
+    computed_vmin = all_values.min() if len(all_values) > 0 else 0
+    computed_vmax = all_values.max() if len(all_values) > 0 else 1
 
-    for current_q in abstract_mdp.automaton.states:
-        matrix = np.full((height, width), np.nan)
+    for current_q in abstract_mdp.automaton.active_states:
+        matrix = np.zeros((height, width))
         for (x, y, q), value in abstract_mdp.v_star.items():
-            if (
-                q == current_q
-                and 0 <= x < width
-                and 0 <= y < height
-                and canonical_q(x, y, q) == q
-            ):
+            if q == current_q and 0 <= x < width and 0 <= y < height:
                 matrix[y, x] = value
                 
         plt.figure(figsize=(9, 8))
-        # Let matplotlib infer an independent color scale for this DFA state.
-        # This exposes the direction of each local gradient instead of
-        # compressing it against values from other states or levels.
-        im = plt.imshow(matrix, cmap='viridis', origin='lower')
-        finite_values = matrix[np.isfinite(matrix)]
-        current_vmin = finite_values.min() if len(finite_values) > 0 else 0.0
-        current_vmax = finite_values.max() if len(finite_values) > 0 else 0.0
-        color_midpoint = (current_vmin + current_vmax) / 2.0
+        im = plt.imshow(matrix, cmap='viridis', origin='lower', vmin=computed_vmin, vmax=computed_vmax)
+        
         for y in range(height):
             for x in range(width):
                 val = matrix[y, x]
-                if np.isnan(val):
-                    next_q = canonical_q(x, y, current_q)
-                    plt.text(
-                        x,
-                        y,
-                        f"→q{next_q}",
-                        ha='center',
-                        va='center',
-                        color='#d32f2f',
-                        fontsize=7,
-                        fontweight='bold',
-                    )
-                    continue
-                text_color = 'white' if val < color_midpoint else 'black'
-                plt.text(
-                    x,
-                    y,
-                    f"{val:.1f}",
-                    ha='center',
-                    va='center',
-                    color=text_color,
-                    fontsize=7,
-                )
+                if val > 0.0: 
+                    text_color = 'white' if val < (computed_vmax / 2) else 'black'
+                    plt.text(x, y, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=7)
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         
-        is_goal_state = abstract_mdp.automaton.is_goal_reached(current_q)
-        phase_label = "Goal Reached" if is_goal_state else "Seeking Targets"
-        plt.title(
-            f"Potential Map (V*) - {abstract_mdp.level_name} "
-            f"{width}x{height} - DFA State q={current_q} ({phase_label})",
-            fontsize=14,
-            fontweight='bold',
-        )
+        is_accepting = abstract_mdp.automaton.is_accepting(current_q)
+        phase_label = "Cycle completed" if is_accepting else "Seeking target"
+        plt.title(f"Potential Map (V*) - Automaton State {current_q} ({phase_label})", fontsize=14, fontweight='bold')
         
         ax = plt.gca()
         ax.set_xticks(np.arange(-.5, width, 1), minor=True)
@@ -234,32 +191,11 @@ def save_sequential_heatmaps(
         
         # Keep the heatmap free of waypoint and goal markers.
             
-        plt.tight_layout(rect=(0.0, 0.08, 1.0, 1.0))
+        plt.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
         plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
         plt.close()
-        print(
-            f" -> Generated V* Heatmap for {abstract_mdp.level_name}, "
-            f"DFA State q={current_q}"
-        )
+        print(f" -> Generated V* Heatmap for automaton state {current_q}")
 
-
-def save_multilevel_heatmaps(
-    multilevel_mdp,
-    filename_prefix="v_star",
-    output_root=None,
-):
-    """Save each level's heatmaps under ``level1``, ``level2``, and so on."""
-    output_root = output_root or os.path.join("img", "heatmaps")
-    generated_directories = []
-    for level_number, abstract_mdp in enumerate(multilevel_mdp.levels, start=1):
-        level_directory = os.path.join(output_root, f"level{level_number}")
-        save_sequential_heatmaps(
-            abstract_mdp,
-            filename_prefix=filename_prefix,
-            output_dir=level_directory,
-        )
-        generated_directories.append(level_directory)
-    return generated_directories
 
 # ==============================
 # Training diagnostics and learning curves
@@ -311,7 +247,62 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
 
-def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None):
+def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/buffer_variance.png", state_labels=None, title="Replay Buffer Composition Across Seeds"):
+    """Plot mean replay-buffer fractions with a ±1 std band across seeds."""
+    runs = np.asarray(buffer_histories_runs, dtype=np.float64)
+    if runs.ndim == 2:
+        runs = runs[np.newaxis, ...]
+    if runs.ndim != 3 or 0 in runs.shape:
+        raise ValueError(
+            "buffer_histories_runs must have shape (num_seeds, num_states, episodes)"
+        )
+    if window_size <= 0:
+        raise ValueError("window_size must be greater than zero")
+
+    smoothed_runs = np.empty_like(runs, dtype=np.float64)
+    for seed_index in range(runs.shape[0]):
+        for state_index in range(runs.shape[1]):
+            smoothed_runs[seed_index, state_index] = (
+                pd.Series(runs[seed_index, state_index])
+                .rolling(window=window_size, min_periods=1, center=False)
+                .mean()
+                .to_numpy()
+            )
+
+    mean_fractions = np.mean(smoothed_runs, axis=0)
+    std_fractions = np.std(smoothed_runs, axis=0)
+    episodes = np.arange(1, runs.shape[2] + 1)
+    colors = plt.cm.tab10(np.linspace(0, 1, runs.shape[1]))
+    output_directory = os.path.dirname(os.fspath(filename))
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    for state_index, color in enumerate(colors):
+        state_label = state_labels[state_index] if state_labels is not None else state_index
+        mean = mean_fractions[state_index]
+        std = std_fractions[state_index]
+        ax.plot(episodes, mean, color=color, linewidth=2.5, label=f"Automaton state {state_label}")
+        ax.fill_between(
+            episodes,
+            np.clip(mean - std, 0.0, 1.0),
+            np.clip(mean + std, 0.0, 1.0),
+            color=color,
+            alpha=0.18,
+        )
+
+    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
+    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
+    ax.set_ylabel("Fraction in Buffer", fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=runs.shape[1], title="Mean with ±1 std bands", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    print(f"\n>>> Buffer variance plot saved to: {filename}")
+    plt.close(fig)
+
+def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None, title="Replay Buffer Composition"):
     """
     Plots the replay buffer composition for N phases dynamically.
     """
@@ -323,9 +314,9 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     for idx, history in enumerate(buffer_histories):
         ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=False).mean()
         state_label = state_labels[idx] if state_labels is not None else idx
-        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'DFA state q={state_label}')
+        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Automaton state {state_label}')
     
-    ax.set_title(f"Replay Buffer Composition (MA Window = {window_size})", fontsize=14, fontweight='bold')
+    ax.set_title(f"{title} (MA Window = {window_size})", fontsize=14, fontweight='bold')
     ax.set_ylabel("Fraction in Buffer", fontsize=12)
     ax.set_ylim(0, 1.05)
     
@@ -334,7 +325,7 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     fig.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
-def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png"):
+def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png", title="Shaping Agent Reward Analysis"):
     """
     Plots the moving average of rewards (True vs Total) and overlays the N-phase Epsilon decay dynamically.
     """
@@ -351,7 +342,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Synthetic Goal Reward')
     ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Learning Reward (Goal + Shaping)')
     
-    ax1.set_title(f"Shaping Agent Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
+    ax1.set_title(f"{title} (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)

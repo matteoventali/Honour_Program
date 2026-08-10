@@ -11,11 +11,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK_DIR = PROJECT_ROOT / "notebook"
 
 NOTEBOOK_SOURCES = {
-    "lunar_lander_manual_generalized_training_kaggle.ipynb": "manual_experiment",
-    "lunar_lander_manual_training_kaggle.ipynb": "manual_experiment",
-    "lunar_lander_multilevel_training_kaggle.ipynb": "multilevel_framework",
-    "lunar_lander_multilevel_multieps_multihead_training_kaggle.ipynb": "multilevel_multieps",
-    "lunar_lander_dsac_training_kaggle.ipynb": "sac",
+    "lunar_lander_manual_generalized_training_kaggle.ipynb": "manual_experiment/src",
+    "lunar_lander_manual_training_kaggle.ipynb": "manual_experiment/src",
+    "lunar_lander_multilevel_training_kaggle.ipynb": "multilevel_framework/src",
+    "lunar_lander_multilevel_multieps_multihead_training_kaggle.ipynb": "multilevel_multieps/src",
+    "lunar_lander_dsac_training_kaggle.ipynb": "sac/src",
 }
 
 MULTILEVEL_NOTEBOOKS = {
@@ -187,12 +187,16 @@ def _update_training_command(source: str) -> str:
 def _update_result_preview(source: str) -> str:
     if "plot_paths = [" not in source:
         return source
-    variance_glob = '    *sorted((WORK_DIR / "img").glob("training_variance_*.png")),\n'
-    reward_glob = '    *sorted((WORK_DIR / "img").glob("reward_breakdown_*_seed_*.png")),\n'
+    legacy_variance_glob = '    *sorted((WORK_DIR / "img").glob("training_variance_*.png")),\n'
+    variance_glob = '    *sorted((WORK_DIR / "img").glob("*_variance_*.png")),\n'
+    legacy_reward_glob = '    *sorted((WORK_DIR / "img").glob("reward_breakdown_*_seed_*.png")),\n'
+    seed_plot_glob = '    *sorted((WORK_DIR / "img").glob("seed_*/*.png")),\n'
+    source = source.replace(legacy_variance_glob, variance_glob)
+    source = source.replace(legacy_reward_glob, seed_plot_glob)
     if variance_glob not in source:
         source = source.replace("plot_paths = [\n", "plot_paths = [\n" + variance_glob, 1)
-    if reward_glob not in source:
-        source = source.replace("plot_paths = [\n", "plot_paths = [\n" + reward_glob, 1)
+    if seed_plot_glob not in source:
+        source = source.replace("plot_paths = [\n", "plot_paths = [\n" + seed_plot_glob, 1)
     return source
 
 
@@ -208,7 +212,7 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         trainer_source = _multilevel_trainer_variant(trainer_source)
     utils_source = (PROJECT_ROOT / source_directory / "utils.py").read_text(encoding="utf-8")
     agent_source = None
-    if source_directory == "sac":
+    if source_directory == "sac/src":
         agent_source = (PROJECT_ROOT / source_directory / "agent.py").read_text(
             encoding="utf-8"
         )

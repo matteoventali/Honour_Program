@@ -23,6 +23,7 @@ from utils import phi_mapping_grid, spatial_grid_boundaries
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+FRAMEWORK_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG = SCRIPT_DIR / "trajectory.json"
 DEFAULT_ABSTRACTION_CONFIG = SCRIPT_DIR / "abstraction.json"
 
@@ -328,7 +329,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    output_path = args.output or SCRIPT_DIR / "img" / "abstract_grid_overlay.png"
+    output_path = args.output or FRAMEWORK_DIR / "results" / "abstract_grid_overlay.png"
     saved_path = generate_overlay(
         output_path,
         args.config,

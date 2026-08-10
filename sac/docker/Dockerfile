@@ -19,7 +19,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
         --index-url https://download.pytorch.org/whl/cu128 \
         "torch==2.7.1"
 
-COPY requirements-docker.txt /tmp/requirements-docker.txt
+COPY docker/requirements-docker.txt /tmp/requirements-docker.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements-docker.txt
 # ltlf2dfa 1.0.2 writes its MONA input beside the installed package.
 RUN touch /usr/local/lib/python3.11/site-packages/ltlf2dfa/automa.mona \
@@ -28,4 +28,4 @@ RUN python -m pip install --no-cache-dir "stable-baselines3==2.7.0"
 
 COPY . /workspace
 
-ENTRYPOINT ["python", "trainer.py"]
+ENTRYPOINT ["python", "/workspace/src/trainer.py"]

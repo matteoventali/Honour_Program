@@ -1,4 +1,4 @@
-"""Evaluate one or more LTLf-guided LunarLander DQN policies."""
+"""Evaluate classic or multi-head LTLf-guided LunarLander DQN policies."""
 
 # ==============================
 # Standard library imports
@@ -20,7 +20,12 @@ import torch
 
 from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
-from agent import DuelingQNetwork, QNetwork
+from agent import (
+    DuelingQNetwork,
+    MultiHeadDuelingQNetwork,
+    MultiHeadQNetwork,
+    QNetwork,
+)
 from grid_overlay import (
     abstract_cell_to_pixel,
     draw_abstract_grid,
@@ -34,7 +39,8 @@ from utils import phi_mapping_sequential
 # ==============================
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXPERIMENTS_DIR = SCRIPT_DIR.parent / "experiments"
+FRAMEWORK_DIR = SCRIPT_DIR.parent
+EXPERIMENTS_DIR = FRAMEWORK_DIR / "results"
 
 
 def moving_average(data, window_size):
@@ -51,9 +57,14 @@ def _resolve_policy_path(policy, policy_dir):
     if supplied_path.is_file():
         return supplied_path.resolve()
 
-    policy_path = Path(policy_dir).expanduser() / supplied_path
-    if policy_path.is_file():
-        return policy_path.resolve()
+    policy_root = Path(policy_dir).expanduser()
+    for policy_path in (
+        policy_root / supplied_path,
+        policy_root / "best" / supplied_path,
+        policy_root / "last" / supplied_path,
+    ):
+        if policy_path.is_file():
+            return policy_path.resolve()
 
     raise FileNotFoundError(f"Policy '{policy}' not found either as an explicit path or under '{policy_dir}'.")
 
@@ -79,7 +90,8 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # ==============================
 
 def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict,
-                    goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard"):
+                    goal_reward, grid_w, grid_h, seed, trace_episodes=0,
+                    network_architecture="multi-head", network_type="standard"):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -89,14 +101,27 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
     automaton_states = list(automaton.states)
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
 
-    # Create the environment and a network with one extra feature per DFA state.
+    # Create the same classic or multi-head network used during training.
     render_mode = "human" if render else ("rgb_array" if trace_episodes else None)
     env = gym.make("LunarLander-v3", continuous=False, render_mode=render_mode)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if network_type not in {"standard", "dueling"}:
         raise ValueError("network_type must be one of: standard, dueling")
-    network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
-    network = network_cls(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
+    if network_architecture not in {"classic", "multi-head"}:
+        raise ValueError("network_architecture must be one of: classic, multi-head")
+    if network_architecture == "multi-head":
+        network_cls = MultiHeadDuelingQNetwork if network_type == "dueling" else MultiHeadQNetwork
+        network = network_cls(
+            env.observation_space.shape[0],
+            env.action_space.n,
+            len(automaton_states),
+        ).to(device)
+    else:
+        network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
+        network = network_cls(
+            env.observation_space.shape[0] + len(automaton_states),
+            env.action_space.n,
+        ).to(device)
 
     # Load the trained parameters before starting any episode.
     try:
@@ -142,15 +167,37 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
             steps = 0
 
             while not (success or terminated or truncated):
-                # Append the current DFA state as a one-hot vector.
-                one_hot = np.zeros(len(automaton_states), dtype=np.float32)
-                one_hot[state_to_index[q]] = 1.0
-                augmented_state = np.concatenate((observation, one_hot)).astype(np.float32)
-
-                # Evaluation is greedy: always select the action with maximum Q-value.
+                # Evaluation is greedy. The classic architecture consumes the
+                # augmented state; multi-head routes the physical state by q.
                 with torch.inference_mode():
-                    state_tensor = torch.as_tensor(augmented_state, device=device).unsqueeze(0)
-                    action = network(state_tensor).argmax(dim=1).item()
+                    if network_architecture == "multi-head":
+                        state_tensor = torch.as_tensor(
+                            observation,
+                            dtype=torch.float32,
+                            device=device,
+                        ).unsqueeze(0)
+                        head_index = torch.tensor(
+                            [state_to_index[q]],
+                            dtype=torch.long,
+                            device=device,
+                        )
+                        q_values = network(state_tensor, head_index)
+                    else:
+                        one_hot = np.zeros(
+                            len(automaton_states),
+                            dtype=np.float32,
+                        )
+                        one_hot[state_to_index[q]] = 1.0
+                        augmented_state = np.concatenate(
+                            (observation, one_hot)
+                        ).astype(np.float32)
+                        state_tensor = torch.as_tensor(
+                            augmented_state,
+                            dtype=torch.float32,
+                            device=device,
+                        ).unsqueeze(0)
+                        q_values = network(state_tensor)
+                    action = q_values.argmax(dim=1).item()
 
                 next_observation, env_reward, terminated, truncated, _ = env.step(action)
                 environment_return += float(env_reward)
@@ -398,7 +445,7 @@ def _select_files_graphically(policy_dir, config_path):
 
 def parse_args():
     """Build and parse the evaluator command-line arguments."""
-    parser = argparse.ArgumentParser(description="Evaluate LTLf-guided DQN policies for LunarLander.")
+    parser = argparse.ArgumentParser(description="Evaluate classic or multi-head LTLf-guided DQN policies for LunarLander.")
     parser.add_argument(
         "policies",
         nargs="*",
@@ -411,7 +458,7 @@ def parse_args():
         default=SCRIPT_DIR / "abstraction.json",
         help="Grid hierarchy; evaluation uses its level1 dimensions.",
     )
-    parser.add_argument("--policy-dir", type=Path, default=SCRIPT_DIR / "policy", help="Directory used to resolve checkpoint filenames.")
+    parser.add_argument("--policy-dir", type=Path, default=FRAMEWORK_DIR / "results", help="Directory used to resolve checkpoint filenames.")
     parser.add_argument("--gui", action="store_true", help="Select policies and trajectory.json using graphical dialogs.")
     parser.add_argument("--episodes", type=_positive_int, default=100)
     parser.add_argument("--window", type=_positive_int, default=10)
@@ -428,12 +475,18 @@ def parse_args():
         default=1,
         help="Number of episodes to trace when --trace-grid is enabled (default: 1).",
     )
-    parser.add_argument("--output-dir", type=Path, default=SCRIPT_DIR / "img" / "evaluation")
+    parser.add_argument("--output-dir", type=Path, default=FRAMEWORK_DIR / "results" / "evaluation")
+    parser.add_argument(
+        "--network-architecture",
+        choices=["classic", "multi-head"],
+        default="multi-head",
+        help="Network architecture used by the checkpoint.",
+    )
     parser.add_argument(
         "--network-type",
         choices=["standard", "dueling"],
         default="standard",
-        help="Q-network architecture used by the checkpoint.",
+        help="Standard or dueling network type used by the checkpoint.",
     )
     return parser.parse_args()
 
@@ -478,6 +531,7 @@ def main():
             policy, args.policy_dir, args.episodes, args.render, formula,
             waypoints_dict, goal_reward, grid_w, grid_h, args.seed,
             trace_episodes=traced_episodes,
+            network_architecture=args.network_architecture,
             network_type=args.network_type,
         )
         results.append(result)

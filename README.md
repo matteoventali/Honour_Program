@@ -1,28 +1,10 @@
 # Lunar Lander with LTLf Reward Shaping
 
-This repository contains implementations of Tabular Q-Learning and Hierarchical Reinforcement Learning (HRL) with reward shaping for the Lunar Lander environment from Gymnasium. The project explores different training methodologies to learn optimal landing policies.
-
-The `discrete_sac` module provides a neural baseline based on d3rlpy's Discrete Soft
-Actor-Critic implementation. It keeps LunarLander's four-action discrete
-interface and augments each observation with the current LTLf automaton state.
-Its `trainer.py` entry point contains separate documented sections for the
-algorithm configuration, environment wrapper, metrics, plotting and training
-orchestration.
-
-Install the Python dependencies and start an experiment from the `discrete_sac`
-directory:
-
-```bash
-python3 -m pip install -r ../requirements.txt
-python3 trainer.py --steps 250000 --config trajectory.json
-```
-
-Use `--no-use-shaping` to train the corresponding unshaped baseline. Models,
-numeric episode metrics and plots are written to `results` and `img`.
-
-A streamlined Kaggle workflow is available in
-`notebook/discrete_sac_training_kaggle.ipynb`. It contains separate source,
-trajectory, training, validation, execution and result-export cells.
+This repository contains four active LunarLander reinforcement-learning
+frameworks with automaton-guided reward shaping: `manual_experiment`,
+`multilevel_framework`, `multilevel_multieps`, and `sac`. Each framework keeps
+its Python sources and JSON configurations under `src/`, generated artifacts
+under `results/`, and its container launcher files at framework root.
 
 
 ## Features
@@ -37,60 +19,56 @@ trajectory, training, validation, execution and result-export cells.
 
 ## Esecuzione degli esperimenti con Docker
 
-Ogni framework attivo contiene un `Dockerfile` indipendente e usa la propria
-directory come contesto di build:
+Ogni framework attivo contiene un `docker/Dockerfile` indipendente e usa la
+propria directory root come contesto di build:
 
 | Framework | Immagine suggerita |
 | --- | --- |
-| `lunarLander` | `tesi-lunar-lander` |
 | `manual_experiment` | `tesi-manual` |
 | `multilevel_framework` | `tesi-multilevel` |
-| `multilevel_framework_convention` | `tesi-multilevel-convention` |
 | `multilevel_multieps` | `tesi-multilevel-multieps` |
 | `sac` | `tesi-sac` |
 
 Per esempio, dalla radice della repository:
 
 ```bash
-docker build -t tesi-lunar-lander lunarLander
-docker run --rm \
-  --gpus all \
-  --user "$(id -u):$(id -g)" \
-  --mount type=bind,src="$(realpath lunarLander)",target=/workspace \
-  tesi-lunar-lander \
-  --experiment-name ddqn-seed42 \
+docker build -f multilevel_framework/docker/Dockerfile \
+  -t tesi-multilevel multilevel_framework
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
+  tesi-multilevel \
+  --experiment-name multilevel-base \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
-Il bind mount collega `/workspace` alla directory fisica `lunarLander`
-dell'host. Ogni trainer richiede `--experiment-name` e cataloga tutti gli
+Il bind mount collega `/workspace` alla root fisica del framework sull'host;
+il container esegue `/workspace/src/trainer.py`. Ogni trainer richiede
+`--experiment-name` e cataloga tutti gli
 artefatti sotto `results/<experiment-name>/`. L'opzione `--user` fa sì che i
 nuovi file appartengano all'utente corrente.
 
 Lo stesso schema vale per gli altri framework. Per esempio:
 
 ```bash
-docker build -t tesi-manual manual_experiment
+docker build -f manual_experiment/docker/Dockerfile \
+  -t tesi-manual manual_experiment
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath manual_experiment)",target=/workspace \
   tesi-manual --experiment-name manual-cycle --episodes 1000
 
-docker build -t tesi-multilevel multilevel_framework
+docker build -f multilevel_framework/docker/Dockerfile \
+  -t tesi-multilevel multilevel_framework
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
   tesi-multilevel --experiment-name multilevel-base --episodes 1000
 
-docker build -t tesi-multilevel-convention multilevel_framework_convention
-docker run --rm --gpus all --user "$(id -u):$(id -g)" \
-  --mount type=bind,src="$(realpath multilevel_framework_convention)",target=/workspace \
-  tesi-multilevel-convention --experiment-name convention-base --episodes 1000
-
-docker build -t tesi-multilevel-multieps multilevel_multieps
+docker build -f multilevel_multieps/docker/Dockerfile \
+  -t tesi-multilevel-multieps multilevel_multieps
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_multieps)",target=/workspace \
   tesi-multilevel-multieps --experiment-name multieps-visited --episodes 1000
 
-docker build -t tesi-sac sac
+docker build -f sac/docker/Dockerfile -t tesi-sac sac
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath sac)",target=/workspace \
   tesi-sac --experiment-name sac-seed42 --episodes 1000 --device auto
@@ -133,8 +111,8 @@ avviare un training destinato a ricadere sulla CPU. Può essere eseguito dalla
 radice della repository, per esempio:
 
 ```bash
-./lunarLander/run_experiment.sh \
-  --experiment-name ddqn-seed42 \
+./manual_experiment/run_experiment.sh \
+  --experiment-name manual-seeds \
   --episodes 1000 --num-seeds 5 --seed 42
 
 ./multilevel_multieps/run_experiment.sh \
@@ -153,11 +131,30 @@ dell'esperimento. È comunque possibile sovrascriverlo con `CONTAINER_NAME`:
 
 ```bash
 CONTAINER_NAME=esperimento-seed-42 \
-  ./lunarLander/run_experiment.sh \
-    --experiment-name ddqn-seed42 --episodes 1000 --seed 42
+  ./manual_experiment/run_experiment.sh \
+    --experiment-name manual-seed42 --episodes 1000 --seed 42
 
 docker logs -f esperimento-seed-42
 ```
+
+### Script di evaluation
+
+Ogni framework espone anche `run_evaluation.sh` nella propria root. Lo script
+costruisce la stessa immagine Docker, monta il framework in `/workspace` ed
+esegue `src/evaluate.py` in foreground. I percorsi relativi sono interpretati
+dalla root del framework. Per esempio:
+
+```bash
+./multilevel_framework/run_evaluation.sh \
+  results/traj2_with_variance_1liv/policy/best/best_policy_seed_42.pth \
+  --config results/traj2_with_variance_1liv/trajectory.json \
+  --abstraction-config results/traj2_with_variance_1liv/abstraction.json \
+  --episodes 100 --trace-grid --trace-episodes 3
+```
+
+È possibile passare più policy allo stesso comando. I risultati della
+valutazione vengono scritti nel bind mount del framework e rimangono quindi
+disponibili sull'host.
 
 Il layout prodotto è:
 
@@ -165,9 +162,16 @@ Il layout prodotto è:
 <framework>/results/<experiment-name>/
 ├── *.npz
 ├── img/
-│   └── heatmaps/
+│   ├── training_variance_*.png
+│   ├── buffer_variance_*.png
+│   ├── heatmaps/
+│   └── seed_<seed>/
+│       ├── reward_breakdown_*.png
+│       └── buffer_fractions_*.png
 ├── logs/
 └── policy/
+    ├── best/
+    └── last/
 ```
 
 Per rigenerare i grafici di un esperimento esistente senza ripetere il
@@ -175,7 +179,7 @@ training, eseguire il trainer dalla radice della repository con lo stesso nome
 dell'esperimento. Per esempio:
 
 ```bash
-python3 multilevel_framework/trainer.py \
+python3 multilevel_framework/src/trainer.py \
   --experiment-name traj2_with_variance_1liv \
   --post-process --plot-window 500
 ```
@@ -196,7 +200,9 @@ sia nel layout storico con la cartella `results` annidata:
 results/<experiment-name>/results/<data-file>.npz
 ```
 
-I grafici vengono riscritti in `results/<experiment-name>/img/`. L'opzione
+I grafici e le heatmap del potenziale astratto vengono riscritti in
+`results/<experiment-name>/img/`. Le heatmap sono ricalcolate dalle
+configurazioni salvate senza rieseguire il training dell'agente. L'opzione
 `--plot-window N` controlla la media mobile sugli ultimi `N` episodi; la banda
 ombreggiata nel grafico multi-seed rappresenta `±1` deviazione standard tra i
 seed. I nuovi training archiviano automaticamente nella cartella
@@ -210,7 +216,7 @@ default), and the following runs use consecutive values. For example:
 
 ```bash
 cd multilevel_framework
-python3 trainer.py --experiment-name multilevel-seeds \
+python3 src/trainer.py --experiment-name multilevel-seeds \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
@@ -222,10 +228,14 @@ shaded `±1σ` band across seeds (`σ²` is the cross-seed variance). The same
 options are available in `manual_experiment`, `multilevel_framework`,
 `multilevel_multieps`, and `sac`.
 
-The original reward-breakdown plot is preserved, and an additional
-`reward_breakdown_*_seed_<seed>.png` is generated for every individual run.
+The top level contains only the aggregate training and replay-buffer variance
+plots. Both show the trailing moving mean and a `±1` standard-deviation band
+across seeds. Each `img/seed_<seed>/` directory contains that run's individual
+reward breakdown and replay-buffer composition.
 Replay-buffer plots show only the observed DFA-state fractions, without an
-ideal-load-balance reference line.
+ideal-load-balance reference line. Checkpoints are collected under
+`policy/best/` and `policy/last/`; legacy checkpoint layouts are reorganized
+automatically when the experiment is opened by a trainer.
 
 All plots generated by the trainers use a trailing moving average: at episode
 `t`, the plotted value includes only episode `t` and the previous `N-1`
@@ -234,13 +244,13 @@ applying this moving average independently to every seed.
 
 ### Confronto grafico tra esperimenti
 
-Ogni framework attivo include `compare_experiments.py`. Avviato senza opzioni,
+Ogni framework attivo include `src/compare_experiments.py`. Avviato senza opzioni,
 lo script cerca automaticamente gli esperimenti nella propria directory
 `results/` e apre una finestra dalla quale è possibile selezionare due o più
 esperimenti, la metrica e il numero `N` di episodi della media mobile:
 
 ```bash
-python3 multilevel_framework_convention/compare_experiments.py
+python3 multilevel_framework/src/compare_experiments.py
 ```
 
 Per ciascun seed, il valore al tempo `t` è la media del reward degli ultimi `N`
@@ -254,7 +264,7 @@ file separati `*_seed_<seed>.npz`.
 Su un server senza display si può usare la modalità non interattiva:
 
 ```bash
-python3 multilevel_framework_convention/compare_experiments.py \
+python3 multilevel_framework/src/compare_experiments.py \
   --no-gui --experiments traj2_with_variance_1liv traj2_with_variance_2liv \
   --metric learning_rewards --window 500 \
   --output results/comparisons/traj2_levels.png
@@ -273,9 +283,9 @@ To render the same abstract grid used by the trainer directly over a
 LunarLander RGB frame, run:
 
 ```bash
-cd lunarLander
-python3 grid_overlay.py --config trajectory.json \
-  --output img/abstract_grid_overlay.png --seed 0
+cd multilevel_framework
+python3 src/grid_overlay.py --config src/trajectory.json \
+  --output results/abstract_grid_overlay.png --seed 0
 ```
 
 The generated image includes the configured waypoints and highlights the
@@ -296,8 +306,9 @@ During policy evaluation, the cells visited by the agent can be recorded and
 drawn over the same grid:
 
 ```bash
-cd lunarLander
-python3 evaluate.py policy/example.pt --config trajectory.json \
+cd multilevel_framework
+python3 src/evaluate.py results/example/policy/best/best_policy.pth \
+  --config src/trajectory.json --abstraction-config src/abstraction.json \
   --episodes 10 --trace-grid --trace-episodes 3
 ```
 
@@ -337,18 +348,22 @@ must be evaluated with the same `waypoint_cycle` used during its training.
 
 ## Project Structure
 
-````
-
-lunarLander/
-├── baseline/
-│   ├── lunar_lander.py         # Original baseline Q-learner (possibly deprecated)
-│   └── baseVersion.py          # Improved baseline Q-learner
-├── policy/                     # Stores trained Q-tables (.pkl files)
-├── img/                        # Stores generated plots (.png files)
-├── trainer.py                  # HRL training script (sequential)
-├── trainer_improved.py         # HRL training script (with multiprocessing)
-├── run_policy.py               # Run a single trained policy
-├── run_combined.py             # Compare two trained policies
-├── run_combined_improved.py    # Compare multiple policies (with multiprocessing)
-
-````
+```text
+<framework>/
+├── src/
+│   ├── trainer.py
+│   ├── agent.py
+│   ├── utils.py
+│   ├── evaluate.py
+│   ├── compare_experiments.py
+│   ├── grid_overlay.py
+│   ├── trajectory.json
+│   └── ...
+├── results/
+├── docker/
+│   ├── Dockerfile
+│   ├── Dockerfile.dockerignore
+│   └── requirements-docker.txt
+├── run_experiment.sh
+└── run_evaluation.sh
+```

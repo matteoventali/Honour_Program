@@ -1,4 +1,4 @@
-"""Spatial mapping and plotting utilities for the manual framework."""
+"""Spatial mapping and plotting utilities for the SAC framework."""
 
 # ==============================
 # Standard library imports
@@ -135,7 +135,6 @@ def _draw_visible_area_overlay(axis, width, height):
     )
     axis.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
 
-
 # ==============================
 # Abstract-potential heatmaps
 # ==============================
@@ -161,7 +160,7 @@ def save_sequential_heatmaps(
     computed_vmin = all_values.min() if len(all_values) > 0 else 0
     computed_vmax = all_values.max() if len(all_values) > 0 else 1
 
-    for current_q in abstract_mdp.automaton.active_states:
+    for current_q in abstract_mdp.automaton.states:
         matrix = np.zeros((height, width))
         for (x, y, q), value in abstract_mdp.v_star.items():
             if q == current_q and 0 <= x < width and 0 <= y < height:
@@ -179,9 +178,9 @@ def save_sequential_heatmaps(
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         
-        is_accepting = abstract_mdp.automaton.is_accepting(current_q)
-        phase_label = "Cycle completed" if is_accepting else "Seeking target"
-        plt.title(f"Potential Map (V*) - Automaton State {current_q} ({phase_label})", fontsize=14, fontweight='bold')
+        is_goal_state = abstract_mdp.automaton.is_goal_reached(current_q)
+        phase_label = "Goal Reached" if is_goal_state else "Seeking Targets"
+        plt.title(f"Potential Map (V*) - DFA State q={current_q} ({phase_label})", fontsize=14, fontweight='bold')
         
         ax = plt.gca()
         ax.set_xticks(np.arange(-.5, width, 1), minor=True)
@@ -194,8 +193,7 @@ def save_sequential_heatmaps(
         plt.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
         plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=150, bbox_inches='tight')
         plt.close()
-        print(f" -> Generated V* Heatmap for automaton state {current_q}")
-
+        print(f" -> Generated V* Heatmap for DFA State q={current_q}")
 
 # ==============================
 # Training diagnostics and learning curves
@@ -247,7 +245,62 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
 
-def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None):
+def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/buffer_variance.png", state_labels=None, title="Replay Buffer Composition Across Seeds"):
+    """Plot mean replay-buffer fractions with a ±1 std band across seeds."""
+    runs = np.asarray(buffer_histories_runs, dtype=np.float64)
+    if runs.ndim == 2:
+        runs = runs[np.newaxis, ...]
+    if runs.ndim != 3 or 0 in runs.shape:
+        raise ValueError(
+            "buffer_histories_runs must have shape (num_seeds, num_states, episodes)"
+        )
+    if window_size <= 0:
+        raise ValueError("window_size must be greater than zero")
+
+    smoothed_runs = np.empty_like(runs, dtype=np.float64)
+    for seed_index in range(runs.shape[0]):
+        for state_index in range(runs.shape[1]):
+            smoothed_runs[seed_index, state_index] = (
+                pd.Series(runs[seed_index, state_index])
+                .rolling(window=window_size, min_periods=1, center=False)
+                .mean()
+                .to_numpy()
+            )
+
+    mean_fractions = np.mean(smoothed_runs, axis=0)
+    std_fractions = np.std(smoothed_runs, axis=0)
+    episodes = np.arange(1, runs.shape[2] + 1)
+    colors = plt.cm.tab10(np.linspace(0, 1, runs.shape[1]))
+    output_directory = os.path.dirname(os.fspath(filename))
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    for state_index, color in enumerate(colors):
+        state_label = state_labels[state_index] if state_labels is not None else state_index
+        mean = mean_fractions[state_index]
+        std = std_fractions[state_index]
+        ax.plot(episodes, mean, color=color, linewidth=2.5, label=f"DFA state q={state_label}")
+        ax.fill_between(
+            episodes,
+            np.clip(mean - std, 0.0, 1.0),
+            np.clip(mean + std, 0.0, 1.0),
+            color=color,
+            alpha=0.18,
+        )
+
+    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
+    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
+    ax.set_ylabel("Fraction in Buffer", fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=runs.shape[1], title="Mean with ±1 std bands", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    print(f"\n>>> Buffer variance plot saved to: {filename}")
+    plt.close(fig)
+
+def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None, title="Replay Buffer Composition"):
     """
     Plots the replay buffer composition for N phases dynamically.
     """
@@ -259,9 +312,9 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     for idx, history in enumerate(buffer_histories):
         ma = pd.Series(history).rolling(window=window_size, min_periods=1, center=False).mean()
         state_label = state_labels[idx] if state_labels is not None else idx
-        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'Automaton state {state_label}')
+        ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'DFA state q={state_label}')
     
-    ax.set_title(f"Replay Buffer Composition (MA Window = {window_size})", fontsize=14, fontweight='bold')
+    ax.set_title(f"{title} (MA Window = {window_size})", fontsize=14, fontweight='bold')
     ax.set_ylabel("Fraction in Buffer", fontsize=12)
     ax.set_ylim(0, 1.05)
     
@@ -270,9 +323,9 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     fig.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
-def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png"):
+def plot_shaping_reward_breakdown(true_rewards, total_rewards, exploration_history, window_size=100, filename="img/shaping_reward_breakdown.png", exploration_label="Entropy coefficient (alpha)", title="SAC Reward Analysis"):
     """
-    Plots the moving average of rewards (True vs Total) and overlays the N-phase Epsilon decay dynamically.
+    Plot reward moving averages and SAC's entropy coefficient.
     """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     fig, ax1 = plt.subplots(figsize=(12, 7))
@@ -287,41 +340,23 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Synthetic Goal Reward')
     ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Learning Reward (Goal + Shaping)')
     
-    ax1.set_title(f"Shaping Agent Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
+    ax1.set_title(f"{title} (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
     
-    # Plot Epsilon Decays (Right Y-Axis)
+    # SAC does not use epsilon-greedy exploration.  Its learned entropy
+    # coefficient is the corresponding exploration diagnostic.
     ax2 = ax1.twinx()
-    
-    # Check if eps_histories is a list of lists/arrays (multi-epsilon case)
-    is_multi_eps = any(isinstance(i, (list, np.ndarray)) for i in eps_histories)
-
-    if is_multi_eps:
-        num_phases = len(eps_histories)
-        colors = plt.cm.plasma(np.linspace(0, 0.8, num_phases))
-        for idx in range(num_phases):
-            label = "Goal" if idx == num_phases - 1 else f"WP {idx + 1}"
-            ax2.plot(x_axis, eps_histories[idx], color=colors[idx], linestyle='--', linewidth=2, alpha=0.8, label=f'ε Decay (q={idx}: {label})')
-    else: # Single epsilon history
-        ax2.plot(x_axis, eps_histories, color='orange', linestyle='--', linewidth=1.8, label='Epsilon Decay')
-
-    # Align the zero of both y-axes for better visual comparison
-    y1_min, y1_max = ax1.get_ylim()
-    y2_min, y2_max = -0.05, 1.05 # Epsilon range is fixed
-    
-    # Align y-axes so that the zero points match.
-    if y1_min < 0 < y1_max:
-        # Calculate the proportional position of zero on the reward axis
-        zero_ratio = -y1_min / (y1_max - y1_min)
-        # Set the epsilon axis limits so its zero is at the same ratio
-        new_y2_min = -zero_ratio * y2_max / (1 - zero_ratio)
-        ax2.set_ylim(new_y2_min, y2_max)
-    else:
-        ax2.set_ylim(y2_min, y2_max)
-
-    ax2.set_ylabel("Exploration Rate (ε)", color='black', fontsize=12)
+    ax2.plot(
+        x_axis,
+        exploration_history,
+        color='orange',
+        linestyle='--',
+        linewidth=1.8,
+        label=exploration_label,
+    )
+    ax2.set_ylabel(exploration_label, color='black', fontsize=12)
 
     # Combine Legends from both axes
     lines1, labels1 = ax1.get_legend_handles_labels()

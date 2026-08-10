@@ -26,12 +26,23 @@ from automaton_validator import validate_automaton
 from utils import (
     phi_mapping_sequential,
     plot_buffer_fractions,
+    plot_buffer_variance,
     plot_shaping_reward_breakdown,
     plot_training_variance,
     save_multilevel_heatmaps,
 )
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRAMEWORK_DIR = (
+    os.path.dirname(SCRIPT_DIR)
+    if os.path.basename(SCRIPT_DIR) == "src"
+    else SCRIPT_DIR
+)
+
+
+MULTI_EPSILON_MIN = 0.08
+MULTI_EPSILON_UNLOCK_THRESHOLD = 0.081
+EPSILON_STRATEGIES = {"cascade", "visited"}
 
 
 # ==============================
@@ -103,6 +114,36 @@ def _resolve_metrics_path(experiment_dir, filename):
     raise FileNotFoundError(f"Training data not found. Checked:\n  - {checked}")
 
 
+def _organize_policy_files(policy_dir):
+    """Move checkpoints from legacy layouts into policy/best and policy/last."""
+    policy_root = Path(policy_dir)
+    destinations = {
+        "best": policy_root / "best",
+        "last": policy_root / "last",
+    }
+    for destination in destinations.values():
+        destination.mkdir(parents=True, exist_ok=True)
+
+    for category, destination in destinations.items():
+        for source in policy_root.glob(f"{category}_policy*"):
+            if source.is_file() and not (destination / source.name).exists():
+                shutil.move(str(source), destination / source.name)
+
+
+def _organize_legacy_seed_plots(image_dir):
+    """Move legacy per-seed plots from img/ into img/seed_<seed>/ folders."""
+    pattern = re.compile(r"^((?:reward_breakdown|buffer_fractions)_.+)_seed_(-?\d+)\.png$")
+    for source in Path(image_dir).glob("*.png"):
+        match = pattern.fullmatch(source.name)
+        if not match:
+            continue
+        destination_dir = Path(image_dir) / f"seed_{match.group(2)}"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / f"{match.group(1)}.png"
+        if not destination.exists():
+            shutil.move(str(source), destination)
+
+
 def save_training_data(filename, **kwargs):
     """Convert training metrics to arrays and save them in a compressed NPZ file."""
     # Preserve numeric dtypes and rectangular shapes for direct plotting.
@@ -156,7 +197,7 @@ def _abstract_position(observation, abstract_mdp):
 
 
 def _augment_state(observation, q, state_to_index):
-    """Append a one-hot encoding of the current DFA state to an observation."""
+    """Append the DFA one-hot used by replay accounting and head routing."""
     one_hot = np.zeros(len(state_to_index), dtype=np.float32)
     one_hot[state_to_index[q]] = 1.0
     return np.concatenate((observation, one_hot)).astype(np.float32)
@@ -177,6 +218,45 @@ def _format_counter(counter):
     return ", ".join(f"{source}->{destination}: {count}" for (source, destination), count in sorted(counter.items()))
 
 
+def _decay_multi_epsilons(epsilons, reached_phase_this_episode, eps_decay):
+    """Apply the cascaded per-DFA-state epsilon decay used by the backup trainer."""
+    if len(epsilons) != len(reached_phase_this_episode):
+        raise ValueError("epsilons and reached-phase flags must have the same length")
+    if not epsilons:
+        raise ValueError("at least one epsilon is required")
+
+    next_epsilons = list(epsilons)
+    next_epsilons[0] = max(
+        MULTI_EPSILON_MIN,
+        next_epsilons[0] * eps_decay,
+    )
+    for index in range(1, len(next_epsilons)):
+        predecessor_is_unlocked = (
+            reached_phase_this_episode[index - 1]
+            and next_epsilons[index - 1]
+            <= MULTI_EPSILON_UNLOCK_THRESHOLD
+        )
+        if predecessor_is_unlocked:
+            next_epsilons[index] = max(
+                MULTI_EPSILON_MIN,
+                next_epsilons[index] * eps_decay,
+            )
+    return next_epsilons
+
+
+def _decay_visited_epsilons(epsilons, acted_state_indices, eps_decay):
+    """Decay once each epsilon whose DFA policy acted during the episode."""
+    next_epsilons = list(epsilons)
+    for index in set(acted_state_indices):
+        if not 0 <= index < len(next_epsilons):
+            raise IndexError("acted DFA-state index is out of range")
+        next_epsilons[index] = max(
+            MULTI_EPSILON_MIN,
+            next_epsilons[index] * eps_decay,
+        )
+    return next_epsilons
+
+
 # ==============================
 # Logging and checkpoint helpers
 # ==============================
@@ -189,20 +269,28 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
+def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, agent, epsilon_strategy, training_shaping_gamma):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
+    output_heads = (
+        len(automaton_states)
+        if agent.network_architecture == "multi-head"
+        else 1
+    )
     shaping_formula = (
         "K*(gamma*Phi(next)-Phi(state))"
         if training_shaping_gamma
         else "K*(Phi(next)-Phi(state))"
     )
     header = (
-        "\n=== NEW RUN ===\n"
+        "\n=== NEW MULTI-EPSILON RUN ===\n"
         f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
+        f"network={agent.algo_name}, output_heads={output_heads}\n"
+        f"epsilon_strategy={epsilon_strategy}\n"
+        f"epsilon_min={MULTI_EPSILON_MIN}, epsilon_unlock_threshold={MULTI_EPSILON_UNLOCK_THRESHOLD}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
         f"inter_level_K={abstract_mdp.inter_level_shaping_scale}\n"
         f"formula={automaton.formula_str}\n"
@@ -233,6 +321,10 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
     recent_entries_details = ", ".join(f"{q}: {recent_state_entries[index]}" for index, q in enumerate(automaton_states))
     cumulative_visits_details = ", ".join(f"{q}: {cumulative_counters['state_visits'][q]}" for q in automaton_states)
     cumulative_entries_details = ", ".join(f"{q}: {cumulative_counters['state_entries'][q]}" for q in automaton_states)
+    epsilon_details = ", ".join(
+        f"{q}: {histories['epsilons'][index][-1]:.5f}"
+        for index, q in enumerate(automaton_states)
+    )
 
     return (
         "\n"
@@ -245,7 +337,7 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
         f"abstract changes / episode  : {np.mean(histories['abstract_changes'][recent_slice]):.1f}\n"
         f"DFA transitions / episode   : {np.mean(histories['dfa_transitions'][recent_slice]):.2f}\n"
         f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
-        f"epsilon (next episode)       : {histories['epsilons'][-1]:.5f}\n"
+        f"epsilons (next episode)      : {epsilon_details}\n"
         f"replay buffer                : {len(agent.memory)} samples [{buffer_details}]\n"
         f"DFA state visits in window   : {recent_visits_details}\n"
         f"DFA state visits cumulative  : {cumulative_visits_details}\n"
@@ -259,7 +351,9 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
 
 def _save_named_policy(agent, policy_name):
     """Save the current policy using a stable descriptive filename."""
-    agent.policy_name = policy_name
+    category = "best" if policy_name.startswith("best_policy") else "last"
+    os.makedirs(os.path.join(agent.policy_dir, category), exist_ok=True)
+    agent.policy_name = os.path.join(category, policy_name)
     agent._save_policy()
 
 
@@ -306,9 +400,9 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, epsilon_strategy="cascade", training_shaping_gamma=True, seed=None, policy_suffix=""):
     """
-    Train the DDQN agent with the LTLf automaton and one global epsilon.
+    Train DDQN with one epsilon per DFA state and a selectable decay strategy.
 
     The Gym reward is deliberately discarded. The learning reward is the
     synthetic goal reward plus potential-based shaping. Shaping is evaluated
@@ -319,6 +413,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
     automaton_states = list(automaton.states)
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
     num_states = len(automaton_states)
+    epsilons = [agent.eps] * num_states
+    if epsilon_strategy not in EPSILON_STRATEGIES:
+        raise ValueError(
+            f"epsilon_strategy must be one of: {sorted(EPSILON_STRATEGIES)}"
+        )
 
     # Fail early if the DFA or training parameters are inconsistent.
     _validate_training_setup(automaton, state_to_index, episodes, log_interval)
@@ -327,7 +426,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
     task_reward_history = []
     learning_reward_history = []
     shaping_reward_history = []
-    epsilon_history = []
+    epsilon_histories = [[] for _ in automaton_states]
     episode_length_history = []
     success_history = []
     initial_acceptance_history = []
@@ -341,7 +440,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
         "task_rewards": task_reward_history,
         "learning_rewards": learning_reward_history,
         "shaping_rewards": shaping_reward_history,
-        "epsilons": epsilon_history,
+        "epsilons": epsilon_histories,
         "episode_lengths": episode_length_history,
         "successes": success_history,
         "abstract_changes": abstract_change_history,
@@ -363,7 +462,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
+    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, agent, epsilon_strategy, training_shaping_gamma)
 
     try:
         for episode in range(episodes):
@@ -373,6 +472,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             if q not in state_to_index:
                 raise RuntimeError(f"DFA returned unknown initial state {q!r} after evaluating s0")
             augmented_state = _augment_state(raw_state, q, state_to_index)
+
+            # Unlock later epsilon schedules only after their predecessor has
+            # been reached during the current episode.
+            reached_phase_this_episode = [False] * num_states
+            acted_state_indices = set()
 
             # Reset counters local to the current episode.
             succeeded = automaton.is_goal_reached(q)
@@ -394,8 +498,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             cumulative_state_entries[q] += 1
 
             while not episode_done:
-                # Select an action using the single global epsilon.
-                agent.eps = epsilon_history[-1] if epsilon_history else agent.eps
+                # Select an action using the epsilon associated with the
+                # current DFA state.
+                current_q_index = state_to_index[q]
+                agent.eps = epsilons[current_q_index]
+                acted_state_indices.add(current_q_index)
                 action = agent.select_action(augmented_state)
 
                 # The environment reward is intentionally not part of training.
@@ -430,6 +537,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     episode_transitions[transition] += 1
                     cumulative_state_entries[next_q] += 1
                     cumulative_transitions[transition] += 1
+                    if not automaton.is_goal_reached(next_q):
+                        reached_phase_this_episode[state_to_index[q]] = True
 
                 # Assign the synthetic task reward only on DFA acceptance.
                 synthetic_goal_reward = 0.0
@@ -478,16 +587,29 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 if env_truncated:
                     cumulative_env_truncated += 1
 
-            # Decay the single epsilon once at the end of the episode.
-            next_epsilon = max(agent.eps_min, agent.eps * agent.eps_decay)
-            agent.eps = next_epsilon
+            if epsilon_strategy == "cascade":
+                # The first epsilon always decays. Each later schedule starts
+                # only after the previous phase is reached while its epsilon
+                # is already at the minimum.
+                epsilons = _decay_multi_epsilons(
+                    epsilons,
+                    reached_phase_this_episode,
+                    agent.eps_decay,
+                )
+            else:
+                # Decay once per episode every epsilon whose DFA policy was
+                # used for at least one action, independently of the others.
+                epsilons = _decay_visited_epsilons(
+                    epsilons,
+                    acted_state_indices,
+                    agent.eps_decay,
+                )
 
             # Save the metrics collected for this episode.
             episode_learning_reward = episode_task_reward + episode_shaping_reward
             task_reward_history.append(episode_task_reward)
             shaping_reward_history.append(episode_shaping_reward)
             learning_reward_history.append(episode_learning_reward)
-            epsilon_history.append(next_epsilon)
             episode_length_history.append(episode_steps)
             success_history.append(int(succeeded))
             initial_acceptance_history.append(int(episode_steps == 0 and succeeded))
@@ -497,6 +619,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
             # Record replay-buffer composition, state visits, and entries from other states.
             for index in range(num_states):
+                epsilon_histories[index].append(epsilons[index])
                 buffer_histories[index].append(agent.memory.q_fraction_onehot(index, num_states))
                 state_visit_histories[index].append(episode_state_visits[index])
                 state_entry_histories[index].append(episode_state_entries[index])
@@ -537,15 +660,25 @@ def main(args):
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
     # Keep every artifact isolated under results/<experiment-name>/.
-    experiment_dir = os.path.join(SCRIPT_DIR, "results", args.experiment_name)
+    experiment_dir = os.path.join(FRAMEWORK_DIR, "results", args.experiment_name)
     if args.post_process and not os.path.isdir(experiment_dir):
         raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
     data_dir = experiment_dir
     image_dir = os.path.join(experiment_dir, "img")
     log_dir = os.path.join(experiment_dir, "logs")
     policy_dir = os.path.join(experiment_dir, "policy")
-    for directory in (data_dir, image_dir, log_dir, policy_dir):
+    best_policy_dir = os.path.join(policy_dir, "best")
+    last_policy_dir = os.path.join(policy_dir, "last")
+    for directory in (
+        data_dir,
+        image_dir,
+        log_dir,
+        best_policy_dir,
+        last_policy_dir,
+    ):
         os.makedirs(directory, exist_ok=True)
+    _organize_policy_files(policy_dir)
+    _organize_legacy_seed_plots(image_dir)
     plot_dir = image_dir
     print(f"Experiment outputs: {experiment_dir}")
 
@@ -587,7 +720,9 @@ def main(args):
         for index, level in enumerate(abstraction_config.levels, start=1)
     )
     print(
-        "=== LTLf TRAINING (single epsilon) ===\n"
+        "=== LTLf MULTI-EPSILON TRAINING ===\n"
+        f"Epsilon strategy: {args.epsilon_strategy}\n"
+        f"Network: {args.network_architecture} {args.network_type}\n"
         f"Formula: {formula}\n"
         f"Waypoints: {waypoints}\n"
         f"Abstractions: {level_summary}\n"
@@ -601,23 +736,26 @@ def main(args):
     )
 
     if not args.post_process:
-        # Create the environment and abstract MDP used to compute the potential.
         automaton.render_graph(directory=image_dir)
-        multilevel_mdp = MultiLevelWaypointMDP(
-            waypoints_dict=waypoints,
-            ltlf_automaton=automaton,
-            abstraction_config=abstraction_config,
-            gamma=gamma,
-            goal_reward=goal_reward,
-        )
-        multilevel_mdp.compute_value_functions()
-        save_multilevel_heatmaps(
-            multilevel_mdp,
-            filename_prefix="single_epsilon_exp",
-            output_root=os.path.join(image_dir, "heatmaps"),
-        )
-        abstract_mdp = multilevel_mdp.primary_mdp
 
+    # Heatmaps depend only on the saved task configuration, not on agent training.
+    multilevel_mdp = MultiLevelWaypointMDP(
+        waypoints_dict=waypoints,
+        ltlf_automaton=automaton,
+        abstraction_config=abstraction_config,
+        gamma=gamma,
+        goal_reward=goal_reward,
+    )
+    multilevel_mdp.compute_value_functions()
+    save_multilevel_heatmaps(
+        multilevel_mdp,
+        filename_prefix="multi_epsilon_exp",
+        output_root=os.path.join(image_dir, "heatmaps"),
+    )
+    abstract_mdp = multilevel_mdp.primary_mdp
+
+    if not args.post_process:
+        # Create LunarLander only when agent training is requested.
         seeds = [args.seed + index for index in range(args.num_seeds)]
         seed_metrics = []
         for run_index, run_seed in enumerate(seeds, start=1):
@@ -635,34 +773,41 @@ def main(args):
                     use_polyak=args.polyak,
                     tau=args.polyak_tau,
                     target_update_freq=args.target_update_freq,
+                    network_architecture=args.network_architecture,
                     network_type=args.network_type,
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/multi_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, epsilon_strategy=args.epsilon_strategy, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
-                save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
+                save_training_data(f"{data_dir}/multi_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
                 env.close()
-        save_training_data(f"{data_dir}/single_epsilon_data.npz", **_aggregate_seed_metrics(seed_metrics, seeds))
+        save_training_data(f"{data_dir}/multi_epsilon_data.npz", **_aggregate_seed_metrics(seed_metrics, seeds))
 
     # Load saved metrics and generate the final diagnostic plots.
     data_path = (
-        _resolve_metrics_path(experiment_dir, "single_epsilon_data.npz")
+        _resolve_metrics_path(experiment_dir, "multi_epsilon_data.npz")
         if args.post_process
-        else Path(data_dir) / "single_epsilon_data.npz"
+        else Path(data_dir) / "multi_epsilon_data.npz"
     )
     print(f"Training data: {data_path}")
     data = np.load(data_path, allow_pickle=False)
-    plot_buffer_fractions(data["buffer_histories"], filename=f"{plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"])
-    plot_shaping_reward_breakdown(data["task_rewards"], data["learning_rewards"], data["epsilon_history"], window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon.png")
     task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]
     learning_reward_runs = data["learning_rewards_runs"] if "learning_rewards_runs" in data else data["learning_rewards"][np.newaxis, :]
     epsilon_runs = data["epsilon_history_runs"] if "epsilon_history_runs" in data else data["epsilon_history"][np.newaxis, ...]
+    buffer_runs = data["buffer_histories_runs"] if "buffer_histories_runs" in data else data["buffer_histories"][np.newaxis, ...]
     seed_values = data["seeds"] if "seeds" in data else np.asarray([args.seed])
-    for run_seed, task_rewards, learning_rewards, epsilon_history in zip(seed_values, task_reward_runs, learning_reward_runs, epsilon_runs):
-        plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon_seed_{int(run_seed)}.png")
-    plot_training_variance(learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_single_epsilon.png")
+    for obsolete_name in ("buffer_fractions_multi_epsilon.png", "reward_breakdown_multi_epsilon.png"):
+        (Path(plot_dir) / obsolete_name).unlink(missing_ok=True)
+    for run_index, (run_seed, task_rewards, learning_rewards, epsilon_history) in enumerate(zip(seed_values, task_reward_runs, learning_reward_runs, epsilon_runs)):
+        seed_plot_dir = os.path.join(plot_dir, f"seed_{int(run_seed)}")
+        os.makedirs(seed_plot_dir, exist_ok=True)
+        plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{seed_plot_dir}/reward_breakdown_multi_epsilon.png", title=f"Reward Breakdown — Seed {int(run_seed)}")
+        if run_index < len(buffer_runs):
+            plot_buffer_fractions(buffer_runs[run_index], filename=f"{seed_plot_dir}/buffer_fractions_multi_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"], title=f"Replay Buffer Composition — Seed {int(run_seed)}")
+    plot_training_variance(learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_multi_epsilon.png")
+    plot_buffer_variance(buffer_runs, window_size=args.plot_window, filename=f"{plot_dir}/buffer_variance_multi_epsilon.png", state_labels=data["automaton_states"])
     print("\nFinished.")
 
 
@@ -672,7 +817,7 @@ def main(args):
 
 if __name__ == "__main__":
     # Expose the main training and post-processing options.
-    parser = argparse.ArgumentParser(description="LTLf DDQN training with one global epsilon.")
+    parser = argparse.ArgumentParser(description="Configurable LTLf DDQN training with one epsilon per DFA state.")
     parser.add_argument("--experiment-name", type=_experiment_name, required=True, help="Output directory name under results/.")
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
@@ -683,7 +828,13 @@ if __name__ == "__main__":
         default="abstraction.json",
         help="Ordered grid hierarchy (level1 defines automaton coordinates).",
     )
-    parser.add_argument("--eps-decay", type=float, default=0.9996)
+    parser.add_argument("--eps-decay", type=float, default=0.999)
+    parser.add_argument(
+        "--epsilon-strategy",
+        choices=sorted(EPSILON_STRATEGIES),
+        default="cascade",
+        help="Use threshold-gated cascade decay or decay each state used during the episode.",
+    )
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)
@@ -701,10 +852,16 @@ if __name__ == "__main__":
         help="Hard target-network update interval used with --no-polyak.",
     )
     parser.add_argument(
+        "--network-architecture",
+        choices=["classic", "multi-head"],
+        default="multi-head",
+        help="Use one classic shared output or one output head per DFA state.",
+    )
+    parser.add_argument(
         "--network-type",
         choices=["standard", "dueling"],
         default="standard",
-        help="Q-network architecture: standard MLP or dueling value/advantage streams.",
+        help="Use standard Q outputs or dueling value/advantage outputs.",
     )
     parser.add_argument(
         "--training-shaping-gamma",

@@ -19,12 +19,25 @@ import gymnasium as gym
 import numpy as np
 import torch
 
-from abstract_mdps import ManualWaypointMDP
+from abstraction import AbstractionConfig
+from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
 from agent import HierarchicalDQNLearner
-from manual_automaton import CyclicWaypointsAutomaton
-from utils import phi_mapping_sequential, plot_buffer_fractions, plot_shaping_reward_breakdown, plot_training_variance, save_sequential_heatmaps
+from automaton_validator import validate_automaton
+from utils import (
+    phi_mapping_sequential,
+    plot_buffer_fractions,
+    plot_buffer_variance,
+    plot_shaping_reward_breakdown,
+    plot_training_variance,
+    save_multilevel_heatmaps,
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRAMEWORK_DIR = (
+    os.path.dirname(SCRIPT_DIR)
+    if os.path.basename(SCRIPT_DIR) == "src"
+    else SCRIPT_DIR
+)
 
 
 # ==============================
@@ -96,6 +109,36 @@ def _resolve_metrics_path(experiment_dir, filename):
     raise FileNotFoundError(f"Training data not found. Checked:\n  - {checked}")
 
 
+def _organize_policy_files(policy_dir):
+    """Move checkpoints from legacy layouts into policy/best and policy/last."""
+    policy_root = Path(policy_dir)
+    destinations = {
+        "best": policy_root / "best",
+        "last": policy_root / "last",
+    }
+    for destination in destinations.values():
+        destination.mkdir(parents=True, exist_ok=True)
+
+    for category, destination in destinations.items():
+        for source in policy_root.glob(f"{category}_policy*"):
+            if source.is_file() and not (destination / source.name).exists():
+                shutil.move(str(source), destination / source.name)
+
+
+def _organize_legacy_seed_plots(image_dir):
+    """Move legacy per-seed plots from img/ into img/seed_<seed>/ folders."""
+    pattern = re.compile(r"^((?:reward_breakdown|buffer_fractions)_.+)_seed_(-?\d+)\.png$")
+    for source in Path(image_dir).glob("*.png"):
+        match = pattern.fullmatch(source.name)
+        if not match:
+            continue
+        destination_dir = Path(image_dir) / f"seed_{match.group(2)}"
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        destination = destination_dir / f"{match.group(1)}.png"
+        if not destination.exists():
+            shutil.move(str(source), destination)
+
+
 def save_training_data(filename, **kwargs):
     """Convert training metrics to arrays and save them in a compressed NPZ file."""
     # Preserve numeric dtypes and rectangular shapes for direct plotting.
@@ -149,24 +192,22 @@ def _abstract_position(observation, abstract_mdp):
 
 
 def _augment_state(observation, q, state_to_index):
-    """Append a one-hot encoding of the current automaton state."""
+    """Append a one-hot encoding of the current DFA state to an observation."""
     one_hot = np.zeros(len(state_to_index), dtype=np.float32)
     one_hot[state_to_index[q]] = 1.0
     return np.concatenate((observation, one_hot)).astype(np.float32)
 
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
-    """Consume the initial observation and return the first active automaton state."""
+    """Consume the initial observation from the DFA pre-trace state and return the first active state."""
     initial_x, initial_y = _abstract_position(observation, abstract_mdp)
     initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
-    return abstract_mdp.automaton.advance(
-        pre_trace_q, initial_truth_assignment
-    ).next_state
+    return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
 
 
 def _format_counter(counter):
-    """Convert an automaton transition counter into a readable string."""
+    """Convert a DFA transition counter into a compact human-readable string."""
     if not counter:
         return "none"
     return ", ".join(f"{source}->{destination}: {count}" for (source, destination), count in sorted(counter.items()))
@@ -185,7 +226,7 @@ def _write_log(message, log_handle=None):
 
 
 def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
-    """Write the configuration and automaton metadata for a training run."""
+    """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
@@ -198,8 +239,11 @@ def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstrac
         "\n=== NEW RUN ===\n"
         f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
+        f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
+        f"inter_level_K={abstract_mdp.inter_level_shaping_scale}\n"
+        f"formula={automaton.formula_str}\n"
         f"waypoints={abstract_mdp.waypoints_dict}\n"
-        f"automaton_states={automaton_states}, initial={automaton.get_initial_q()}, accepting={sorted(automaton.accepting_states)}\n"
+        f"dfa_states={automaton_states}, pre_trace={automaton.get_initial_q()}, accepting={sorted(automaton.accepting_states)}\n"
     )
     log_handle.write(header)
     log_handle.flush()
@@ -211,7 +255,7 @@ def _should_log(episode, episodes, log_interval):
 
 
 def _build_training_log(episode, episodes, log_interval, automaton_states, agent, histories, cumulative_counters):
-    """Build a report containing recent metrics and automaton counters."""
+    """Build a report containing recent metrics and cumulative DFA counters."""
     window = min(log_interval, episode + 1)
     recent_slice = slice(-window, None)
     recent_transitions = Counter()
@@ -235,23 +279,25 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
         f"learning reward             : {np.mean(histories['learning_rewards'][recent_slice]):.3f}\n"
         f"episode length              : {np.mean(histories['episode_lengths'][recent_slice]):.1f}\n"
         f"abstract changes / episode  : {np.mean(histories['abstract_changes'][recent_slice]):.1f}\n"
-        f"completed cycles / episode   : {np.mean(histories['completed_cycles'][recent_slice]):.2f}\n"
-        f"automaton changes / episode  : {np.mean(histories['automaton_transitions'][recent_slice]):.2f}\n"
-        f"automaton changes in window  : {_format_counter(recent_transitions)}\n"
+        f"DFA transitions / episode   : {np.mean(histories['dfa_transitions'][recent_slice]):.2f}\n"
+        f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
         f"epsilon (next episode)       : {histories['epsilons'][-1]:.5f}\n"
         f"replay buffer                : {len(agent.memory)} samples [{buffer_details}]\n"
-        f"state visits in window        : {recent_visits_details}\n"
-        f"state visits cumulative       : {cumulative_visits_details}\n"
-        f"state entries in window       : {recent_entries_details}\n"
-        f"state entries cumulative      : {cumulative_entries_details}\n"
+        f"DFA state visits in window   : {recent_visits_details}\n"
+        f"DFA state visits cumulative  : {cumulative_visits_details}\n"
+        f"DFA state entries in window  : {recent_entries_details}\n"
+        f"DFA state entries cumulative : {cumulative_entries_details}\n"
         f"transitions cumulative       : {_format_counter(cumulative_counters['transitions'])}\n"
+        f"accepted directly from s0    : {cumulative_counters['initial_acceptances']}\n"
         f"Gym endings cumulative       : terminated={cumulative_counters['env_terminated']}, truncated={cumulative_counters['env_truncated']}\n"
     )
 
 
 def _save_named_policy(agent, policy_name):
     """Save the current policy using a stable descriptive filename."""
-    agent.policy_name = policy_name
+    category = "best" if policy_name.startswith("best_policy") else "last"
+    os.makedirs(os.path.join(agent.policy_dir, category), exist_ok=True)
+    agent.policy_name = os.path.join(category, policy_name)
     agent._save_policy()
 
 
@@ -262,18 +308,18 @@ def _monitoring_average(values, episode, log_interval):
 
 
 def _validate_training_setup(automaton, state_to_index, episodes, log_interval):
-    """Validate automaton consistency and numeric training parameters."""
+    """Validate DFA consistency and the numeric parameters required by training."""
     if automaton.get_initial_q() not in state_to_index:
-        raise ValueError("The initial state is missing from automaton.states")
-    if set(state_to_index) != set(automaton.active_states):
-        raise ValueError("Network phases must match the stable automaton states")
+        raise ValueError("The DFA initial state is missing from automaton.states")
+    if not automaton.accepting_states.issubset(state_to_index):
+        raise ValueError("At least one accepting DFA state is missing from automaton.states")
     if episodes <= 0:
         raise ValueError("episodes must be greater than zero")
     if log_interval <= 0:
         raise ValueError("log_interval must be greater than zero")
 
 
-def _build_training_results(histories, buffer_histories, automaton_states, best_mean_reward, best_policy_episode):
+def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode):
     """Select and name the numeric histories returned by the training loop."""
     return {
         "task_rewards": histories["task_rewards"],
@@ -284,10 +330,10 @@ def _build_training_results(histories, buffer_histories, automaton_states, best_
         "state_visit_histories": histories["state_visits"],
         "state_entry_histories": histories["state_entries"],
         "successes": histories["successes"],
-        "completed_cycles": histories["completed_cycles"],
+        "initial_acceptances": initial_acceptance_history,
         "episode_lengths": histories["episode_lengths"],
         "abstract_changes": histories["abstract_changes"],
-        "automaton_transitions": histories["automaton_transitions"],
+        "dfa_transitions": histories["dfa_transitions"],
         "automaton_states": automaton_states,
         "best_mean_learning_reward": best_mean_reward,
         "best_policy_episode": best_policy_episode,
@@ -300,19 +346,19 @@ def _build_training_results(histories, buffer_histories, automaton_states, best_
 
 def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
     """
-    Train the DDQN agent with the manual automaton and one global epsilon.
+    Train the DDQN agent with the LTLf automaton and one global epsilon.
 
     The Gym reward is deliberately discarded. The learning reward is the
     synthetic goal reward plus potential-based shaping. Shaping is evaluated
     only when the complete abstract state (x, y, q) changes.
     """
-    # Build a stable mapping between automaton states and network features.
+    # Build a stable mapping between DFA states and neural-network features.
     automaton = abstract_mdp.automaton
-    automaton_states = list(automaton.active_states)
+    automaton_states = list(automaton.states)
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
     num_states = len(automaton_states)
 
-    # Fail early if the automaton or training parameters are inconsistent.
+    # Fail early if the DFA or training parameters are inconsistent.
     _validate_training_setup(automaton, state_to_index, episodes, log_interval)
 
     # Store episode-level metrics for plots and post-processing.
@@ -322,9 +368,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
     epsilon_history = []
     episode_length_history = []
     success_history = []
-    completed_cycle_history = []
+    initial_acceptance_history = []
     abstract_change_history = []
-    automaton_transition_history = []
+    dfa_transition_history = []
     transition_counter_history = []
     buffer_histories = [[] for _ in automaton_states]
     state_visit_histories = [[] for _ in automaton_states]
@@ -336,9 +382,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
         "epsilons": epsilon_history,
         "episode_lengths": episode_length_history,
         "successes": success_history,
-        "completed_cycles": completed_cycle_history,
         "abstract_changes": abstract_change_history,
-        "automaton_transitions": automaton_transition_history,
+        "dfa_transitions": dfa_transition_history,
         "transition_counters": transition_counter_history,
         "state_visits": state_visit_histories,
         "state_entries": state_entry_histories,
@@ -350,6 +395,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
     cumulative_transitions = Counter()
     cumulative_env_terminated = 0
     cumulative_env_truncated = 0
+    cumulative_initial_acceptances = 0
     best_mean_reward = -np.inf
     best_policy_episode = 0
 
@@ -359,28 +405,29 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     try:
         for episode in range(episodes):
-            # Reset the environment and consume s0 before selecting an action.
+            # Reset the environment and consume s0 before selecting the first action.
             raw_state, _ = env.reset(seed=seed if episode == 0 else None)
             q = _evaluate_initial_automaton_state(raw_state, abstract_mdp)
             if q not in state_to_index:
-                raise RuntimeError(f"Automaton returned unknown initial state {q!r}")
+                raise RuntimeError(f"DFA returned unknown initial state {q!r} after evaluating s0")
             augmented_state = _augment_state(raw_state, q, state_to_index)
 
             # Reset counters local to the current episode.
-            succeeded = False
-            episode_done = False
+            succeeded = automaton.is_goal_reached(q)
+            episode_done = succeeded
             episode_steps = 0
-            episode_task_reward = 0.0
+            episode_task_reward = float(goal_reward) if succeeded else 0.0
             episode_shaping_reward = 0.0
             episode_abstract_changes = 0
-            episode_automaton_transitions = 0
-            episode_completed_cycles = 0
+            episode_dfa_transitions = 0
             episode_state_visits = [0] * num_states
             episode_state_visits[state_to_index[q]] = 1
-            # Count s0 as an entry from the virtual pre-episode state.
+            # Count s0 as an entry from the virtual pre-trace state.
             episode_state_entries = [0] * num_states
             episode_state_entries[state_to_index[q]] = 1
             episode_transitions = Counter()
+            if succeeded:
+                cumulative_initial_acceptances += 1
             cumulative_state_visits[q] += 1
             cumulative_state_entries[q] += 1
 
@@ -397,47 +444,43 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 next_x, next_y = _abstract_position(next_raw_state, abstract_mdp)
                 abstract_state = (x, y, q)
 
-                # Advance the automaton using propositions true on arrival.
+                # Advance the DFA using propositions true in the arrival state.
                 truth_assignment = abstract_mdp._get_truth_assignment(next_x, next_y)
-                automaton_step = automaton.advance(q, truth_assignment)
-                next_q = automaton_step.next_state
+                next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
-                    raise RuntimeError(f"Automaton returned unknown state {next_q!r} from state {q!r}")
+                    raise RuntimeError(f"DFA returned unknown state {next_q!r} from state {q!r}")
 
-                # Count every arrival in an automaton state, including self-loops.
+                # Count every arrival in a DFA state, including self-transitions.
                 episode_state_visits[state_to_index[next_q]] += 1
                 cumulative_state_visits[next_q] += 1
 
-                # Track physical abstraction and automaton changes separately.
+                # Track physical abstraction changes separately from DFA changes.
                 abstract_next_state = (next_x, next_y, next_q)
                 abstract_changed = abstract_state != abstract_next_state
-                automaton_changed = next_q != q
+                dfa_changed = next_q != q
 
                 if abstract_changed:
                     episode_abstract_changes += 1
-                if automaton_changed:
+                if dfa_changed:
                     transition = (q, next_q)
-                    episode_automaton_transitions += 1
+                    episode_dfa_transitions += 1
                     episode_state_entries[state_to_index[next_q]] += 1
                     episode_transitions[transition] += 1
                     cumulative_state_entries[next_q] += 1
                     cumulative_transitions[transition] += 1
 
-                # Reward the final waypoint once per completed cycle.
-                completed_cycle = automaton_step.completed_cycle
-                synthetic_goal_reward = (
-                    float(goal_reward) if completed_cycle else 0.0
-                )
-                if completed_cycle:
+                # Assign the synthetic task reward only on DFA acceptance.
+                synthetic_goal_reward = 0.0
+                if automaton.is_goal_reached(next_q):
+                    synthetic_goal_reward = float(goal_reward)
                     succeeded = True
-                    episode_completed_cycles += 1
 
-                # Acceptance does not end an episode. Only Gymnasium can do so.
+                # Stop data collection on any Gym ending or DFA success.
                 # A truncation (for example Gym's time limit) ends data
                 # collection, but it is not an MDP terminal state: DDQN must
                 # still bootstrap from its final observation.
-                episode_done = env_terminated or env_truncated
-                bootstrap_terminal = env_terminated
+                episode_done = env_terminated or env_truncated or succeeded
+                bootstrap_terminal = env_terminated or succeeded
                 next_augmented_state = _augment_state(next_raw_state, next_q, state_to_index)
 
                 # Evaluate shaping only when the complete abstract state changes.
@@ -485,9 +528,9 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             epsilon_history.append(next_epsilon)
             episode_length_history.append(episode_steps)
             success_history.append(int(succeeded))
-            completed_cycle_history.append(episode_completed_cycles)
+            initial_acceptance_history.append(int(episode_steps == 0 and succeeded))
             abstract_change_history.append(episode_abstract_changes)
-            automaton_transition_history.append(episode_automaton_transitions)
+            dfa_transition_history.append(episode_dfa_transitions)
             transition_counter_history.append(episode_transitions)
 
             # Record replay-buffer composition, state visits, and entries from other states.
@@ -498,7 +541,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
             # Print recent and cumulative diagnostics at the requested interval.
             if _should_log(episode, episodes, log_interval):
-                cumulative_counters = {"state_visits": cumulative_state_visits, "state_entries": cumulative_state_entries, "transitions": cumulative_transitions, "env_terminated": cumulative_env_terminated, "env_truncated": cumulative_env_truncated}
+                cumulative_counters = {"state_visits": cumulative_state_visits, "state_entries": cumulative_state_entries, "transitions": cumulative_transitions, "initial_acceptances": cumulative_initial_acceptances, "env_terminated": cumulative_env_terminated, "env_truncated": cumulative_env_truncated}
                 _write_log(_build_training_log(episode, episodes, log_interval, automaton_states, agent, histories, cumulative_counters), log_handle)
 
                 # Replace the best policy when the monitored mean reward improves.
@@ -520,7 +563,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             log_handle.close()
 
     # Return named histories to avoid ambiguous tuple positions.
-    return _build_training_results(histories, buffer_histories, automaton_states, best_mean_reward, best_policy_episode)
+    return _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode)
 
 
 # ==============================
@@ -532,72 +575,100 @@ def main(args):
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
     # Keep every artifact isolated under results/<experiment-name>/.
-    experiment_dir = os.path.join(SCRIPT_DIR, "results", args.experiment_name)
+    experiment_dir = os.path.join(FRAMEWORK_DIR, "results", args.experiment_name)
     if args.post_process and not os.path.isdir(experiment_dir):
         raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
     data_dir = experiment_dir
     image_dir = os.path.join(experiment_dir, "img")
     log_dir = os.path.join(experiment_dir, "logs")
     policy_dir = os.path.join(experiment_dir, "policy")
-    for directory in (data_dir, image_dir, log_dir, policy_dir):
+    best_policy_dir = os.path.join(policy_dir, "best")
+    last_policy_dir = os.path.join(policy_dir, "last")
+    for directory in (
+        data_dir,
+        image_dir,
+        log_dir,
+        best_policy_dir,
+        last_policy_dir,
+    ):
         os.makedirs(directory, exist_ok=True)
+    _organize_policy_files(policy_dir)
+    _organize_legacy_seed_plots(image_dir)
     plot_dir = image_dir
     print(f"Experiment outputs: {experiment_dir}")
 
-    # Load the manual task and optional training parameters.
+    # Load the temporal task and optional training parameters.
     config_path = _resolve_config_path(
         args.config, "trajectory.json", experiment_dir, args.post_process
     )
-    print(f"Configuration: {config_path}")
+    abstraction_config_path = _resolve_config_path(
+        args.abstraction_config,
+        "abstraction.json",
+        experiment_dir,
+        args.post_process,
+    )
+    print(f"Task configuration: {config_path}")
+    print(f"Abstraction configuration: {abstraction_config_path}")
     with config_path.open(encoding="utf-8") as config_file:
         config = json.load(config_file)
+    abstraction_config = AbstractionConfig.load(abstraction_config_path)
     if not args.post_process:
         _archive_config(config_path, experiment_dir, "trajectory.json")
+        _archive_config(abstraction_config_path, experiment_dir, "abstraction.json")
 
-    waypoints = {
-        name: tuple(coordinates)
-        for name, coordinates in config.get(
-            "waypoints_dict", {"g1": [1, 8], "g2": [8, 8]}
-        ).items()
-    }
+    formula = config.get("formula", "F(goal)")
+    waypoints = {name: tuple(coordinates) for name, coordinates in config.get("waypoints_dict", {"goal": [5, 0]}).items()}
     gamma = float(config.get("gamma", 0.99))
     goal_reward = float(config.get("goal_reward", 10000))
-    grid_w = int(config.get("grid_w", 12))
-    grid_h = int(config.get("grid_h", 12))
+    primary_level = abstraction_config.primary
 
-    # The cycle order is explicit; when omitted, JSON waypoint insertion order
-    # provides a convenient backwards-compatible default.
-    waypoint_cycle = config.get("waypoint_cycle", list(waypoints))
-    automaton = CyclicWaypointsAutomaton(waypoint_cycle)
-    automaton.validate_waypoints(waypoints, width=grid_w, height=grid_h)
+    # Build the DFA once for both training and post-processing.
+    automaton = LTLfAutomaton(formula)
+    validation_report = validate_automaton(
+        automaton,
+        waypoints,
+        width=primary_level.width,
+        height=primary_level.height,
+    )
+    level_summary = ", ".join(
+        f"{index}:{level.name}={level.width}x{level.height}"
+        for index, level in enumerate(abstraction_config.levels, start=1)
+    )
     print(
-        "=== MANUAL AUTOMATON TRAINING (single epsilon) ===\n"
+        "=== LTLf TRAINING (single epsilon) ===\n"
+        f"Formula: {formula}\n"
         f"Waypoints: {waypoints}\n"
-        f"Automaton: states={automaton.states}, stable={automaton.active_states}, "
-        f"initial={automaton.initial_state}, "
+        f"Abstractions: {level_summary}\n"
+        f"Inter-level shaping scale: "
+        f"{abstraction_config.inter_level_shaping_scale}\n"
+        "Automaton coordinates and training potential: level1\n"
+        f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
-        f"Cycle: {automaton.describe_cycle()}\n"
-        "Gym reward is ignored; acceptance does not end an episode."
+        "Gym reward is ignored by design.\n"
+        f"{validation_report.format()}"
     )
 
     if not args.post_process:
-        # Create the environment and abstract MDP used to compute the potential.
         automaton.render_graph(directory=image_dir)
-        abstract_mdp = ManualWaypointMDP(
-            waypoints_dict=waypoints,
-            automaton=automaton,
-            width=grid_w,
-            height=grid_h,
-            gamma=gamma,
-            goal_reward=goal_reward,
-        )
-        abstract_mdp.value_iteration()
-        save_sequential_heatmaps(
-            abstract_mdp,
-            filename_prefix="single_epsilon_exp",
-            output_dir=os.path.join(image_dir, "heatmaps"),
-        )
 
+    # Heatmaps depend only on the saved task configuration, not on agent training.
+    multilevel_mdp = MultiLevelWaypointMDP(
+        waypoints_dict=waypoints,
+        ltlf_automaton=automaton,
+        abstraction_config=abstraction_config,
+        gamma=gamma,
+        goal_reward=goal_reward,
+    )
+    multilevel_mdp.compute_value_functions()
+    save_multilevel_heatmaps(
+        multilevel_mdp,
+        filename_prefix="single_epsilon_exp",
+        output_root=os.path.join(image_dir, "heatmaps"),
+    )
+    abstract_mdp = multilevel_mdp.primary_mdp
+
+    if not args.post_process:
+        # Create LunarLander only when agent training is requested.
         seeds = [args.seed + index for index in range(args.num_seeds)]
         seed_metrics = []
         for run_index, run_seed in enumerate(seeds, start=1):
@@ -611,7 +682,7 @@ def main(args):
                     max_episodes=args.episodes,
                     eps_decay=args.eps_decay,
                     gamma=gamma,
-                    extra_state_dims=len(automaton.active_states),
+                    extra_state_dims=len(automaton.states),
                     use_polyak=args.polyak,
                     tau=args.polyak_tau,
                     target_update_freq=args.target_update_freq,
@@ -624,10 +695,7 @@ def main(args):
                 save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
                 env.close()
-        save_training_data(
-            f"{data_dir}/single_epsilon_data.npz",
-            **_aggregate_seed_metrics(seed_metrics, seeds),
-        )
+        save_training_data(f"{data_dir}/single_epsilon_data.npz", **_aggregate_seed_metrics(seed_metrics, seeds))
 
     # Load saved metrics and generate the final diagnostic plots.
     data_path = (
@@ -637,15 +705,21 @@ def main(args):
     )
     print(f"Training data: {data_path}")
     data = np.load(data_path, allow_pickle=False)
-    plot_buffer_fractions(data["buffer_histories"], filename=f"{plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"])
-    plot_shaping_reward_breakdown(data["task_rewards"], data["learning_rewards"], data["epsilon_history"], window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon.png")
     task_reward_runs = data["task_rewards_runs"] if "task_rewards_runs" in data else data["task_rewards"][np.newaxis, :]
     learning_reward_runs = data["learning_rewards_runs"] if "learning_rewards_runs" in data else data["learning_rewards"][np.newaxis, :]
     epsilon_runs = data["epsilon_history_runs"] if "epsilon_history_runs" in data else data["epsilon_history"][np.newaxis, ...]
+    buffer_runs = data["buffer_histories_runs"] if "buffer_histories_runs" in data else data["buffer_histories"][np.newaxis, ...]
     seed_values = data["seeds"] if "seeds" in data else np.asarray([args.seed])
-    for run_seed, task_rewards, learning_rewards, epsilon_history in zip(seed_values, task_reward_runs, learning_reward_runs, epsilon_runs):
-        plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{plot_dir}/reward_breakdown_single_epsilon_seed_{int(run_seed)}.png")
+    for obsolete_name in ("buffer_fractions_single_epsilon.png", "reward_breakdown_single_epsilon.png"):
+        (Path(plot_dir) / obsolete_name).unlink(missing_ok=True)
+    for run_index, (run_seed, task_rewards, learning_rewards, epsilon_history) in enumerate(zip(seed_values, task_reward_runs, learning_reward_runs, epsilon_runs)):
+        seed_plot_dir = os.path.join(plot_dir, f"seed_{int(run_seed)}")
+        os.makedirs(seed_plot_dir, exist_ok=True)
+        plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{seed_plot_dir}/reward_breakdown_single_epsilon.png", title=f"Reward Breakdown — Seed {int(run_seed)}")
+        if run_index < len(buffer_runs):
+            plot_buffer_fractions(buffer_runs[run_index], filename=f"{seed_plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"], title=f"Replay Buffer Composition — Seed {int(run_seed)}")
     plot_training_variance(learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_single_epsilon.png")
+    plot_buffer_variance(buffer_runs, window_size=args.plot_window, filename=f"{plot_dir}/buffer_variance_single_epsilon.png", state_labels=data["automaton_states"])
     print("\nFinished.")
 
 
@@ -655,12 +729,17 @@ def main(args):
 
 if __name__ == "__main__":
     # Expose the main training and post-processing options.
-    parser = argparse.ArgumentParser(description="Manual-automaton DDQN training with one global epsilon.")
+    parser = argparse.ArgumentParser(description="LTLf DDQN training with one global epsilon.")
     parser.add_argument("--experiment-name", type=_experiment_name, required=True, help="Output directory name under results/.")
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--config", default="trajectory.json")
+    parser.add_argument(
+        "--abstraction-config",
+        default="abstraction.json",
+        help="Ordered grid hierarchy (level1 defines automaton coordinates).",
+    )
     parser.add_argument("--eps-decay", type=float, default=0.9996)
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)

@@ -311,7 +311,62 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
 
-def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None):
+def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/buffer_variance.png", state_labels=None, title="Replay Buffer Composition Across Seeds"):
+    """Plot mean replay-buffer fractions with a ±1 std band across seeds."""
+    runs = np.asarray(buffer_histories_runs, dtype=np.float64)
+    if runs.ndim == 2:
+        runs = runs[np.newaxis, ...]
+    if runs.ndim != 3 or 0 in runs.shape:
+        raise ValueError(
+            "buffer_histories_runs must have shape (num_seeds, num_states, episodes)"
+        )
+    if window_size <= 0:
+        raise ValueError("window_size must be greater than zero")
+
+    smoothed_runs = np.empty_like(runs, dtype=np.float64)
+    for seed_index in range(runs.shape[0]):
+        for state_index in range(runs.shape[1]):
+            smoothed_runs[seed_index, state_index] = (
+                pd.Series(runs[seed_index, state_index])
+                .rolling(window=window_size, min_periods=1, center=False)
+                .mean()
+                .to_numpy()
+            )
+
+    mean_fractions = np.mean(smoothed_runs, axis=0)
+    std_fractions = np.std(smoothed_runs, axis=0)
+    episodes = np.arange(1, runs.shape[2] + 1)
+    colors = plt.cm.tab10(np.linspace(0, 1, runs.shape[1]))
+    output_directory = os.path.dirname(os.fspath(filename))
+    if output_directory:
+        os.makedirs(output_directory, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    for state_index, color in enumerate(colors):
+        state_label = state_labels[state_index] if state_labels is not None else state_index
+        mean = mean_fractions[state_index]
+        std = std_fractions[state_index]
+        ax.plot(episodes, mean, color=color, linewidth=2.5, label=f"DFA state q={state_label}")
+        ax.fill_between(
+            episodes,
+            np.clip(mean - std, 0.0, 1.0),
+            np.clip(mean + std, 0.0, 1.0),
+            color=color,
+            alpha=0.18,
+        )
+
+    ax.set_title(f"{title} ({runs.shape[0]} seeds)", fontsize=15, fontweight="bold")
+    ax.set_xlabel(f"Episode (mean over the last {window_size} episodes)", fontsize=12)
+    ax.set_ylabel("Fraction in Buffer", fontsize=12)
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=runs.shape[1], title="Mean with ±1 std bands", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(filename, dpi=200, bbox_inches="tight")
+    print(f"\n>>> Buffer variance plot saved to: {filename}")
+    plt.close(fig)
+
+def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffer_fractions.png", state_labels=None, title="Replay Buffer Composition"):
     """
     Plots the replay buffer composition for N phases dynamically.
     """
@@ -325,7 +380,7 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
         state_label = state_labels[idx] if state_labels is not None else idx
         ax.plot(x_axis, ma, color=colors[idx], linewidth=2.5, label=f'DFA state q={state_label}')
     
-    ax.set_title(f"Replay Buffer Composition (MA Window = {window_size})", fontsize=14, fontweight='bold')
+    ax.set_title(f"{title} (MA Window = {window_size})", fontsize=14, fontweight='bold')
     ax.set_ylabel("Fraction in Buffer", fontsize=12)
     ax.set_ylim(0, 1.05)
     
@@ -334,7 +389,7 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     fig.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
-def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png"):
+def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, window_size=100, filename="img/shaping_reward_breakdown.png", title="Shaping Agent Reward Analysis"):
     """
     Plots the moving average of rewards (True vs Total) and overlays the N-phase Epsilon decay dynamically.
     """
@@ -351,7 +406,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     ax1.plot(x_axis, true_ma, color='green', linestyle='-', linewidth=2, label='Synthetic Goal Reward')
     ax1.plot(x_axis, total_ma, color='purple', linestyle='-', linewidth=2.5, label='Learning Reward (Goal + Shaping)')
     
-    ax1.set_title(f"Shaping Agent Reward Analysis (MA Window = {window_size})", fontsize=15, fontweight='bold')
+    ax1.set_title(f"{title} (MA Window = {window_size})", fontsize=15, fontweight='bold')
     ax1.set_xlabel("Episode #", fontsize=12)
     ax1.set_ylabel("Episode Reward", fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.5)
