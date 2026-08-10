@@ -79,7 +79,7 @@ class _TinyAutomaton:
 
 
 class TerminalRewardTests(unittest.TestCase):
-    def test_goal_reward_is_emitted_when_the_dfa_enters_acceptance(self):
+    def test_abstract_transitions_never_emit_reward(self):
         mdp = LTLfWaypointMDP(
             waypoints_dict={"goal": (1, 0)},
             ltlf_automaton=_TinyAutomaton(),
@@ -91,12 +91,12 @@ class TerminalRewardTests(unittest.TestCase):
 
         next_state, reward = mdp.get_transitions((0, 0, 0), 3)
         self.assertEqual(next_state, (1, 0, 1))
-        self.assertEqual(reward, 10.0)
+        self.assertEqual(reward, 0.0)
 
         _, repeated_reward = mdp.get_transitions((1, 0, 1), 3)
         self.assertEqual(repeated_reward, 0.0)
 
-    def test_accepting_states_have_zero_continuation_value(self):
+    def test_accepting_states_hold_the_goal_reward(self):
         mdp = LTLfWaypointMDP(
             waypoints_dict={"goal": (1, 0)},
             ltlf_automaton=_TinyAutomaton(),
@@ -107,9 +107,9 @@ class TerminalRewardTests(unittest.TestCase):
         )
         mdp.value_iteration(theta=0.0001, print_policy=False)
 
-        self.assertEqual(mdp.v_star[(0, 0, 1)], 0.0)
-        self.assertEqual(mdp.v_star[(1, 0, 1)], 0.0)
-        self.assertEqual(mdp.v_star[(0, 0, 0)], 10.0)
+        self.assertEqual(mdp.v_star[(0, 0, 1)], 10.0)
+        self.assertEqual(mdp.v_star[(1, 0, 1)], 10.0)
+        self.assertEqual(mdp.v_star[(0, 0, 0)], 9.0)
 
 
 class HierarchyTests(unittest.TestCase):
@@ -168,7 +168,7 @@ class HierarchyTests(unittest.TestCase):
             ),
             expected_shaping,
         )
-        self.assertAlmostEqual(hierarchy.primary_mdp.v_star[(3, 2, 1)], 0.0)
+        self.assertAlmostEqual(hierarchy.primary_mdp.v_star[(3, 2, 1)], 10.0)
 
     def test_upper_value_is_read_online_without_a_precomputed_table(self):
         def build_hierarchy(shaping_scale):
@@ -237,7 +237,7 @@ class HierarchyTests(unittest.TestCase):
             fine.get_upper_level_potential((2, 0, 0)),
             10.0,
         )
-        self.assertEqual(fine.v_star[(2, 0, 0)], 0.0)
+        self.assertEqual(fine.v_star[(2, 0, 0)], 8.0)
 
 
 if __name__ == "__main__":

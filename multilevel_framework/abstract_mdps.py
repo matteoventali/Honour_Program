@@ -184,14 +184,6 @@ class LTLfWaypointMDP:
             truth_assignment[prop_name] = (x == wp_x and y == wp_y)
         return truth_assignment
 
-    def _get_automaton_transition_reward(self, q, next_q):
-        """Reward an accepting DFA transition exactly once."""
-        entered_accepting_state = (
-            not self.automaton.is_goal_reached(q)
-            and self.automaton.is_goal_reached(next_q)
-        )
-        return self.goal_reward if entered_accepting_state else 0.0
-
     def get_transitions(self, state, action):
         x, y, q = state
         
@@ -211,11 +203,10 @@ class LTLfWaypointMDP:
         next_q = self.automaton.get_next_q(q, truth_assignment)
 
         next_state = (next_x, next_y, next_q)
-        # The abstract task reward is emitted exactly when this transition
-        # enters an accepting DFA state. Accepting states themselves are
-        # terminal and therefore have continuation value zero.
-        reward = self._get_automaton_transition_reward(q, next_q)
-        return next_state, reward
+        # Match the single-level LunarLander convention: abstract transitions
+        # never emit reward. The task reward is represented by the boundary
+        # value assigned to accepting product states during value iteration.
+        return next_state, 0.0
 
     def map_state_to_upper_level(self, state):
         """Map a state and apply the upper level's coarser proposition labels.
@@ -241,31 +232,11 @@ class LTLfWaypointMDP:
         return upper_x, upper_y, upper_q
 
     def get_upper_level_potential(self, state):
-        """Read canonical upper V* plus any DFA reward consumed by mapping.
-
-        Canonicalisation is a change of representation, not an environment
-        time step, so its immediate reward is not discounted here.
-        """
+        """Map ``state`` canonically and read the upper-level V*."""
         if self.upper_level_mdp is None:
             return 0.0
-        spatially_mapped_state = map_state(
-            state,
-            source_width=self.width,
-            source_height=self.height,
-            target_width=self.upper_level_mdp.width,
-            target_height=self.upper_level_mdp.height,
-        )
         upper_state = self.map_state_to_upper_level(state)
-        mapping_reward = (
-            self.upper_level_mdp._get_automaton_transition_reward(
-                spatially_mapped_state[2],
-                upper_state[2],
-            )
-        )
-        return (
-            mapping_reward
-            + self.upper_level_mdp.v_star.get(upper_state, 0.0)
-        )
+        return self.upper_level_mdp.v_star.get(upper_state, 0.0)
 
     def get_inter_level_shaping_reward(self, state, next_state):
         """Return K * (gamma * V_upper(map(s')) - V_upper(map(s)))."""
@@ -356,7 +327,7 @@ class LTLfWaypointMDP:
 
         for s in self.states:
             if self.automaton.is_goal_reached(s[2]):
-                self.v_star[s] = 0.0
+                self.v_star[s] = self.goal_reward
 
         iterations = 0
         while True:
