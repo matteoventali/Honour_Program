@@ -1,0 +1,9 @@
+{
+    "formula": "F(wp1 & X(F(wp2 & X(F(g1)))))",
+    "goal_reward": 10000,
+    "waypoints_dict": {
+        "wp1": [1, 8],
+        "wp2": [5, 5],
+        "g1": [8, 8]
+    }
+}
