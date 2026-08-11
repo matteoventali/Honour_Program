@@ -93,10 +93,10 @@ def _archive_config(config_path, experiment_dir, filename):
 
 
 def _resolve_metrics_path(experiment_dir, filename):
-    """Find metrics in the current layout or the legacy nested results folder."""
+    """Find metrics in the results subfolder or the legacy experiment root."""
     candidates = [
-        Path(experiment_dir) / filename,
         Path(experiment_dir) / "results" / filename,
+        Path(experiment_dir) / filename,
     ]
     for candidate in candidates:
         if candidate.is_file():
@@ -522,7 +522,7 @@ def main(args):
     experiment_dir = FRAMEWORK_DIR / "results" / args.experiment_name
     if args.post_process and not experiment_dir.is_dir():
         raise FileNotFoundError(f"Experiment directory not found: {experiment_dir}")
-    data_dir = experiment_dir
+    data_dir = experiment_dir / "results"
     image_dir = experiment_dir / "img"
     log_dir = experiment_dir / "logs"
     policy_dir = experiment_dir / "policy"
