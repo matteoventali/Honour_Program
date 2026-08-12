@@ -23,12 +23,18 @@ METRIC_LABELS = {
     "task_rewards": "Task reward",
     "shaping_rewards": "Shaping reward",
     "successes": "Success rate",
+    "completed_cycles": "Completed cycles per episode",
     "episode_lengths": "Episode length",
     "abstract_changes": "Abstract-state changes",
     "dfa_transitions": "DFA transitions",
 }
 DEFAULT_METRIC = "learning_rewards"
-METRICS_WITH_EPSILON = {"learning_rewards", "task_rewards", "successes"}
+METRICS_WITH_EPSILON = {
+    "learning_rewards",
+    "task_rewards",
+    "successes",
+    "completed_cycles",
+}
 SEED_FILE_RE = re.compile(r"_seed_-?\d+\.npz$")
 EPSILON_COLOR = "#E6AB02"
 EXPERIMENT_COLORS = (

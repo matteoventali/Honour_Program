@@ -1,0 +1,1572 @@
+
+=== NEW RUN ===
+episodes=8000, shaping=True, K=1.0, goal_reward=10000.0, gamma=0.99
+waypoints={'g1': (5, 9), 'g2': (3, 5), 'g3': (7, 5)}
+automaton_states=['q1', 'q2', 'q3'], initial=q1, accepting=['q4']
+
+[Episode 1/8000 | last 1]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -5462.254
+learning reward             : -5462.254
+episode length              : 150.0
+abstract changes / episode  : 13.0
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.00
+automaton changes in window  : none
+epsilon (next episode)       : 0.99960
+replay buffer                : 150 samples [q1: 100.0%, q2: 0.0%, q3: 0.0%]
+state visits in window        : q1: 151, q2: 0, q3: 0
+state visits cumulative       : q1: 151, q2: 0, q3: 0
+state entries in window       : q1: 1, q2: 0, q3: 0
+state entries cumulative      : q1: 1, q2: 0, q3: 0
+transitions cumulative       : none
+Gym endings cumulative       : terminated=1, truncated=0
+Best policy updated at episode 1: mean learning reward=-5462.254
+
+[Episode 100/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3136.214
+learning reward             : -3136.214
+episode length              : 94.2
+abstract changes / episode  : 13.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.38
+automaton changes in window  : q1->q2: 32, q2->q3: 6
+epsilon (next episode)       : 0.96078
+replay buffer                : 9416 samples [q1: 80.1%, q2: 17.7%, q3: 2.2%]
+state visits in window        : q1: 7608, q2: 1693, q3: 215
+state visits cumulative       : q1: 7608, q2: 1693, q3: 215
+state entries in window       : q1: 100, q2: 32, q3: 6
+state entries cumulative      : q1: 100, q2: 32, q3: 6
+transitions cumulative       : q1->q2: 32, q2->q3: 6
+Gym endings cumulative       : terminated=100, truncated=0
+Best policy updated at episode 100: mean learning reward=-3136.214
+
+[Episode 200/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2813.174
+learning reward             : -2813.174
+episode length              : 141.3
+abstract changes / episode  : 13.3
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.43
+automaton changes in window  : q1->q2: 36, q2->q3: 7
+epsilon (next episode)       : 0.92310
+replay buffer                : 23544 samples [q1: 61.7%, q2: 36.6%, q3: 1.7%]
+state visits in window        : q1: 7050, q2: 6979, q3: 199
+state visits cumulative       : q1: 14658, q2: 8672, q3: 414
+state entries in window       : q1: 100, q2: 36, q3: 7
+state entries cumulative      : q1: 200, q2: 68, q3: 13
+transitions cumulative       : q1->q2: 68, q2->q3: 13
+Gym endings cumulative       : terminated=199, truncated=1
+Best policy updated at episode 200: mean learning reward=-2813.174
+
+[Episode 300/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3328.738
+learning reward             : -3328.738
+episode length              : 97.4
+abstract changes / episode  : 12.9
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.33
+automaton changes in window  : q1->q2: 30, q2->q3: 3
+epsilon (next episode)       : 0.88690
+replay buffer                : 33285 samples [q1: 67.2%, q2: 31.3%, q3: 1.5%]
+state visits in window        : q1: 7924, q2: 1828, q3: 89
+state visits cumulative       : q1: 22582, q2: 10500, q3: 503
+state entries in window       : q1: 100, q2: 30, q3: 3
+state entries cumulative      : q1: 300, q2: 98, q3: 16
+transitions cumulative       : q1->q2: 98, q2->q3: 16
+Gym endings cumulative       : terminated=299, truncated=1
+
+[Episode 400/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3068.221
+learning reward             : -3068.221
+episode length              : 99.3
+abstract changes / episode  : 13.0
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.37
+automaton changes in window  : q1->q2: 33, q2->q3: 4
+epsilon (next episode)       : 0.85212
+replay buffer                : 43216 samples [q1: 69.9%, q2: 28.7%, q3: 1.4%]
+state visits in window        : q1: 7892, q2: 2012, q3: 127
+state visits cumulative       : q1: 30474, q2: 12512, q3: 630
+state entries in window       : q1: 100, q2: 33, q3: 4
+state entries cumulative      : q1: 400, q2: 131, q3: 20
+transitions cumulative       : q1->q2: 131, q2->q3: 20
+Gym endings cumulative       : terminated=399, truncated=1
+
+[Episode 500/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3331.235
+learning reward             : -3331.235
+episode length              : 103.6
+abstract changes / episode  : 12.9
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.35
+automaton changes in window  : q1->q2: 31, q2->q3: 4
+epsilon (next episode)       : 0.81870
+replay buffer                : 53576 samples [q1: 72.1%, q2: 26.6%, q3: 1.3%]
+state visits in window        : q1: 8484, q2: 1874, q3: 102
+state visits cumulative       : q1: 38958, q2: 14386, q3: 732
+state entries in window       : q1: 100, q2: 31, q3: 4
+state entries cumulative      : q1: 500, q2: 162, q3: 24
+transitions cumulative       : q1->q2: 162, q2->q3: 24
+Gym endings cumulative       : terminated=499, truncated=1
+
+[Episode 600/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2934.605
+learning reward             : -2934.605
+episode length              : 99.4
+abstract changes / episode  : 13.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.42
+automaton changes in window  : q1->q2: 35, q2->q3: 7
+epsilon (next episode)       : 0.78659
+replay buffer                : 63512 samples [q1: 72.7%, q2: 25.8%, q3: 1.5%]
+state visits in window        : q1: 7635, q2: 2153, q3: 248
+state visits cumulative       : q1: 46593, q2: 16539, q3: 980
+state entries in window       : q1: 100, q2: 35, q3: 7
+state entries cumulative      : q1: 600, q2: 197, q3: 31
+transitions cumulative       : q1->q2: 197, q2->q3: 31
+Gym endings cumulative       : terminated=599, truncated=1
+
+[Episode 700/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3513.397
+learning reward             : -3513.397
+episode length              : 104.6
+abstract changes / episode  : 12.8
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.31
+automaton changes in window  : q1->q2: 27, q2->q3: 4
+epsilon (next episode)       : 0.75574
+replay buffer                : 73971 samples [q1: 74.1%, q2: 24.4%, q3: 1.5%]
+state visits in window        : q1: 8729, q2: 1699, q3: 131
+state visits cumulative       : q1: 55322, q2: 18238, q3: 1111
+state entries in window       : q1: 100, q2: 27, q3: 4
+state entries cumulative      : q1: 700, q2: 224, q3: 35
+transitions cumulative       : q1->q2: 224, q2->q3: 35
+Gym endings cumulative       : terminated=699, truncated=1
+
+[Episode 800/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3131.780
+learning reward             : -3131.780
+episode length              : 107.8
+abstract changes / episode  : 13.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.39
+automaton changes in window  : q1->q2: 32, q2->q3: 7
+epsilon (next episode)       : 0.72610
+replay buffer                : 84754 samples [q1: 74.7%, q2: 23.7%, q3: 1.5%]
+state visits in window        : q1: 8569, q2: 2080, q3: 234
+state visits cumulative       : q1: 63891, q2: 20318, q3: 1345
+state entries in window       : q1: 100, q2: 32, q3: 7
+state entries cumulative      : q1: 800, q2: 256, q3: 42
+transitions cumulative       : q1->q2: 256, q2->q3: 42
+Gym endings cumulative       : terminated=799, truncated=1
+
+[Episode 900/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3377.531
+learning reward             : -3377.531
+episode length              : 124.3
+abstract changes / episode  : 13.4
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.32
+automaton changes in window  : q1->q2: 30, q2->q3: 2
+epsilon (next episode)       : 0.69763
+replay buffer                : 97186 samples [q1: 75.6%, q2: 23.0%, q3: 1.4%]
+state visits in window        : q1: 10204, q2: 2251, q3: 77
+state visits cumulative       : q1: 74095, q2: 22569, q3: 1422
+state entries in window       : q1: 100, q2: 30, q3: 2
+state entries cumulative      : q1: 900, q2: 286, q3: 44
+transitions cumulative       : q1->q2: 286, q2->q3: 44
+Gym endings cumulative       : terminated=899, truncated=1
+
+[Episode 1000/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3295.921
+learning reward             : -3295.921
+episode length              : 116.8
+abstract changes / episode  : 13.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.34
+automaton changes in window  : q1->q2: 29, q2->q3: 5
+epsilon (next episode)       : 0.67027
+replay buffer                : 108868 samples [q1: 76.2%, q2: 22.4%, q3: 1.4%]
+state visits in window        : q1: 9501, q2: 2109, q3: 172
+state visits cumulative       : q1: 83596, q2: 24678, q3: 1594
+state entries in window       : q1: 100, q2: 29, q3: 5
+state entries cumulative      : q1: 1000, q2: 315, q3: 49
+transitions cumulative       : q1->q2: 315, q2->q3: 49
+Gym endings cumulative       : terminated=999, truncated=1
+
+[Episode 1100/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3148.670
+learning reward             : -3148.670
+episode length              : 124.7
+abstract changes / episode  : 13.4
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.38
+automaton changes in window  : q1->q2: 31, q2->q3: 7
+epsilon (next episode)       : 0.64398
+replay buffer                : 121334 samples [q1: 76.5%, q2: 22.0%, q3: 1.5%]
+state visits in window        : q1: 9975, q2: 2299, q3: 292
+state visits cumulative       : q1: 93571, q2: 26977, q3: 1886
+state entries in window       : q1: 100, q2: 31, q3: 7
+state entries cumulative      : q1: 1100, q2: 346, q3: 56
+transitions cumulative       : q1->q2: 346, q2->q3: 56
+Gym endings cumulative       : terminated=1099, truncated=1
+
+[Episode 1200/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2573.649
+learning reward             : -2573.649
+episode length              : 182.1
+abstract changes / episode  : 13.8
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.51
+automaton changes in window  : q1->q2: 38, q2->q3: 13
+epsilon (next episode)       : 0.61872
+replay buffer                : 139540 samples [q1: 73.6%, q2: 21.2%, q3: 5.2%]
+state visits in window        : q1: 9901, q2: 2965, q3: 5440
+state visits cumulative       : q1: 103472, q2: 29942, q3: 7326
+state entries in window       : q1: 100, q2: 38, q3: 13
+state entries cumulative      : q1: 1200, q2: 384, q3: 69
+transitions cumulative       : q1->q2: 384, q2->q3: 69
+Gym endings cumulative       : terminated=1198, truncated=2
+Best policy updated at episode 1200: mean learning reward=-2573.649
+
+[Episode 1300/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -3097.016
+learning reward             : -3097.016
+episode length              : 138.1
+abstract changes / episode  : 13.8
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.37
+automaton changes in window  : q1->q2: 30, q2->q3: 7
+epsilon (next episode)       : 0.59446
+replay buffer                : 153346 samples [q1: 74.3%, q2: 20.8%, q3: 4.9%]
+state visits in window        : q1: 11327, q2: 2268, q3: 311
+state visits cumulative       : q1: 114799, q2: 32210, q3: 7637
+state entries in window       : q1: 100, q2: 30, q3: 7
+state entries cumulative      : q1: 1300, q2: 414, q3: 76
+transitions cumulative       : q1->q2: 414, q2->q3: 76
+Gym endings cumulative       : terminated=1298, truncated=2
+
+[Episode 1400/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2364.111
+learning reward             : -2364.111
+episode length              : 137.8
+abstract changes / episode  : 14.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.50
+automaton changes in window  : q1->q2: 41, q2->q3: 9
+epsilon (next episode)       : 0.57115
+replay buffer                : 167128 samples [q1: 74.1%, q2: 21.2%, q3: 4.7%]
+state visits in window        : q1: 9957, q2: 3569, q3: 356
+state visits cumulative       : q1: 124756, q2: 35779, q3: 7993
+state entries in window       : q1: 100, q2: 41, q3: 9
+state entries cumulative      : q1: 1400, q2: 455, q3: 85
+transitions cumulative       : q1->q2: 455, q2->q3: 85
+Gym endings cumulative       : terminated=1398, truncated=2
+Best policy updated at episode 1400: mean learning reward=-2364.111
+
+[Episode 1500/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2195.631
+learning reward             : -2195.631
+episode length              : 167.2
+abstract changes / episode  : 14.4
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.52
+automaton changes in window  : q1->q2: 43, q2->q3: 9
+epsilon (next episode)       : 0.54875
+replay buffer                : 183845 samples [q1: 73.0%, q2: 22.5%, q3: 4.5%]
+state visits in window        : q1: 10467, q2: 5948, q3: 402
+state visits cumulative       : q1: 135223, q2: 41727, q3: 8395
+state entries in window       : q1: 100, q2: 43, q3: 9
+state entries cumulative      : q1: 1500, q2: 498, q3: 94
+transitions cumulative       : q1->q2: 498, q2->q3: 94
+Gym endings cumulative       : terminated=1498, truncated=2
+Best policy updated at episode 1500: mean learning reward=-2195.631
+
+[Episode 1600/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2505.738
+learning reward             : -2505.738
+episode length              : 151.6
+abstract changes / episode  : 14.8
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.47
+automaton changes in window  : q1->q2: 37, q2->q3: 10
+epsilon (next episode)       : 0.52722
+replay buffer                : 199009 samples [q1: 72.9%, q2: 22.7%, q3: 4.4%]
+state visits in window        : q1: 11019, q2: 3853, q3: 392
+state visits cumulative       : q1: 146242, q2: 45580, q3: 8787
+state entries in window       : q1: 100, q2: 37, q3: 10
+state entries cumulative      : q1: 1600, q2: 535, q3: 104
+transitions cumulative       : q1->q2: 535, q2->q3: 104
+Gym endings cumulative       : terminated=1598, truncated=2
+
+[Episode 1700/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2332.338
+learning reward             : -2332.338
+episode length              : 152.5
+abstract changes / episode  : 14.5
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.50
+automaton changes in window  : q1->q2: 39, q2->q3: 11
+epsilon (next episode)       : 0.50655
+replay buffer                : 214258 samples [q1: 72.9%, q2: 22.8%, q3: 4.2%]
+state visits in window        : q1: 11134, q2: 3788, q3: 427
+state visits cumulative       : q1: 157376, q2: 49368, q3: 9214
+state entries in window       : q1: 100, q2: 39, q3: 11
+state entries cumulative      : q1: 1700, q2: 574, q3: 115
+transitions cumulative       : q1->q2: 574, q2->q3: 115
+Gym endings cumulative       : terminated=1698, truncated=2
+
+[Episode 1800/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2138.014
+learning reward             : -2138.014
+episode length              : 187.6
+abstract changes / episode  : 15.8
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.53
+automaton changes in window  : q1->q2: 43, q2->q3: 10
+epsilon (next episode)       : 0.48668
+replay buffer                : 233015 samples [q1: 72.9%, q2: 23.0%, q3: 4.1%]
+state visits in window        : q1: 13605, q2: 4723, q3: 529
+state visits cumulative       : q1: 170981, q2: 54091, q3: 9743
+state entries in window       : q1: 100, q2: 43, q3: 10
+state entries cumulative      : q1: 1800, q2: 617, q3: 125
+transitions cumulative       : q1->q2: 617, q2->q3: 125
+Gym endings cumulative       : terminated=1798, truncated=2
+Best policy updated at episode 1800: mean learning reward=-2138.014
+
+[Episode 1900/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -1646.614
+learning reward             : -1646.614
+episode length              : 185.4
+abstract changes / episode  : 15.6
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.67
+automaton changes in window  : q1->q2: 47, q2->q3: 20
+epsilon (next episode)       : 0.46760
+replay buffer                : 251559 samples [q1: 72.5%, q2: 23.2%, q3: 4.2%]
+state visits in window        : q1: 12736, q2: 4849, q3: 1059
+state visits cumulative       : q1: 183717, q2: 58940, q3: 10802
+state entries in window       : q1: 100, q2: 47, q3: 20
+state entries cumulative      : q1: 1900, q2: 664, q3: 145
+transitions cumulative       : q1->q2: 664, q2->q3: 145
+Gym endings cumulative       : terminated=1898, truncated=2
+Best policy updated at episode 1900: mean learning reward=-1646.614
+
+[Episode 2000/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -2079.416
+learning reward             : -2079.416
+episode length              : 199.1
+abstract changes / episode  : 16.2
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.56
+automaton changes in window  : q1->q2: 41, q2->q3: 15
+epsilon (next episode)       : 0.44926
+replay buffer                : 271464 samples [q1: 72.7%, q2: 23.1%, q3: 4.2%]
+state visits in window        : q1: 15020, q2: 4221, q3: 764
+state visits cumulative       : q1: 198737, q2: 63161, q3: 11566
+state entries in window       : q1: 100, q2: 41, q3: 15
+state entries cumulative      : q1: 2000, q2: 705, q3: 160
+transitions cumulative       : q1->q2: 705, q2->q3: 160
+Gym endings cumulative       : terminated=1998, truncated=2
+
+[Episode 2100/8000 | last 100]
+success rate                : 0.0% (cumulative 0.0%)
+synthetic task reward       : 0.000
+shaping reward              : -1814.876
+learning reward             : -1814.876
+episode length              : 407.8
+abstract changes / episode  : 23.1
+completed cycles / episode   : 0.00
+automaton changes / episode  : 0.66
+automaton changes in window  : q1->q2: 45, q2->q3: 21
+epsilon (next episode)       : 0.43164
+replay buffer                : 300000 samples [q1: 69.2%, q2: 24.9%, q3: 5.9%]
+state visits in window        : q1: 19993, q2: 14319, q3: 6564
+state visits cumulative       : q1: 218730, q2: 77480, q3: 18130
+state entries in window       : q1: 100, q2: 45, q3: 21
+state entries cumulative      : q1: 2100, q2: 750, q3: 181
+transitions cumulative       : q1->q2: 750, q2->q3: 181
+Gym endings cumulative       : terminated=2097, truncated=3
+
+[Episode 2200/8000 | last 100]
+success rate                : 2.0% (cumulative 0.1%)
+synthetic task reward       : 200.000
+shaping reward              : -1958.168
+learning reward             : -1758.168
+episode length              : 546.0
+abstract changes / episode  : 27.9
+completed cycles / episode   : 0.02
+automaton changes / episode  : 0.63
+automaton changes in window  : q1->q2: 42, q2->q3: 19, q3->q1: 2
+epsilon (next episode)       : 0.41471
+replay buffer                : 300000 samples [q1: 65.6%, q2: 27.2%, q3: 7.2%]
+state visits in window        : q1: 28506, q2: 21641, q3: 4551
+state visits cumulative       : q1: 247236, q2: 99121, q3: 22681
+state entries in window       : q1: 102, q2: 42, q3: 19
+state entries cumulative      : q1: 2202, q2: 792, q3: 200
+transitions cumulative       : q1->q2: 792, q2->q3: 200, q3->q1: 2
+Gym endings cumulative       : terminated=2197, truncated=3
+
+[Episode 2300/8000 | last 100]
+success rate                : 5.0% (cumulative 0.3%)
+synthetic task reward       : 500.000
+shaping reward              : -1666.539
+learning reward             : -1166.539
+episode length              : 599.5
+abstract changes / episode  : 31.2
+completed cycles / episode   : 0.05
+automaton changes / episode  : 0.77
+automaton changes in window  : q1->q2: 50, q2->q3: 22, q3->q1: 5
+epsilon (next episode)       : 0.39845
+replay buffer                : 300000 samples [q1: 58.6%, q2: 30.7%, q3: 10.7%]
+state visits in window        : q1: 27238, q2: 21160, q3: 11652
+state visits cumulative       : q1: 274474, q2: 120281, q3: 34333
+state entries in window       : q1: 105, q2: 50, q3: 22
+state entries cumulative      : q1: 2307, q2: 842, q3: 222
+transitions cumulative       : q1->q2: 842, q2->q3: 222, q3->q1: 7
+Gym endings cumulative       : terminated=2297, truncated=3
+Best policy updated at episode 2300: mean learning reward=-1166.539
+
+[Episode 2400/8000 | last 100]
+success rate                : 9.0% (cumulative 0.7%)
+synthetic task reward       : 1000.000
+shaping reward              : 622.816
+learning reward             : 1622.816
+episode length              : 565.2
+abstract changes / episode  : 33.2
+completed cycles / episode   : 0.10
+automaton changes / episode  : 1.44
+automaton changes in window  : q1->q2: 83, q2->q3: 51, q3->q1: 10
+epsilon (next episode)       : 0.38282
+replay buffer                : 300000 samples [q1: 52.4%, q2: 33.6%, q3: 13.9%]
+state visits in window        : q1: 18178, q2: 22426, q3: 16019
+state visits cumulative       : q1: 292652, q2: 142707, q3: 50352
+state entries in window       : q1: 110, q2: 83, q3: 51
+state entries cumulative      : q1: 2417, q2: 925, q3: 273
+transitions cumulative       : q1->q2: 925, q2->q3: 273, q3->q1: 17
+Gym endings cumulative       : terminated=2395, truncated=5
+Best policy updated at episode 2400: mean learning reward=1622.816
+
+[Episode 2500/8000 | last 100]
+success rate                : 13.0% (cumulative 1.2%)
+synthetic task reward       : 1400.000
+shaping reward              : 628.800
+learning reward             : 2028.800
+episode length              : 426.0
+abstract changes / episode  : 28.8
+completed cycles / episode   : 0.14
+automaton changes / episode  : 1.55
+automaton changes in window  : q1->q2: 84, q2->q3: 57, q3->q1: 14
+epsilon (next episode)       : 0.36781
+replay buffer                : 300000 samples [q1: 49.1%, q2: 33.4%, q3: 17.5%]
+state visits in window        : q1: 20873, q2: 9924, q3: 11903
+state visits cumulative       : q1: 313525, q2: 152631, q3: 62255
+state entries in window       : q1: 114, q2: 84, q3: 57
+state entries cumulative      : q1: 2531, q2: 1009, q3: 330
+transitions cumulative       : q1->q2: 1009, q2->q3: 330, q3->q1: 31
+Gym endings cumulative       : terminated=2495, truncated=5
+Best policy updated at episode 2500: mean learning reward=2028.800
+
+[Episode 2600/8000 | last 100]
+success rate                : 13.0% (cumulative 1.6%)
+synthetic task reward       : 1400.000
+shaping reward              : -13.588
+learning reward             : 1386.412
+episode length              : 493.8
+abstract changes / episode  : 33.7
+completed cycles / episode   : 0.14
+automaton changes / episode  : 1.41
+automaton changes in window  : q1->q2: 80, q2->q3: 47, q3->q1: 14
+epsilon (next episode)       : 0.35338
+replay buffer                : 300000 samples [q1: 45.2%, q2: 32.9%, q3: 21.8%]
+state visits in window        : q1: 23906, q2: 10381, q3: 15196
+state visits cumulative       : q1: 337431, q2: 163012, q3: 77451
+state entries in window       : q1: 114, q2: 80, q3: 47
+state entries cumulative      : q1: 2645, q2: 1089, q3: 377
+transitions cumulative       : q1->q2: 1089, q2->q3: 377, q3->q1: 45
+Gym endings cumulative       : terminated=2595, truncated=5
+
+[Episode 2700/8000 | last 100]
+success rate                : 19.0% (cumulative 2.3%)
+synthetic task reward       : 2100.000
+shaping reward              : 380.570
+learning reward             : 2480.570
+episode length              : 515.6
+abstract changes / episode  : 34.7
+completed cycles / episode   : 0.21
+automaton changes / episode  : 1.72
+automaton changes in window  : q1->q2: 90, q2->q3: 61, q3->q1: 21
+epsilon (next episode)       : 0.33952
+replay buffer                : 300000 samples [q1: 44.1%, q2: 30.8%, q3: 25.1%]
+state visits in window        : q1: 22657, q2: 11391, q3: 17617
+state visits cumulative       : q1: 360088, q2: 174403, q3: 95068
+state entries in window       : q1: 121, q2: 90, q3: 61
+state entries cumulative      : q1: 2766, q2: 1179, q3: 438
+transitions cumulative       : q1->q2: 1179, q2->q3: 438, q3->q1: 66
+Gym endings cumulative       : terminated=2695, truncated=5
+Best policy updated at episode 2700: mean learning reward=2480.570
+
+[Episode 2800/8000 | last 100]
+success rate                : 29.0% (cumulative 3.2%)
+synthetic task reward       : 4300.000
+shaping reward              : 1240.537
+learning reward             : 5540.537
+episode length              : 672.7
+abstract changes / episode  : 46.1
+completed cycles / episode   : 0.43
+automaton changes / episode  : 2.60
+automaton changes in window  : q1->q2: 116, q2->q3: 101, q3->q1: 43
+epsilon (next episode)       : 0.32621
+replay buffer                : 300000 samples [q1: 41.8%, q2: 26.9%, q3: 31.3%]
+state visits in window        : q1: 30374, q2: 12643, q3: 24357
+state visits cumulative       : q1: 390462, q2: 187046, q3: 119425
+state entries in window       : q1: 143, q2: 116, q3: 101
+state entries cumulative      : q1: 2909, q2: 1295, q3: 539
+transitions cumulative       : q1->q2: 1295, q2->q3: 539, q3->q1: 109
+Gym endings cumulative       : terminated=2795, truncated=5
+Best policy updated at episode 2800: mean learning reward=5540.537
+
+[Episode 2900/8000 | last 100]
+success rate                : 39.0% (cumulative 4.4%)
+synthetic task reward       : 7000.000
+shaping reward              : 448.456
+learning reward             : 7448.456
+episode length              : 761.0
+abstract changes / episode  : 54.3
+completed cycles / episode   : 0.70
+automaton changes / episode  : 3.21
+automaton changes in window  : q1->q2: 138, q2->q3: 113, q3->q1: 70
+epsilon (next episode)       : 0.31341
+replay buffer                : 300000 samples [q1: 46.1%, q2: 21.0%, q3: 32.9%]
+state visits in window        : q1: 33985, q2: 16202, q3: 26011
+state visits cumulative       : q1: 424447, q2: 203248, q3: 145436
+state entries in window       : q1: 170, q2: 138, q3: 113
+state entries cumulative      : q1: 3079, q2: 1433, q3: 652
+transitions cumulative       : q1->q2: 1433, q2->q3: 652, q3->q1: 179
+Gym endings cumulative       : terminated=2895, truncated=5
+Best policy updated at episode 2900: mean learning reward=7448.456
+
+[Episode 3000/8000 | last 100]
+success rate                : 34.0% (cumulative 5.4%)
+synthetic task reward       : 4200.000
+shaping reward              : 1439.708
+learning reward             : 5639.708
+episode length              : 608.1
+abstract changes / episode  : 46.3
+completed cycles / episode   : 0.42
+automaton changes / episode  : 2.57
+automaton changes in window  : q1->q2: 121, q2->q3: 94, q3->q1: 42
+epsilon (next episode)       : 0.30112
+replay buffer                : 300000 samples [q1: 45.6%, q2: 20.7%, q3: 33.7%]
+state visits in window        : q1: 28087, q2: 13487, q3: 19332
+state visits cumulative       : q1: 452534, q2: 216735, q3: 164768
+state entries in window       : q1: 142, q2: 121, q3: 94
+state entries cumulative      : q1: 3221, q2: 1554, q3: 746
+transitions cumulative       : q1->q2: 1554, q2->q3: 746, q3->q1: 221
+Gym endings cumulative       : terminated=2995, truncated=5
+
+[Episode 3100/8000 | last 100]
+success rate                : 46.0% (cumulative 6.7%)
+synthetic task reward       : 7600.000
+shaping reward              : 2042.821
+learning reward             : 9642.821
+episode length              : 876.9
+abstract changes / episode  : 65.0
+completed cycles / episode   : 0.76
+automaton changes / episode  : 3.73
+automaton changes in window  : q1->q2: 158, q2->q3: 139, q3->q1: 76
+epsilon (next episode)       : 0.28931
+replay buffer                : 300000 samples [q1: 44.6%, q2: 20.4%, q3: 35.0%]
+state visits in window        : q1: 38306, q2: 17191, q3: 32293
+state visits cumulative       : q1: 490840, q2: 233926, q3: 197061
+state entries in window       : q1: 176, q2: 158, q3: 139
+state entries cumulative      : q1: 3397, q2: 1712, q3: 885
+transitions cumulative       : q1->q2: 1712, q2->q3: 885, q3->q1: 297
+Gym endings cumulative       : terminated=3094, truncated=6
+Best policy updated at episode 3100: mean learning reward=9642.821
+
+[Episode 3200/8000 | last 100]
+success rate                : 51.0% (cumulative 8.1%)
+synthetic task reward       : 9600.000
+shaping reward              : 1178.075
+learning reward             : 10778.075
+episode length              : 907.1
+abstract changes / episode  : 67.4
+completed cycles / episode   : 0.96
+automaton changes / episode  : 4.17
+automaton changes in window  : q1->q2: 170, q2->q3: 151, q3->q1: 96
+epsilon (next episode)       : 0.27797
+replay buffer                : 300000 samples [q1: 43.5%, q2: 21.2%, q3: 35.4%]
+state visits in window        : q1: 36142, q2: 19674, q3: 34995
+state visits cumulative       : q1: 526982, q2: 253600, q3: 232056
+state entries in window       : q1: 196, q2: 170, q3: 151
+state entries cumulative      : q1: 3593, q2: 1882, q3: 1036
+transitions cumulative       : q1->q2: 1882, q2->q3: 1036, q3->q1: 393
+Gym endings cumulative       : terminated=3193, truncated=7
+Best policy updated at episode 3200: mean learning reward=10778.075
+
+[Episode 3300/8000 | last 100]
+success rate                : 53.0% (cumulative 9.5%)
+synthetic task reward       : 10900.000
+shaping reward              : 1946.929
+learning reward             : 12846.929
+episode length              : 1044.5
+abstract changes / episode  : 77.7
+completed cycles / episode   : 1.09
+automaton changes / episode  : 4.71
+automaton changes in window  : q1->q2: 189, q2->q3: 173, q3->q1: 109
+epsilon (next episode)       : 0.26706
+replay buffer                : 300000 samples [q1: 39.7%, q2: 21.5%, q3: 38.8%]
+state visits in window        : q1: 36574, q2: 23443, q3: 44533
+state visits cumulative       : q1: 563556, q2: 277043, q3: 276589
+state entries in window       : q1: 209, q2: 189, q3: 173
+state entries cumulative      : q1: 3802, q2: 2071, q3: 1209
+transitions cumulative       : q1->q2: 2071, q2->q3: 1209, q3->q1: 502
+Gym endings cumulative       : terminated=3293, truncated=7
+Best policy updated at episode 3300: mean learning reward=12846.929
+
+[Episode 3400/8000 | last 100]
+success rate                : 58.0% (cumulative 10.9%)
+synthetic task reward       : 12600.000
+shaping reward              : 1872.363
+learning reward             : 14472.363
+episode length              : 1120.3
+abstract changes / episode  : 82.8
+completed cycles / episode   : 1.26
+automaton changes / episode  : 5.21
+automaton changes in window  : q1->q2: 210, q2->q3: 185, q3->q1: 126
+epsilon (next episode)       : 0.25659
+replay buffer                : 300000 samples [q1: 38.7%, q2: 21.2%, q3: 40.0%]
+state visits in window        : q1: 46994, q2: 21704, q3: 43430
+state visits cumulative       : q1: 610550, q2: 298747, q3: 320019
+state entries in window       : q1: 226, q2: 210, q3: 185
+state entries cumulative      : q1: 4028, q2: 2281, q3: 1394
+transitions cumulative       : q1->q2: 2281, q2->q3: 1394, q3->q1: 628
+Gym endings cumulative       : terminated=3392, truncated=8
+Best policy updated at episode 3400: mean learning reward=14472.363
+
+[Episode 3500/8000 | last 100]
+success rate                : 61.0% (cumulative 12.3%)
+synthetic task reward       : 13700.000
+shaping reward              : 1125.545
+learning reward             : 14825.545
+episode length              : 1220.7
+abstract changes / episode  : 90.2
+completed cycles / episode   : 1.37
+automaton changes / episode  : 5.31
+automaton changes in window  : q1->q2: 213, q2->q3: 181, q3->q1: 137
+epsilon (next episode)       : 0.24653
+replay buffer                : 300000 samples [q1: 36.8%, q2: 21.8%, q3: 41.4%]
+state visits in window        : q1: 41327, q2: 28514, q3: 52333
+state visits cumulative       : q1: 651877, q2: 327261, q3: 372352
+state entries in window       : q1: 237, q2: 213, q3: 181
+state entries cumulative      : q1: 4265, q2: 2494, q3: 1575
+transitions cumulative       : q1->q2: 2494, q2->q3: 1575, q3->q1: 765
+Gym endings cumulative       : terminated=3491, truncated=9
+Best policy updated at episode 3500: mean learning reward=14825.545
+
+[Episode 3600/8000 | last 100]
+success rate                : 64.0% (cumulative 13.8%)
+synthetic task reward       : 20500.000
+shaping reward              : 1579.390
+learning reward             : 22079.390
+episode length              : 1416.3
+abstract changes / episode  : 100.1
+completed cycles / episode   : 2.05
+automaton changes / episode  : 7.47
+automaton changes in window  : q1->q2: 284, q2->q3: 258, q3->q1: 205
+epsilon (next episode)       : 0.23686
+replay buffer                : 300000 samples [q1: 35.5%, q2: 24.1%, q3: 40.4%]
+state visits in window        : q1: 50087, q2: 36070, q3: 55574
+state visits cumulative       : q1: 701964, q2: 363331, q3: 427926
+state entries in window       : q1: 305, q2: 284, q3: 258
+state entries cumulative      : q1: 4570, q2: 2778, q3: 1833
+transitions cumulative       : q1->q2: 2778, q2->q3: 1833, q3->q1: 970
+Gym endings cumulative       : terminated=3586, truncated=14
+Best policy updated at episode 3600: mean learning reward=22079.390
+
+[Episode 3700/8000 | last 100]
+success rate                : 65.0% (cumulative 15.2%)
+synthetic task reward       : 29900.000
+shaping reward              : 1315.501
+learning reward             : 31215.501
+episode length              : 1707.7
+abstract changes / episode  : 122.6
+completed cycles / episode   : 2.99
+automaton changes / episode  : 10.18
+automaton changes in window  : q1->q2: 376, q2->q3: 343, q3->q1: 299
+epsilon (next episode)       : 0.22757
+replay buffer                : 300000 samples [q1: 37.3%, q2: 23.8%, q3: 38.9%]
+state visits in window        : q1: 65761, q2: 38977, q3: 66131
+state visits cumulative       : q1: 767725, q2: 402308, q3: 494057
+state entries in window       : q1: 399, q2: 376, q3: 343
+state entries cumulative      : q1: 4969, q2: 3154, q3: 2176
+transitions cumulative       : q1->q2: 3154, q2->q3: 2176, q3->q1: 1269
+Gym endings cumulative       : terminated=3679, truncated=21
+Best policy updated at episode 3700: mean learning reward=31215.501
+
+[Episode 3800/8000 | last 100]
+success rate                : 74.0% (cumulative 16.7%)
+synthetic task reward       : 32800.000
+shaping reward              : 2271.346
+learning reward             : 35071.346
+episode length              : 1869.1
+abstract changes / episode  : 127.5
+completed cycles / episode   : 3.28
+automaton changes / episode  : 11.23
+automaton changes in window  : q1->q2: 418, q2->q3: 377, q3->q1: 328
+epsilon (next episode)       : 0.21865
+replay buffer                : 300000 samples [q1: 35.7%, q2: 23.6%, q3: 40.7%]
+state visits in window        : q1: 62265, q2: 45349, q3: 79399
+state visits cumulative       : q1: 829990, q2: 447657, q3: 573456
+state entries in window       : q1: 428, q2: 418, q3: 377
+state entries cumulative      : q1: 5397, q2: 3572, q3: 2553
+transitions cumulative       : q1->q2: 3572, q2->q3: 2553, q3->q1: 1597
+Gym endings cumulative       : terminated=3769, truncated=31
+Best policy updated at episode 3800: mean learning reward=35071.346
+
+[Episode 3900/8000 | last 100]
+success rate                : 77.0% (cumulative 18.3%)
+synthetic task reward       : 32700.000
+shaping reward              : 1666.881
+learning reward             : 34366.881
+episode length              : 1882.7
+abstract changes / episode  : 135.4
+completed cycles / episode   : 3.27
+automaton changes / episode  : 11.10
+automaton changes in window  : q1->q2: 412, q2->q3: 371, q3->q1: 327
+epsilon (next episode)       : 0.21007
+replay buffer                : 300000 samples [q1: 33.7%, q2: 26.3%, q3: 40.1%]
+state visits in window        : q1: 65463, q2: 50415, q3: 72488
+state visits cumulative       : q1: 895453, q2: 498072, q3: 645944
+state entries in window       : q1: 427, q2: 412, q3: 371
+state entries cumulative      : q1: 5824, q2: 3984, q3: 2924
+transitions cumulative       : q1->q2: 3984, q2->q3: 2924, q3->q1: 1924
+Gym endings cumulative       : terminated=3863, truncated=37
+
+[Episode 4000/8000 | last 100]
+success rate                : 69.0% (cumulative 19.5%)
+synthetic task reward       : 28800.000
+shaping reward              : 1668.429
+learning reward             : 30468.429
+episode length              : 1808.6
+abstract changes / episode  : 129.5
+completed cycles / episode   : 2.88
+automaton changes / episode  : 9.92
+automaton changes in window  : q1->q2: 373, q2->q3: 331, q3->q1: 288
+epsilon (next episode)       : 0.20183
+replay buffer                : 300000 samples [q1: 34.2%, q2: 27.4%, q3: 38.4%]
+state visits in window        : q1: 63725, q2: 48626, q3: 68611
+state visits cumulative       : q1: 959178, q2: 546698, q3: 714555
+state entries in window       : q1: 388, q2: 373, q3: 331
+state entries cumulative      : q1: 6212, q2: 4357, q3: 3255
+transitions cumulative       : q1->q2: 4357, q2->q3: 3255, q3->q1: 2212
+Gym endings cumulative       : terminated=3953, truncated=47
+
+[Episode 4100/8000 | last 100]
+success rate                : 79.0% (cumulative 21.0%)
+synthetic task reward       : 36400.000
+shaping reward              : 2072.162
+learning reward             : 38472.162
+episode length              : 2094.4
+abstract changes / episode  : 146.8
+completed cycles / episode   : 3.64
+automaton changes / episode  : 12.29
+automaton changes in window  : q1->q2: 448, q2->q3: 417, q3->q1: 364
+epsilon (next episode)       : 0.19392
+replay buffer                : 300000 samples [q1: 35.7%, q2: 25.5%, q3: 38.7%]
+state visits in window        : q1: 75630, q2: 50780, q3: 83130
+state visits cumulative       : q1: 1034808, q2: 597478, q3: 797685
+state entries in window       : q1: 464, q2: 448, q3: 417
+state entries cumulative      : q1: 6676, q2: 4805, q3: 3672
+transitions cumulative       : q1->q2: 4805, q2->q3: 3672, q3->q1: 2576
+Gym endings cumulative       : terminated=4041, truncated=59
+Best policy updated at episode 4100: mean learning reward=38472.162
+
+[Episode 4200/8000 | last 100]
+success rate                : 86.0% (cumulative 22.5%)
+synthetic task reward       : 34200.000
+shaping reward              : 1640.617
+learning reward             : 35840.617
+episode length              : 1920.5
+abstract changes / episode  : 134.9
+completed cycles / episode   : 3.42
+automaton changes / episode  : 11.55
+automaton changes in window  : q1->q2: 428, q2->q3: 385, q3->q1: 342
+epsilon (next episode)       : 0.18631
+replay buffer                : 300000 samples [q1: 34.9%, q2: 26.1%, q3: 38.9%]
+state visits in window        : q1: 68346, q2: 51465, q3: 72343
+state visits cumulative       : q1: 1103154, q2: 648943, q3: 870028
+state entries in window       : q1: 442, q2: 428, q3: 385
+state entries cumulative      : q1: 7118, q2: 5233, q3: 4057
+transitions cumulative       : q1->q2: 5233, q2->q3: 4057, q3->q1: 2918
+Gym endings cumulative       : terminated=4131, truncated=69
+
+[Episode 4300/8000 | last 100]
+success rate                : 84.0% (cumulative 24.0%)
+synthetic task reward       : 34300.000
+shaping reward              : 1985.933
+learning reward             : 36285.933
+episode length              : 1913.0
+abstract changes / episode  : 140.2
+completed cycles / episode   : 3.43
+automaton changes / episode  : 11.62
+automaton changes in window  : q1->q2: 436, q2->q3: 383, q3->q1: 343
+epsilon (next episode)       : 0.17900
+replay buffer                : 300000 samples [q1: 32.4%, q2: 28.9%, q3: 38.8%]
+state visits in window        : q1: 58307, q2: 56948, q3: 76150
+state visits cumulative       : q1: 1161461, q2: 705891, q3: 946178
+state entries in window       : q1: 443, q2: 436, q3: 383
+state entries cumulative      : q1: 7561, q2: 5669, q3: 4440
+transitions cumulative       : q1->q2: 5669, q2->q3: 4440, q3->q1: 3261
+Gym endings cumulative       : terminated=4224, truncated=76
+
+[Episode 4400/8000 | last 100]
+success rate                : 75.0% (cumulative 25.1%)
+synthetic task reward       : 30500.000
+shaping reward              : 1998.898
+learning reward             : 32498.898
+episode length              : 1607.8
+abstract changes / episode  : 120.1
+completed cycles / episode   : 3.05
+automaton changes / episode  : 10.48
+automaton changes in window  : q1->q2: 396, q2->q3: 347, q3->q1: 305
+epsilon (next episode)       : 0.17198
+replay buffer                : 300000 samples [q1: 31.2%, q2: 29.4%, q3: 39.4%]
+state visits in window        : q1: 51476, q2: 44627, q3: 64778
+state visits cumulative       : q1: 1212937, q2: 750518, q3: 1010956
+state entries in window       : q1: 405, q2: 396, q3: 347
+state entries cumulative      : q1: 7966, q2: 6065, q3: 4787
+transitions cumulative       : q1->q2: 6065, q2->q3: 4787, q3->q1: 3566
+Gym endings cumulative       : terminated=4319, truncated=81
+
+[Episode 4500/8000 | last 100]
+success rate                : 73.0% (cumulative 26.2%)
+synthetic task reward       : 30600.000
+shaping reward              : 1822.604
+learning reward             : 32422.604
+episode length              : 1590.2
+abstract changes / episode  : 121.3
+completed cycles / episode   : 3.06
+automaton changes / episode  : 10.49
+automaton changes in window  : q1->q2: 394, q2->q3: 349, q3->q1: 306
+epsilon (next episode)       : 0.16524
+replay buffer                : 300000 samples [q1: 32.2%, q2: 27.3%, q3: 40.5%]
+state visits in window        : q1: 52041, q2: 42581, q3: 64502
+state visits cumulative       : q1: 1264978, q2: 793099, q3: 1075458
+state entries in window       : q1: 406, q2: 394, q3: 349
+state entries cumulative      : q1: 8372, q2: 6459, q3: 5136
+transitions cumulative       : q1->q2: 6459, q2->q3: 5136, q3->q1: 3872
+Gym endings cumulative       : terminated=4416, truncated=84
+
+[Episode 4600/8000 | last 100]
+success rate                : 75.0% (cumulative 27.2%)
+synthetic task reward       : 24800.000
+shaping reward              : 784.106
+learning reward             : 25584.106
+episode length              : 1319.7
+abstract changes / episode  : 103.5
+completed cycles / episode   : 2.48
+automaton changes / episode  : 8.61
+automaton changes in window  : q1->q2: 323, q2->q3: 290, q3->q1: 248
+epsilon (next episode)       : 0.15876
+replay buffer                : 300000 samples [q1: 34.0%, q2: 24.9%, q3: 41.2%]
+state visits in window        : q1: 46881, q2: 29714, q3: 55478
+state visits cumulative       : q1: 1311859, q2: 822813, q3: 1130936
+state entries in window       : q1: 348, q2: 323, q3: 290
+state entries cumulative      : q1: 8720, q2: 6782, q3: 5426
+transitions cumulative       : q1->q2: 6782, q2->q3: 5426, q3->q1: 4120
+Gym endings cumulative       : terminated=4514, truncated=86
+
+[Episode 4700/8000 | last 100]
+success rate                : 77.0% (cumulative 28.3%)
+synthetic task reward       : 40800.000
+shaping reward              : 1044.055
+learning reward             : 41844.055
+episode length              : 1958.8
+abstract changes / episode  : 150.8
+completed cycles / episode   : 4.08
+automaton changes / episode  : 13.34
+automaton changes in window  : q1->q2: 483, q2->q3: 443, q3->q1: 408
+epsilon (next episode)       : 0.15253
+replay buffer                : 300000 samples [q1: 33.9%, q2: 23.6%, q3: 42.5%]
+state visits in window        : q1: 65382, q2: 47244, q3: 83349
+state visits cumulative       : q1: 1377241, q2: 870057, q3: 1214285
+state entries in window       : q1: 508, q2: 483, q3: 443
+state entries cumulative      : q1: 9228, q2: 7265, q3: 5869
+transitions cumulative       : q1->q2: 7265, q2->q3: 5869, q3->q1: 4528
+Gym endings cumulative       : terminated=4602, truncated=98
+Best policy updated at episode 4700: mean learning reward=41844.055
+
+[Episode 4800/8000 | last 100]
+success rate                : 84.0% (cumulative 29.5%)
+synthetic task reward       : 29200.000
+shaping reward              : 1717.859
+learning reward             : 30917.859
+episode length              : 1709.3
+abstract changes / episode  : 122.2
+completed cycles / episode   : 2.92
+automaton changes / episode  : 10.06
+automaton changes in window  : q1->q2: 373, q2->q3: 341, q3->q1: 292
+epsilon (next episode)       : 0.14655
+replay buffer                : 300000 samples [q1: 31.9%, q2: 20.3%, q3: 47.8%]
+state visits in window        : q1: 53059, q2: 31121, q3: 86847
+state visits cumulative       : q1: 1430300, q2: 901178, q3: 1301132
+state entries in window       : q1: 392, q2: 373, q3: 341
+state entries cumulative      : q1: 9620, q2: 7638, q3: 6210
+transitions cumulative       : q1->q2: 7638, q2->q3: 6210, q3->q1: 4820
+Gym endings cumulative       : terminated=4694, truncated=106
+
+[Episode 4900/8000 | last 100]
+success rate                : 85.0% (cumulative 30.6%)
+synthetic task reward       : 26000.000
+shaping reward              : 1417.476
+learning reward             : 27417.476
+episode length              : 1321.2
+abstract changes / episode  : 106.5
+completed cycles / episode   : 2.60
+automaton changes / episode  : 9.02
+automaton changes in window  : q1->q2: 344, q2->q3: 298, q3->q1: 260
+epsilon (next episode)       : 0.14080
+replay buffer                : 300000 samples [q1: 32.2%, q2: 21.6%, q3: 46.2%]
+state visits in window        : q1: 44359, q2: 34251, q3: 53615
+state visits cumulative       : q1: 1474659, q2: 935429, q3: 1354747
+state entries in window       : q1: 360, q2: 344, q3: 298
+state entries cumulative      : q1: 9980, q2: 7982, q3: 6508
+transitions cumulative       : q1->q2: 7982, q2->q3: 6508, q3->q1: 5080
+Gym endings cumulative       : terminated=4792, truncated=108
+
+[Episode 5000/8000 | last 100]
+success rate                : 89.0% (cumulative 31.8%)
+synthetic task reward       : 38500.000
+shaping reward              : 1256.549
+learning reward             : 39756.549
+episode length              : 1663.8
+abstract changes / episode  : 135.3
+completed cycles / episode   : 3.85
+automaton changes / episode  : 12.65
+automaton changes in window  : q1->q2: 466, q2->q3: 414, q3->q1: 385
+epsilon (next episode)       : 0.13528
+replay buffer                : 300000 samples [q1: 35.9%, q2: 25.9%, q3: 38.2%]
+state visits in window        : q1: 62692, q2: 43350, q3: 60434
+state visits cumulative       : q1: 1537351, q2: 978779, q3: 1415181
+state entries in window       : q1: 485, q2: 466, q3: 414
+state entries cumulative      : q1: 10465, q2: 8448, q3: 6922
+transitions cumulative       : q1->q2: 8448, q2->q3: 6922, q3->q1: 5465
+Gym endings cumulative       : terminated=4887, truncated=113
+
+[Episode 5100/8000 | last 100]
+success rate                : 95.0% (cumulative 33.0%)
+synthetic task reward       : 36600.000
+shaping reward              : 869.368
+learning reward             : 37469.368
+episode length              : 1822.5
+abstract changes / episode  : 142.8
+completed cycles / episode   : 3.66
+automaton changes / episode  : 12.00
+automaton changes in window  : q1->q2: 435, q2->q3: 399, q3->q1: 366
+epsilon (next episode)       : 0.12998
+replay buffer                : 300000 samples [q1: 37.1%, q2: 27.3%, q3: 35.5%]
+state visits in window        : q1: 66485, q2: 50094, q3: 65775
+state visits cumulative       : q1: 1603836, q2: 1028873, q3: 1480956
+state entries in window       : q1: 466, q2: 435, q3: 399
+state entries cumulative      : q1: 10931, q2: 8883, q3: 7321
+transitions cumulative       : q1->q2: 8883, q2->q3: 7321, q3->q1: 5831
+Gym endings cumulative       : terminated=4979, truncated=121
+
+[Episode 5200/8000 | last 100]
+success rate                : 93.0% (cumulative 34.2%)
+synthetic task reward       : 35700.000
+shaping reward              : 353.509
+learning reward             : 36053.509
+episode length              : 1795.6
+abstract changes / episode  : 137.0
+completed cycles / episode   : 3.57
+automaton changes / episode  : 11.68
+automaton changes in window  : q1->q2: 421, q2->q3: 390, q3->q1: 357
+epsilon (next episode)       : 0.12488
+replay buffer                : 300000 samples [q1: 39.0%, q2: 24.9%, q3: 36.1%]
+state visits in window        : q1: 71316, q2: 41835, q3: 66513
+state visits cumulative       : q1: 1675152, q2: 1070708, q3: 1547469
+state entries in window       : q1: 457, q2: 421, q3: 390
+state entries cumulative      : q1: 11388, q2: 9304, q3: 7711
+transitions cumulative       : q1->q2: 9304, q2->q3: 7711, q3->q1: 6188
+Gym endings cumulative       : terminated=5074, truncated=126
+
+[Episode 5300/8000 | last 100]
+success rate                : 84.0% (cumulative 35.1%)
+synthetic task reward       : 50100.000
+shaping reward              : 763.508
+learning reward             : 50863.508
+episode length              : 2221.1
+abstract changes / episode  : 163.3
+completed cycles / episode   : 5.01
+automaton changes / episode  : 16.05
+automaton changes in window  : q1->q2: 567, q2->q3: 537, q3->q1: 501
+epsilon (next episode)       : 0.11998
+replay buffer                : 300000 samples [q1: 38.2%, q2: 25.1%, q3: 36.7%]
+state visits in window        : q1: 84022, q2: 56325, q3: 81864
+state visits cumulative       : q1: 1759174, q2: 1127033, q3: 1629333
+state entries in window       : q1: 601, q2: 567, q3: 537
+state entries cumulative      : q1: 11989, q2: 9871, q3: 8248
+transitions cumulative       : q1->q2: 9871, q2->q3: 8248, q3->q1: 6689
+Gym endings cumulative       : terminated=5158, truncated=142
+Best policy updated at episode 5300: mean learning reward=50863.508
+
+[Episode 5400/8000 | last 100]
+success rate                : 89.0% (cumulative 36.1%)
+synthetic task reward       : 38900.000
+shaping reward              : 720.114
+learning reward             : 39620.114
+episode length              : 1693.6
+abstract changes / episode  : 128.2
+completed cycles / episode   : 3.89
+automaton changes / episode  : 12.76
+automaton changes in window  : q1->q2: 464, q2->q3: 423, q3->q1: 389
+epsilon (next episode)       : 0.11528
+replay buffer                : 300000 samples [q1: 36.7%, q2: 28.7%, q3: 34.6%]
+state visits in window        : q1: 59898, q2: 51946, q3: 57617
+state visits cumulative       : q1: 1819072, q2: 1178979, q3: 1686950
+state entries in window       : q1: 489, q2: 464, q3: 423
+state entries cumulative      : q1: 12478, q2: 10335, q3: 8671
+transitions cumulative       : q1->q2: 10335, q2->q3: 8671, q3->q1: 7078
+Gym endings cumulative       : terminated=5252, truncated=148
+
+[Episode 5500/8000 | last 100]
+success rate                : 92.0% (cumulative 37.1%)
+synthetic task reward       : 79300.000
+shaping reward              : 832.637
+learning reward             : 80132.637
+episode length              : 3003.4
+abstract changes / episode  : 223.8
+completed cycles / episode   : 7.93
+automaton changes / episode  : 24.67
+automaton changes in window  : q1->q2: 857, q2->q3: 817, q3->q1: 793
+epsilon (next episode)       : 0.11075
+replay buffer                : 300000 samples [q1: 38.5%, q2: 27.7%, q3: 33.8%]
+state visits in window        : q1: 115649, q2: 83304, q3: 101491
+state visits cumulative       : q1: 1934721, q2: 1262283, q3: 1788441
+state entries in window       : q1: 893, q2: 857, q3: 817
+state entries cumulative      : q1: 13371, q2: 11192, q3: 9488
+transitions cumulative       : q1->q2: 11192, q2->q3: 9488, q3->q1: 7871
+Gym endings cumulative       : terminated=5318, truncated=182
+Best policy updated at episode 5500: mean learning reward=80132.637
+
+[Episode 5600/8000 | last 100]
+success rate                : 85.0% (cumulative 38.0%)
+synthetic task reward       : 52900.000
+shaping reward              : 619.058
+learning reward             : 53519.058
+episode length              : 2214.8
+abstract changes / episode  : 163.5
+completed cycles / episode   : 5.29
+automaton changes / episode  : 16.81
+automaton changes in window  : q1->q2: 588, q2->q3: 564, q3->q1: 529
+epsilon (next episode)       : 0.10641
+replay buffer                : 300000 samples [q1: 35.3%, q2: 26.8%, q3: 37.9%]
+state visits in window        : q1: 76756, q2: 56544, q3: 88275
+state visits cumulative       : q1: 2011477, q2: 1318827, q3: 1876716
+state entries in window       : q1: 629, q2: 588, q3: 564
+state entries cumulative      : q1: 14000, q2: 11780, q3: 10052
+transitions cumulative       : q1->q2: 11780, q2->q3: 10052, q3->q1: 8400
+Gym endings cumulative       : terminated=5401, truncated=199
+
+[Episode 5700/8000 | last 100]
+success rate                : 87.0% (cumulative 38.8%)
+synthetic task reward       : 61900.000
+shaping reward              : 847.133
+learning reward             : 62747.133
+episode length              : 2564.8
+abstract changes / episode  : 191.6
+completed cycles / episode   : 6.19
+automaton changes / episode  : 19.54
+automaton changes in window  : q1->q2: 684, q2->q3: 651, q3->q1: 619
+epsilon (next episode)       : 0.10224
+replay buffer                : 300000 samples [q1: 40.3%, q2: 26.5%, q3: 33.2%]
+state visits in window        : q1: 104062, q2: 68808, q3: 83713
+state visits cumulative       : q1: 2115539, q2: 1387635, q3: 1960429
+state entries in window       : q1: 719, q2: 684, q3: 651
+state entries cumulative      : q1: 14719, q2: 12464, q3: 10703
+transitions cumulative       : q1->q2: 12464, q2->q3: 10703, q3->q1: 9019
+Gym endings cumulative       : terminated=5479, truncated=221
+
+[Episode 5800/8000 | last 100]
+success rate                : 94.0% (cumulative 39.8%)
+synthetic task reward       : 67500.000
+shaping reward              : 1003.293
+learning reward             : 68503.293
+episode length              : 2669.6
+abstract changes / episode  : 201.3
+completed cycles / episode   : 6.75
+automaton changes / episode  : 21.33
+automaton changes in window  : q1->q2: 742, q2->q3: 716, q3->q1: 675
+epsilon (next episode)       : 0.09823
+replay buffer                : 300000 samples [q1: 38.0%, q2: 25.7%, q3: 36.3%]
+state visits in window        : q1: 100406, q2: 68035, q3: 98616
+state visits cumulative       : q1: 2215945, q2: 1455670, q3: 2059045
+state entries in window       : q1: 775, q2: 742, q3: 716
+state entries cumulative      : q1: 15494, q2: 13206, q3: 11419
+transitions cumulative       : q1->q2: 13206, q2->q3: 11419, q3->q1: 9694
+Gym endings cumulative       : terminated=5553, truncated=247
+
+[Episode 5900/8000 | last 100]
+success rate                : 95.0% (cumulative 40.7%)
+synthetic task reward       : 57500.000
+shaping reward              : 95.905
+learning reward             : 57595.905
+episode length              : 2385.1
+abstract changes / episode  : 173.9
+completed cycles / episode   : 5.75
+automaton changes / episode  : 18.05
+automaton changes in window  : q1->q2: 636, q2->q3: 594, q3->q1: 575
+epsilon (next episode)       : 0.09438
+replay buffer                : 300000 samples [q1: 41.6%, q2: 27.5%, q3: 31.0%]
+state visits in window        : q1: 100393, q2: 67796, q3: 70424
+state visits cumulative       : q1: 2316338, q2: 1523466, q3: 2129469
+state entries in window       : q1: 675, q2: 636, q3: 594
+state entries cumulative      : q1: 16169, q2: 13842, q3: 12013
+transitions cumulative       : q1->q2: 13842, q2->q3: 12013, q3->q1: 10269
+Gym endings cumulative       : terminated=5637, truncated=263
+
+[Episode 6000/8000 | last 100]
+success rate                : 94.0% (cumulative 41.6%)
+synthetic task reward       : 90100.000
+shaping reward              : 1101.090
+learning reward             : 91201.090
+episode length              : 3403.4
+abstract changes / episode  : 234.7
+completed cycles / episode   : 9.01
+automaton changes / episode  : 27.93
+automaton changes in window  : q1->q2: 965, q2->q3: 927, q3->q1: 901
+epsilon (next episode)       : 0.09067
+replay buffer                : 300000 samples [q1: 39.4%, q2: 30.9%, q3: 29.6%]
+state visits in window        : q1: 135194, q2: 106296, q3: 98951
+state visits cumulative       : q1: 2451532, q2: 1629762, q3: 2228420
+state entries in window       : q1: 1001, q2: 965, q3: 927
+state entries cumulative      : q1: 17170, q2: 14807, q3: 12940
+transitions cumulative       : q1->q2: 14807, q2->q3: 12940, q3->q1: 11170
+Gym endings cumulative       : terminated=5702, truncated=298
+Best policy updated at episode 6000: mean learning reward=91201.090
+
+[Episode 6100/8000 | last 100]
+success rate                : 85.0% (cumulative 42.3%)
+synthetic task reward       : 49500.000
+shaping reward              : -592.779
+learning reward             : 48907.221
+episode length              : 2091.7
+abstract changes / episode  : 147.8
+completed cycles / episode   : 4.95
+automaton changes / episode  : 15.60
+automaton changes in window  : q1->q2: 549, q2->q3: 516, q3->q1: 495
+epsilon (next episode)       : 0.08712
+replay buffer                : 300000 samples [q1: 41.1%, q2: 27.4%, q3: 31.5%]
+state visits in window        : q1: 88589, q2: 56835, q3: 63841
+state visits cumulative       : q1: 2540121, q2: 1686597, q3: 2292261
+state entries in window       : q1: 595, q2: 549, q3: 516
+state entries cumulative      : q1: 17765, q2: 15356, q3: 13456
+transitions cumulative       : q1->q2: 15356, q2->q3: 13456, q3->q1: 11665
+Gym endings cumulative       : terminated=5787, truncated=313
+
+[Episode 6200/8000 | last 100]
+success rate                : 87.0% (cumulative 43.0%)
+synthetic task reward       : 64800.000
+shaping reward              : -75.048
+learning reward             : 64724.952
+episode length              : 2535.3
+abstract changes / episode  : 187.0
+completed cycles / episode   : 6.48
+automaton changes / episode  : 20.16
+automaton changes in window  : q1->q2: 698, q2->q3: 670, q3->q1: 648
+epsilon (next episode)       : 0.08370
+replay buffer                : 300000 samples [q1: 39.5%, q2: 27.4%, q3: 33.1%]
+state visits in window        : q1: 100017, q2: 70100, q3: 83510
+state visits cumulative       : q1: 2640138, q2: 1756697, q3: 2375771
+state entries in window       : q1: 748, q2: 698, q3: 670
+state entries cumulative      : q1: 18513, q2: 16054, q3: 14126
+transitions cumulative       : q1->q2: 16054, q2->q3: 14126, q3->q1: 12313
+Gym endings cumulative       : terminated=5863, truncated=337
+
+[Episode 6300/8000 | last 100]
+success rate                : 88.0% (cumulative 43.7%)
+synthetic task reward       : 42900.000
+shaping reward              : 457.086
+learning reward             : 43357.086
+episode length              : 2142.1
+abstract changes / episode  : 142.5
+completed cycles / episode   : 4.29
+automaton changes / episode  : 13.81
+automaton changes in window  : q1->q2: 486, q2->q3: 466, q3->q1: 429
+epsilon (next episode)       : 0.08042
+replay buffer                : 300000 samples [q1: 38.9%, q2: 25.2%, q3: 35.8%]
+state visits in window        : q1: 82098, q2: 50766, q3: 81449
+state visits cumulative       : q1: 2722236, q2: 1807463, q3: 2457220
+state entries in window       : q1: 529, q2: 486, q3: 466
+state entries cumulative      : q1: 19042, q2: 16540, q3: 14592
+transitions cumulative       : q1->q2: 16540, q2->q3: 14592, q3->q1: 12742
+Gym endings cumulative       : terminated=5948, truncated=352
+
+[Episode 6400/8000 | last 100]
+success rate                : 85.0% (cumulative 44.4%)
+synthetic task reward       : 48000.000
+shaping reward              : 1028.208
+learning reward             : 49028.208
+episode length              : 2258.9
+abstract changes / episode  : 143.0
+completed cycles / episode   : 4.80
+automaton changes / episode  : 15.44
+automaton changes in window  : q1->q2: 548, q2->q3: 516, q3->q1: 480
+epsilon (next episode)       : 0.07727
+replay buffer                : 300000 samples [q1: 37.8%, q2: 27.6%, q3: 34.6%]
+state visits in window        : q1: 86154, q2: 65798, q3: 74041
+state visits cumulative       : q1: 2808390, q2: 1873261, q3: 2531261
+state entries in window       : q1: 580, q2: 548, q3: 516
+state entries cumulative      : q1: 19622, q2: 17088, q3: 15108
+transitions cumulative       : q1->q2: 17088, q2->q3: 15108, q3->q1: 13222
+Gym endings cumulative       : terminated=6024, truncated=376
+
+[Episode 6500/8000 | last 100]
+success rate                : 94.0% (cumulative 45.2%)
+synthetic task reward       : 82600.000
+shaping reward              : 1751.919
+learning reward             : 84351.919
+episode length              : 3146.4
+abstract changes / episode  : 216.9
+completed cycles / episode   : 8.26
+automaton changes / episode  : 25.89
+automaton changes in window  : q1->q2: 894, q2->q3: 869, q3->q1: 826
+epsilon (next episode)       : 0.07423
+replay buffer                : 300000 samples [q1: 35.5%, q2: 27.4%, q3: 37.1%]
+state visits in window        : q1: 111179, q2: 87205, q3: 116354
+state visits cumulative       : q1: 2919569, q2: 1960466, q3: 2647615
+state entries in window       : q1: 926, q2: 894, q3: 869
+state entries cumulative      : q1: 20548, q2: 17982, q3: 15977
+transitions cumulative       : q1->q2: 17982, q2->q3: 15977, q3->q1: 14048
+Gym endings cumulative       : terminated=6087, truncated=413
+
+[Episode 6600/8000 | last 100]
+success rate                : 85.0% (cumulative 45.8%)
+synthetic task reward       : 62200.000
+shaping reward              : 1350.671
+learning reward             : 63550.671
+episode length              : 2699.7
+abstract changes / episode  : 185.5
+completed cycles / episode   : 6.22
+automaton changes / episode  : 19.73
+automaton changes in window  : q1->q2: 694, q2->q3: 657, q3->q1: 622
+epsilon (next episode)       : 0.07132
+replay buffer                : 300000 samples [q1: 36.4%, q2: 29.4%, q3: 34.2%]
+state visits in window        : q1: 100610, q2: 78009, q3: 91449
+state visits cumulative       : q1: 3020179, q2: 2038475, q3: 2739064
+state entries in window       : q1: 722, q2: 694, q3: 657
+state entries cumulative      : q1: 21270, q2: 18676, q3: 16634
+transitions cumulative       : q1->q2: 18676, q2->q3: 16634, q3->q1: 14670
+Gym endings cumulative       : terminated=6165, truncated=435
+
+[Episode 6700/8000 | last 100]
+success rate                : 92.0% (cumulative 46.4%)
+synthetic task reward       : 61600.000
+shaping reward              : 986.470
+learning reward             : 62586.470
+episode length              : 3029.9
+abstract changes / episode  : 203.9
+completed cycles / episode   : 6.16
+automaton changes / episode  : 19.40
+automaton changes in window  : q1->q2: 682, q2->q3: 642, q3->q1: 616
+epsilon (next episode)       : 0.06853
+replay buffer                : 300000 samples [q1: 39.9%, q2: 31.1%, q3: 29.0%]
+state visits in window        : q1: 120658, q2: 94506, q3: 87924
+state visits cumulative       : q1: 3140837, q2: 2132981, q3: 2826988
+state entries in window       : q1: 716, q2: 682, q3: 642
+state entries cumulative      : q1: 21986, q2: 19358, q3: 17276
+transitions cumulative       : q1->q2: 19358, q2->q3: 17276, q3->q1: 15286
+Gym endings cumulative       : terminated=6235, truncated=465
+
+[Episode 6800/8000 | last 100]
+success rate                : 91.0% (cumulative 47.1%)
+synthetic task reward       : 54700.000
+shaping reward              : 1039.506
+learning reward             : 55739.506
+episode length              : 2700.2
+abstract changes / episode  : 176.4
+completed cycles / episode   : 5.47
+automaton changes / episode  : 17.41
+automaton changes in window  : q1->q2: 615, q2->q3: 579, q3->q1: 547
+epsilon (next episode)       : 0.06584
+replay buffer                : 300000 samples [q1: 36.7%, q2: 31.7%, q3: 31.6%]
+state visits in window        : q1: 99386, q2: 85326, q3: 85407
+state visits cumulative       : q1: 3240223, q2: 2218307, q3: 2912395
+state entries in window       : q1: 647, q2: 615, q3: 579
+state entries cumulative      : q1: 22633, q2: 19973, q3: 17855
+transitions cumulative       : q1->q2: 19973, q2->q3: 17855, q3->q1: 15833
+Gym endings cumulative       : terminated=6311, truncated=489
+
+[Episode 6900/8000 | last 100]
+success rate                : 90.0% (cumulative 47.7%)
+synthetic task reward       : 56900.000
+shaping reward              : 1703.165
+learning reward             : 58603.165
+episode length              : 2590.7
+abstract changes / episode  : 167.6
+completed cycles / episode   : 5.69
+automaton changes / episode  : 18.29
+automaton changes in window  : q1->q2: 650, q2->q3: 610, q3->q1: 569
+epsilon (next episode)       : 0.06326
+replay buffer                : 300000 samples [q1: 37.0%, q2: 28.3%, q3: 34.7%]
+state visits in window        : q1: 94168, q2: 73960, q3: 91038
+state visits cumulative       : q1: 3334391, q2: 2292267, q3: 3003433
+state entries in window       : q1: 669, q2: 650, q3: 610
+state entries cumulative      : q1: 23302, q2: 20623, q3: 18465
+transitions cumulative       : q1->q2: 20623, q2->q3: 18465, q3->q1: 16402
+Gym endings cumulative       : terminated=6392, truncated=508
+
+[Episode 7000/8000 | last 100]
+success rate                : 93.0% (cumulative 48.4%)
+synthetic task reward       : 56300.000
+shaping reward              : 1605.919
+learning reward             : 57905.919
+episode length              : 2598.5
+abstract changes / episode  : 170.7
+completed cycles / episode   : 5.63
+automaton changes / episode  : 18.09
+automaton changes in window  : q1->q2: 638, q2->q3: 608, q3->q1: 563
+epsilon (next episode)       : 0.06078
+replay buffer                : 300000 samples [q1: 37.4%, q2: 30.0%, q3: 32.6%]
+state visits in window        : q1: 97507, q2: 78704, q3: 83742
+state visits cumulative       : q1: 3431898, q2: 2370971, q3: 3087175
+state entries in window       : q1: 663, q2: 638, q3: 608
+state entries cumulative      : q1: 23965, q2: 21261, q3: 19073
+transitions cumulative       : q1->q2: 21261, q2->q3: 19073, q3->q1: 16965
+Gym endings cumulative       : terminated=6473, truncated=527
+
+[Episode 7100/8000 | last 100]
+success rate                : 88.0% (cumulative 48.9%)
+synthetic task reward       : 48300.000
+shaping reward              : 1004.250
+learning reward             : 49304.250
+episode length              : 2642.6
+abstract changes / episode  : 150.8
+completed cycles / episode   : 4.83
+automaton changes / episode  : 15.42
+automaton changes in window  : q1->q2: 554, q2->q3: 505, q3->q1: 483
+epsilon (next episode)       : 0.05839
+replay buffer                : 300000 samples [q1: 48.8%, q2: 26.7%, q3: 24.5%]
+state visits in window        : q1: 132017, q2: 69186, q3: 63160
+state visits cumulative       : q1: 3563915, q2: 2440157, q3: 3150335
+state entries in window       : q1: 583, q2: 554, q3: 505
+state entries cumulative      : q1: 24548, q2: 21815, q3: 19578
+transitions cumulative       : q1->q2: 21815, q2->q3: 19578, q3->q1: 17448
+Gym endings cumulative       : terminated=6547, truncated=553
+
+[Episode 7200/8000 | last 100]
+success rate                : 90.0% (cumulative 49.5%)
+synthetic task reward       : 49000.000
+shaping reward              : -48.361
+learning reward             : 48951.639
+episode length              : 2099.5
+abstract changes / episode  : 132.9
+completed cycles / episode   : 4.90
+automaton changes / episode  : 15.58
+automaton changes in window  : q1->q2: 551, q2->q3: 517, q3->q1: 490
+epsilon (next episode)       : 0.05610
+replay buffer                : 300000 samples [q1: 40.6%, q2: 31.2%, q3: 28.2%]
+state visits in window        : q1: 78783, q2: 66217, q3: 65048
+state visits cumulative       : q1: 3642698, q2: 2506374, q3: 3215383
+state entries in window       : q1: 590, q2: 551, q3: 517
+state entries cumulative      : q1: 25138, q2: 22366, q3: 20095
+transitions cumulative       : q1->q2: 22366, q2->q3: 20095, q3->q1: 17938
+Gym endings cumulative       : terminated=6636, truncated=564
+
+[Episode 7300/8000 | last 100]
+success rate                : 94.0% (cumulative 50.1%)
+synthetic task reward       : 68300.000
+shaping reward              : 1240.239
+learning reward             : 69540.239
+episode length              : 2698.6
+abstract changes / episode  : 177.3
+completed cycles / episode   : 6.83
+automaton changes / episode  : 21.52
+automaton changes in window  : q1->q2: 746, q2->q3: 723, q3->q1: 683
+epsilon (next episode)       : 0.05390
+replay buffer                : 300000 samples [q1: 37.5%, q2: 33.6%, q3: 28.9%]
+state visits in window        : q1: 101115, q2: 89950, q3: 78895
+state visits cumulative       : q1: 3743813, q2: 2596324, q3: 3294278
+state entries in window       : q1: 783, q2: 746, q3: 723
+state entries cumulative      : q1: 25921, q2: 23112, q3: 20818
+transitions cumulative       : q1->q2: 23112, q2->q3: 20818, q3->q1: 18621
+Gym endings cumulative       : terminated=6710, truncated=590
+
+[Episode 7400/8000 | last 100]
+success rate                : 92.0% (cumulative 50.7%)
+synthetic task reward       : 63200.000
+shaping reward              : 635.944
+learning reward             : 63835.944
+episode length              : 2592.9
+abstract changes / episode  : 173.2
+completed cycles / episode   : 6.32
+automaton changes / episode  : 19.93
+automaton changes in window  : q1->q2: 699, q2->q3: 662, q3->q1: 632
+epsilon (next episode)       : 0.05179
+replay buffer                : 300000 samples [q1: 42.1%, q2: 28.5%, q3: 29.4%]
+state visits in window        : q1: 110503, q2: 74272, q3: 74619
+state visits cumulative       : q1: 3854316, q2: 2670596, q3: 3368897
+state entries in window       : q1: 732, q2: 699, q3: 662
+state entries cumulative      : q1: 26653, q2: 23811, q3: 21480
+transitions cumulative       : q1->q2: 23811, q2->q3: 21480, q3->q1: 19253
+Gym endings cumulative       : terminated=6787, truncated=613
+
+[Episode 7500/8000 | last 100]
+success rate                : 87.0% (cumulative 51.2%)
+synthetic task reward       : 56300.000
+shaping reward              : 790.284
+learning reward             : 57090.284
+episode length              : 2284.0
+abstract changes / episode  : 158.5
+completed cycles / episode   : 5.63
+automaton changes / episode  : 17.92
+automaton changes in window  : q1->q2: 636, q2->q3: 593, q3->q1: 563
+epsilon (next episode)       : 0.04976
+replay buffer                : 300000 samples [q1: 42.1%, q2: 27.8%, q3: 30.2%]
+state visits in window        : q1: 96357, q2: 61830, q3: 70314
+state visits cumulative       : q1: 3950673, q2: 2732426, q3: 3439211
+state entries in window       : q1: 663, q2: 636, q3: 593
+state entries cumulative      : q1: 27316, q2: 24447, q3: 22073
+transitions cumulative       : q1->q2: 24447, q2->q3: 22073, q3->q1: 19816
+Gym endings cumulative       : terminated=6869, truncated=631
+
+[Episode 7600/8000 | last 100]
+success rate                : 86.0% (cumulative 51.6%)
+synthetic task reward       : 41100.000
+shaping reward              : 1124.303
+learning reward             : 42224.303
+episode length              : 1900.6
+abstract changes / episode  : 120.6
+completed cycles / episode   : 4.11
+automaton changes / episode  : 13.47
+automaton changes in window  : q1->q2: 481, q2->q3: 455, q3->q1: 411
+epsilon (next episode)       : 0.04781
+replay buffer                : 300000 samples [q1: 42.3%, q2: 27.2%, q3: 30.5%]
+state visits in window        : q1: 79987, q2: 50617, q3: 59556
+state visits cumulative       : q1: 4030660, q2: 2783043, q3: 3498767
+state entries in window       : q1: 511, q2: 481, q3: 455
+state entries cumulative      : q1: 27827, q2: 24928, q3: 22528
+transitions cumulative       : q1->q2: 24928, q2->q3: 22528, q3->q1: 20227
+Gym endings cumulative       : terminated=6955, truncated=645
+
+[Episode 7700/8000 | last 100]
+success rate                : 93.0% (cumulative 52.2%)
+synthetic task reward       : 82400.000
+shaping reward              : 1207.945
+learning reward             : 83607.945
+episode length              : 3012.8
+abstract changes / episode  : 200.9
+completed cycles / episode   : 8.24
+automaton changes / episode  : 25.74
+automaton changes in window  : q1->q2: 889, q2->q3: 861, q3->q1: 824
+epsilon (next episode)       : 0.04593
+replay buffer                : 300000 samples [q1: 38.3%, q2: 25.7%, q3: 36.0%]
+state visits in window        : q1: 115494, q2: 77535, q3: 108346
+state visits cumulative       : q1: 4146154, q2: 2860578, q3: 3607113
+state entries in window       : q1: 924, q2: 889, q3: 861
+state entries cumulative      : q1: 28751, q2: 25817, q3: 23389
+transitions cumulative       : q1->q2: 25817, q2->q3: 23389, q3->q1: 21051
+Gym endings cumulative       : terminated=7023, truncated=677
+
+[Episode 7800/8000 | last 100]
+success rate                : 95.0% (cumulative 52.7%)
+synthetic task reward       : 62100.000
+shaping reward              : 894.249
+learning reward             : 62994.249
+episode length              : 2720.5
+abstract changes / episode  : 167.5
+completed cycles / episode   : 6.21
+automaton changes / episode  : 19.58
+automaton changes in window  : q1->q2: 688, q2->q3: 649, q3->q1: 621
+epsilon (next episode)       : 0.04413
+replay buffer                : 300000 samples [q1: 36.1%, q2: 32.2%, q3: 31.7%]
+state visits in window        : q1: 98369, q2: 87958, q3: 85824
+state visits cumulative       : q1: 4244523, q2: 2948536, q3: 3692937
+state entries in window       : q1: 721, q2: 688, q3: 649
+state entries cumulative      : q1: 29472, q2: 26505, q3: 24038
+transitions cumulative       : q1->q2: 26505, q2->q3: 24038, q3->q1: 21672
+Gym endings cumulative       : terminated=7095, truncated=705
+
+[Episode 7900/8000 | last 100]
+success rate                : 90.0% (cumulative 53.2%)
+synthetic task reward       : 46200.000
+shaping reward              : 719.293
+learning reward             : 46919.293
+episode length              : 1986.0
+abstract changes / episode  : 126.2
+completed cycles / episode   : 4.62
+automaton changes / episode  : 14.85
+automaton changes in window  : q1->q2: 533, q2->q3: 490, q3->q1: 462
+epsilon (next episode)       : 0.04240
+replay buffer                : 300000 samples [q1: 38.0%, q2: 33.3%, q3: 28.7%]
+state visits in window        : q1: 74535, q2: 62830, q3: 61340
+state visits cumulative       : q1: 4319058, q2: 3011366, q3: 3754277
+state entries in window       : q1: 562, q2: 533, q3: 490
+state entries cumulative      : q1: 30034, q2: 27038, q3: 24528
+transitions cumulative       : q1->q2: 27038, q2->q3: 24528, q3->q1: 22134
+Gym endings cumulative       : terminated=7180, truncated=720
+
+[Episode 8000/8000 | last 100]
+success rate                : 88.0% (cumulative 53.6%)
+synthetic task reward       : 47200.000
+shaping reward              : -902.665
+learning reward             : 46297.335
+episode length              : 1872.8
+abstract changes / episode  : 125.0
+completed cycles / episode   : 4.72
+automaton changes / episode  : 14.80
+automaton changes in window  : q1->q2: 518, q2->q3: 490, q3->q1: 472
+epsilon (next episode)       : 0.04074
+replay buffer                : 300000 samples [q1: 39.7%, q2: 29.7%, q3: 30.6%]
+state visits in window        : q1: 78636, q2: 52974, q3: 55774
+state visits cumulative       : q1: 4397694, q2: 3064340, q3: 3810051
+state entries in window       : q1: 572, q2: 518, q3: 490
+state entries cumulative      : q1: 30606, q2: 27556, q3: 25018
+transitions cumulative       : q1->q2: 27556, q2->q3: 25018, q3->q1: 22606
+Gym endings cumulative       : terminated=7270, truncated=730
+Last policy saved after episode 8000. Best policy: episode 6000, mean learning reward=91201.090
