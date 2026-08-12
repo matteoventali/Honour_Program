@@ -11,15 +11,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK_DIR = PROJECT_ROOT / "notebook"
 
 NOTEBOOK_SOURCES = {
-    "lunar_lander_manual_generalized_training_kaggle.ipynb": "manual_experiment/src",
-    "lunar_lander_manual_training_kaggle.ipynb": "manual_experiment/src",
-    "lunar_lander_multilevel_training_kaggle.ipynb": "multilevel_framework/src",
-    "lunar_lander_multilevel_multieps_multihead_training_kaggle.ipynb": "multilevel_multieps/src",
-    "lunar_lander_dsac_training_kaggle.ipynb": "sac/src",
+    "notebook_manual_experiment.ipynb": "manual_experiment/src",
+    "notebook_multilevel_framework.ipynb": "multilevel_framework/src",
+    "notebook_multilevel_dsac.ipynb": "multilevel_dsac/src",
+    "notebook_multilevel_multieps.ipynb": "multilevel_multieps/src",
+    "notebook_adapted_sac.ipynb": "adapted_sac/src",
 }
 
 MULTILEVEL_NOTEBOOKS = {
-    "lunar_lander_multilevel_training_kaggle.ipynb",
+    "notebook_multilevel_framework.ipynb",
 }
 
 
@@ -204,50 +204,41 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
     notebook_path = NOTEBOOK_DIR / notebook_name
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
 
-    trainer_source = (PROJECT_ROOT / source_directory / "trainer.py").read_text(encoding="utf-8")
+    writefile_targets = set()
+    for cell in notebook["cells"]:
+        source = "".join(cell.get("source", []))
+        if source.startswith("%%writefile "):
+            writefile_targets.add(source.splitlines()[0].split(maxsplit=1)[1])
+
+    source_root = PROJECT_ROOT / source_directory
+    source_by_filename = {
+        filename: (source_root / filename).read_text(encoding="utf-8")
+        for filename in writefile_targets
+        if (source_root / filename).is_file()
+    }
+    missing_sources = writefile_targets.difference(source_by_filename)
+    if missing_sources:
+        raise RuntimeError(
+            f"Missing source files for {notebook_name}: {sorted(missing_sources)}"
+        )
+
+    trainer_source = source_by_filename["trainer.py"]
     if (
         notebook_name in MULTILEVEL_NOTEBOOKS
         and "--training-shaping-gamma" not in trainer_source
     ):
         trainer_source = _multilevel_trainer_variant(trainer_source)
-    utils_source = (PROJECT_ROOT / source_directory / "utils.py").read_text(encoding="utf-8")
-    evaluate_source = (PROJECT_ROOT / source_directory / "evaluate.py").read_text(
-        encoding="utf-8"
-    )
-    grid_overlay_source = (
-        PROJECT_ROOT / source_directory / "grid_overlay.py"
-    ).read_text(encoding="utf-8")
-    agent_source = None
-    if source_directory == "sac/src":
-        agent_source = (PROJECT_ROOT / source_directory / "agent.py").read_text(
-            encoding="utf-8"
-        )
+    source_by_filename["trainer.py"] = trainer_source
 
-    replaced = {
-        "trainer.py": 0,
-        "utils.py": 0,
-        "evaluate.py": 0,
-        "grid_overlay.py": 0,
-    }
-    if agent_source is not None:
-        replaced["agent.py"] = 0
+    replaced = {filename: 0 for filename in source_by_filename}
     for cell in notebook["cells"]:
         source = "".join(cell.get("source", []))
-        if source.startswith("%%writefile trainer.py"):
-            cell["source"] = _writefile_source("trainer.py", trainer_source)
-            replaced["trainer.py"] += 1
-        elif source.startswith("%%writefile utils.py"):
-            cell["source"] = _writefile_source("utils.py", utils_source)
-            replaced["utils.py"] += 1
-        elif source.startswith("%%writefile evaluate.py"):
-            cell["source"] = _writefile_source("evaluate.py", evaluate_source)
-            replaced["evaluate.py"] += 1
-        elif source.startswith("%%writefile grid_overlay.py"):
-            cell["source"] = _writefile_source("grid_overlay.py", grid_overlay_source)
-            replaced["grid_overlay.py"] += 1
-        elif agent_source is not None and source.startswith("%%writefile agent.py"):
-            cell["source"] = _writefile_source("agent.py", agent_source)
-            replaced["agent.py"] += 1
+        if source.startswith("%%writefile "):
+            filename = source.splitlines()[0].split(maxsplit=1)[1]
+            cell["source"] = _writefile_source(
+                filename, source_by_filename[filename]
+            )
+            replaced[filename] += 1
         elif re.search(r"(?m)^EPISODES\s*=", source):
             cell["source"] = _update_configuration(source).splitlines(keepends=True)
         elif "trainer.py" in source and "subprocess" in source and "command" in source:

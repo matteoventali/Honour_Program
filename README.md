@@ -1,8 +1,8 @@
 # Lunar Lander with LTLf Reward Shaping
 
-This repository contains four active LunarLander reinforcement-learning
+This repository contains five active LunarLander reinforcement-learning
 frameworks with automaton-guided reward shaping: `manual_experiment`,
-`multilevel_framework`, `multilevel_multieps`, and `sac`. Each framework keeps
+`multilevel_framework`, `multilevel_multieps`, `multilevel_dsac`, and `adapted_sac`. Each framework keeps
 its Python sources and JSON configurations under `src/`, generated artifacts
 under `results/`, and its container launcher files at framework root.
 
@@ -27,7 +27,8 @@ propria directory root come contesto di build:
 | `manual_experiment` | `tesi-manual` |
 | `multilevel_framework` | `tesi-multilevel` |
 | `multilevel_multieps` | `tesi-multilevel-multieps` |
-| `sac` | `tesi-sac` |
+| `multilevel_dsac` | `tesi-multilevel-dsac` |
+| `adapted_sac` | `tesi-sac` |
 
 Per esempio, dalla radice della repository:
 
@@ -38,6 +39,21 @@ docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_framework)",target=/workspace \
   tesi-multilevel \
   --experiment-name multilevel-base \
+  --episodes 1000 --num-seeds 5 --seed 42
+```
+
+La variante `multilevel_dsac` mantiene la stessa gerarchia ma usa il SAC
+discreto di CleanRL adattato a osservazioni vettoriali e alle quattro azioni
+native di LunarLander. Per default normalizza il reward visto dal DSAC per
+`goal_reward`; l'opzione `--no-reward-scaling` disabilita la normalizzazione:
+
+```bash
+docker build -f multilevel_dsac/docker/Dockerfile \
+  -t tesi-multilevel-dsac multilevel_dsac
+docker run --rm --gpus all --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$(realpath multilevel_dsac)",target=/workspace \
+  tesi-multilevel-dsac \
+  --experiment-name dsac-multilevel \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
@@ -68,9 +84,9 @@ docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$(realpath multilevel_multieps)",target=/workspace \
   tesi-multilevel-multieps --experiment-name multieps-visited --episodes 1000
 
-docker build -f sac/docker/Dockerfile -t tesi-sac sac
+docker build -f adapted_sac/docker/Dockerfile -t tesi-sac adapted_sac
 docker run --rm --gpus all --user "$(id -u):$(id -g)" \
-  --mount type=bind,src="$(realpath sac)",target=/workspace \
+  --mount type=bind,src="$(realpath adapted_sac)",target=/workspace \
   tesi-sac --experiment-name sac-seed42 --episodes 1000 --device auto
 ```
 
@@ -119,7 +135,11 @@ radice della repository, per esempio:
   --experiment-name multieps-visited \
   --episodes 1000 --epsilon-strategy visited
 
-./sac/run_experiment.sh \
+./multilevel_dsac/run_experiment.sh \
+  --experiment-name dsac-multilevel \
+  --episodes 1000 --num-seeds 5 --seed 42
+
+./adapted_sac/run_experiment.sh \
   --experiment-name sac-seed42 \
   --episodes 1000 --device auto
 ```
@@ -185,7 +205,7 @@ python3 multilevel_framework/src/trainer.py \
 ```
 
 La stessa modalità è disponibile in `manual_experiment`,
-`multilevel_multieps` e `sac`. Il trainer carica automaticamente la copia di
+`multilevel_multieps`, `multilevel_dsac` e `adapted_sac`. Il trainer carica automaticamente la copia di
 `trajectory.json` e, nei framework multilivello, di `abstraction.json`
 conservata nella cartella dell'esperimento. I dati vengono riconosciuti sia nel
 layout corrente:
@@ -226,7 +246,7 @@ under `_mean` and `_variance` keys. At the end of training, the trainer writes
 a `training_variance_*.png` plot with the smoothed mean learning reward and a
 shaded `±1σ` band across seeds (`σ²` is the cross-seed variance). The same
 options are available in `manual_experiment`, `multilevel_framework`,
-`multilevel_multieps`, and `sac`.
+`multilevel_multieps`, `multilevel_dsac`, and `adapted_sac`.
 
 The top level contains only the aggregate training and replay-buffer variance
 plots. Both show the trailing moving mean and a `±1` standard-deviation band
