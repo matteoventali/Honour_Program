@@ -5,6 +5,7 @@
 # ==============================
 
 import os
+import math
 
 # ==============================
 # External imports
@@ -266,6 +267,20 @@ def _trailing_mean(values, window_size):
     )
 
 
+def _place_legend_above(figure, handles, labels, max_columns=4):
+    """Place a variable-size legend above an axes without shrinking the plot."""
+    if not labels:
+        return
+    columns = max(1, min(len(labels), max_columns))
+    rows = math.ceil(len(labels) / columns)
+    base_width, base_height = 7.2, 4.4
+    total_height = base_height + 0.32 * (rows - 1)
+    figure.set_layout_engine(None)
+    figure.set_size_inches(base_width, total_height, forward=True)
+    figure.subplots_adjust(left=0.11, right=0.89, bottom=0.14 * base_height / total_height, top=0.82 * base_height / total_height)
+    figure.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.835 * base_height / total_height), ncol=columns, frameon=False)
+
+
 def plot_training_variance(reward_histories, window_size=100, title="Training Performance Across Seeds", filename="img/training_variance.png", label="Learning reward", epsilon_histories=None, epsilon_labels=None):
     """Plot aggregate rewards with variance and optional raw epsilon curves."""
     runs = np.asarray(reward_histories, dtype=np.float64)
@@ -350,14 +365,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
         legend_handles += epsilon_handles
         legend_labels += epsilon_legend_labels
 
-    ax.legend(
-        legend_handles,
-        legend_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.01),
-        ncol=min(len(legend_labels), 4),
-        frameon=False,
-    )
+    _place_legend_above(fig, legend_handles, legend_labels, max_columns=4)
     fig.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
@@ -409,12 +417,8 @@ def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/b
     ax.set_ylabel("Buffer fraction")
     ax.set_ylim(0, 1.0)
     _style_paper_axis(ax)
-    ax.legend(
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.01),
-        ncol=min(runs.shape[1], 3),
-        frameon=False,
-    )
+    handles, labels = ax.get_legend_handles_labels()
+    _place_legend_above(fig, handles, labels, max_columns=3)
     fig.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"\n>>> Buffer variance plot saved to: {filename}")
     plt.close(fig)
@@ -437,12 +441,8 @@ def plot_buffer_fractions(buffer_histories, window_size=100, filename="img/buffe
     ax.set_ylabel("Buffer fraction")
     ax.set_ylim(0, 1.0)
     _style_paper_axis(ax)
-    ax.legend(
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.01),
-        ncol=min(len(buffer_histories), 3),
-        frameon=False,
-    )
+    handles, labels = ax.get_legend_handles_labels()
+    _place_legend_above(fig, handles, labels, max_columns=3)
     fig.savefig(filename, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -487,13 +487,6 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
 
     reward_lines, reward_labels = reward_axis.get_legend_handles_labels()
     epsilon_lines, epsilon_labels = epsilon_axis.get_legend_handles_labels()
-    reward_axis.legend(
-        reward_lines + epsilon_lines,
-        reward_labels + epsilon_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.01),
-        ncol=min(len(reward_labels) + len(epsilon_labels), 4),
-        frameon=False,
-    )
+    _place_legend_above(figure, reward_lines + epsilon_lines, reward_labels + epsilon_labels, max_columns=4)
     figure.savefig(filename, dpi=300, bbox_inches="tight")
     plt.close(figure)

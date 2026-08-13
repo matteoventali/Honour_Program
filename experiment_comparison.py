@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +47,59 @@ EXPERIMENT_COLORS = (
     "#000000",
 )
 EPSILON_LINESTYLES = ("--", (0, (5, 2, 1, 2)), ":", "-.")
+
+
+def _place_comparison_legend(figure, axes, handles, labels):
+    """Place a two-column legend below fixed-size comparison axes."""
+    if not labels:
+        return
+    # Wrap verbose experiment/epsilon labels so two columns still fit within
+    # the fixed figure width instead of expanding bbox_inches="tight".
+    wrapped_labels = [textwrap.fill(label, width=44) for label in labels]
+    columns = min(len(labels), 2)
+    base_width, base_height = 7.2, 4.4
+    axes_height = 0.68 * base_height
+    bottom_padding = 0.12
+    top_padding = 0.35
+
+    figure.set_layout_engine(None)
+    legend = figure.legend(
+        handles,
+        wrapped_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=columns,
+        columnspacing=1.5,
+        frameon=False,
+    )
+    # Use the legend's rendered height instead of estimating it from the entry
+    # count. This avoids a large empty band between legend and axes.
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    legend_height = legend.get_window_extent(renderer).transformed(
+        figure.dpi_scale_trans.inverted()
+    ).height
+    axes_box = axes.get_window_extent(renderer)
+    axes_tight_box = axes.get_tightbbox(renderer)
+    x_decoration_height = max(
+        0.0,
+        (axes_box.y0 - axes_tight_box.y0) / figure.dpi,
+    )
+    legend_gap = x_decoration_height + 0.12
+    axes_bottom = bottom_padding + legend_height + legend_gap
+    total_height = axes_bottom + axes_height + top_padding
+
+    figure.set_size_inches(base_width, total_height, forward=True)
+    figure.subplots_adjust(
+        left=0.11,
+        right=0.89,
+        bottom=axes_bottom / total_height,
+        top=(axes_bottom + axes_height) / total_height,
+    )
+    legend.set_bbox_to_anchor(
+        (0.5, bottom_padding / total_height),
+        transform=figure.transFigure,
+    )
 
 
 @dataclass(frozen=True)
@@ -403,6 +457,7 @@ def plot_comparison(
     output: Path,
     *,
     show: bool,
+    show_epsilon: bool = True,
 ) -> list[TrainingSummary]:
     """Plot mean trends and a +/- one-standard-deviation variance band."""
     if not experiments:
@@ -433,7 +488,11 @@ def plot_comparison(
         }
     )
     figure, axes = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
-    epsilon_axis = axes.twinx() if metric in METRICS_WITH_EPSILON else None
+    epsilon_axis = (
+        axes.twinx()
+        if show_epsilon and metric in METRICS_WITH_EPSILON
+        else None
+    )
     epsilon_entries: list[tuple[np.ndarray, str, str, str]] = []
     for index, (experiment, summary) in enumerate(zip(experiments, summaries)):
         episodes = np.arange(1, summary.mean.size + 1)
@@ -530,14 +589,7 @@ def plot_comparison(
         legend_labels += epsilon_legend_labels
     elif epsilon_axis is not None:
         epsilon_axis.set_visible(False)
-    axes.legend(
-        legend_handles,
-        legend_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.01),
-        ncol=min(len(legend_labels), 3),
-        frameon=False,
-    )
+    _place_comparison_legend(figure, axes, legend_handles, legend_labels)
 
     output = _png_output_path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -629,14 +681,21 @@ def launch_gui(experiments: Sequence[Experiment], results_dir: Path) -> None:
         row=1, column=1, sticky="ew", padx=(10, 0), pady=(8, 0)
     )
 
+    show_epsilon_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(
+        options,
+        text="Show epsilon curves",
+        variable=show_epsilon_var,
+    ).grid(row=2, column=1, sticky="w", padx=(10, 0), pady=(8, 0))
+
     output_var = tk.StringVar(
         value=str(default_output_path(results_dir, DEFAULT_METRIC))
     )
     ttk.Label(options, text="PNG file:").grid(
-        row=2, column=0, sticky="w", pady=(8, 0)
+        row=3, column=0, sticky="w", pady=(8, 0)
     )
     output_entry = ttk.Entry(options, textvariable=output_var)
-    output_entry.grid(row=2, column=1, sticky="ew", padx=(10, 8), pady=(8, 0))
+    output_entry.grid(row=3, column=1, sticky="ew", padx=(10, 8), pady=(8, 0))
 
     def choose_output() -> None:
         selected = filedialog.asksaveasfilename(
@@ -650,7 +709,7 @@ def launch_gui(experiments: Sequence[Experiment], results_dir: Path) -> None:
             output_var.set(selected)
 
     ttk.Button(options, text="Browse…", command=choose_output).grid(
-        row=2, column=2, pady=(8, 0)
+        row=3, column=2, pady=(8, 0)
     )
 
     status_var = tk.StringVar(value="Select at least two experiments to compare.")
@@ -689,6 +748,7 @@ def launch_gui(experiments: Sequence[Experiment], results_dir: Path) -> None:
                 window,
                 output,
                 show=True,
+                show_epsilon=show_epsilon_var.get(),
             )
             status_var.set(f"Plot saved to {output}")
         except (OSError, ValueError, RuntimeError) as error:
@@ -736,6 +796,11 @@ def build_parser(framework_dir: Path) -> argparse.ArgumentParser:
         help="Number of most recent episodes in the moving average (default: 500).",
     )
     parser.add_argument("--output", type=Path, help="Path of the final PNG.")
+    parser.add_argument(
+        "--no-epsilon",
+        action="store_true",
+        help="Do not draw epsilon curves or the secondary epsilon axis.",
+    )
     parser.add_argument(
         "--no-gui",
         action="store_true",
@@ -795,6 +860,7 @@ def main(framework_dir: Path | None = None) -> int:
                 args.window,
                 output,
                 show=not args.no_gui,
+                show_epsilon=not args.no_epsilon,
             )
         except (OSError, ValueError, RuntimeError) as error:
             print(f"Error: {error}", file=sys.stderr)
