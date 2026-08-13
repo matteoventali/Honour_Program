@@ -187,12 +187,22 @@ def _update_training_command(source: str) -> str:
 def _update_result_preview(source: str) -> str:
     if "plot_paths = [" not in source:
         return source
-    legacy_variance_glob = '    *sorted((WORK_DIR / "img").glob("training_variance_*.png")),\n'
-    variance_glob = '    *sorted((WORK_DIR / "img").glob("*_variance_*.png")),\n'
-    legacy_reward_glob = '    *sorted((WORK_DIR / "img").glob("reward_breakdown_*_seed_*.png")),\n'
-    seed_plot_glob = '    *sorted((WORK_DIR / "img").glob("seed_*/*.png")),\n'
-    source = source.replace(legacy_variance_glob, variance_glob)
-    source = source.replace(legacy_reward_glob, seed_plot_glob)
+    # Frameworks with named experiments write below results/<experiment-name>;
+    # older notebook variants write directly below WORK_DIR.
+    plot_root = "EXPERIMENT_DIR" if "EXPERIMENT_DIR" in source else "WORK_DIR"
+    for root in ("WORK_DIR", "EXPERIMENT_DIR"):
+        for pattern in (
+            "training_variance_*.png",
+            "*_variance_*.png",
+            "reward_breakdown_*_seed_*.png",
+            "seed_*/*.png",
+        ):
+            source = source.replace(
+                f'    *sorted(({root} / "img").glob("{pattern}")),\n',
+                "",
+            )
+    variance_glob = f'    *sorted(({plot_root} / "img").glob("*_variance_*.png")),\n'
+    seed_plot_glob = f'    *sorted(({plot_root} / "img").glob("seed_*/*.png")),\n'
     if variance_glob not in source:
         source = source.replace("plot_paths = [\n", "plot_paths = [\n" + variance_glob, 1)
     if seed_plot_glob not in source:
