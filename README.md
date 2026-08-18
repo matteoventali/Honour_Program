@@ -1,8 +1,9 @@
 # Lunar Lander with LTLf Reward Shaping
 
-This repository contains five active LunarLander reinforcement-learning
+This repository contains six active LunarLander reinforcement-learning
 frameworks with automaton-guided reward shaping: `manual_experiment`,
-`multilevel_framework`, `multilevel_multieps`, `multilevel_dsac`, and `adapted_sac`. Each framework keeps
+`multilevel_framework`, `multilevel_dual_learner`, `multilevel_multieps`,
+`multilevel_dsac`, and `adapted_sac`. Each framework keeps
 its Python sources and JSON configurations under `src/`, generated artifacts
 under `results/`, and its container launcher files at framework root.
 
@@ -26,6 +27,7 @@ propria directory root come contesto di build:
 | --- | --- |
 | `manual_experiment` | `tesi-manual` |
 | `multilevel_framework` | `tesi-multilevel` |
+| `multilevel_dual_learner` | `tesi-multilevel-dual-learner` |
 | `multilevel_multieps` | `tesi-multilevel-multieps` |
 | `multilevel_dsac` | `tesi-multilevel-dsac` |
 | `adapted_sac` | `tesi-sac` |
@@ -41,6 +43,27 @@ docker run --rm --gpus all --user "$(id -u):$(id -g)" \
   --experiment-name multilevel-base \
   --episodes 1000 --num-seeds 5 --seed 42
 ```
+
+`multilevel_dual_learner` mantiene la stessa value iteration astratta ma usa
+due DDQN nel ground MDP. Il learner biased genera le azioni e apprende da
+task reward più shaping; il learner unbiased apprende off-policy dalle stesse
+transizioni usando soltanto il task reward. Entrambi i checkpoint sono salvati,
+e `last_policy_unbiased*.pth` è l'output principale dell'algoritmo:
+
+```bash
+./multilevel_dual_learner/run_experiment.sh \
+  --experiment-name dual-ground \
+  --episodes 1000 --num-seeds 5 --seed 42
+```
+
+Durante il training entrambe le policy vengono valutate autonomamente con
+azioni greedy e seed fissi, senza aggiornare reti o replay buffer. I default
+sono `--eval-interval 500` e `--eval-episodes 50`; il checkpoint best di ogni
+learner è selezionato dalla sua evaluation, non dalle traiettorie del biased.
+Le reti partono da inizializzazioni diverse ma deterministiche; l'esplorazione
+epsilon-greedy usa uno stream locale al biased. Durante gli aggiornamenti i due
+replay buffer, mantenuti allineati, ricevono gli stessi indici di minibatch:
+così reward shaped e non shaped vengono confrontati sulle medesime esperienze.
 
 La variante `multilevel_dsac` mantiene la stessa gerarchia ma usa il SAC
 discreto di CleanRL adattato a osservazioni vettoriali e alle quattro azioni
@@ -246,7 +269,8 @@ under `_mean` and `_variance` keys. At the end of training, the trainer writes
 a `training_variance_*.png` plot with the smoothed mean learning reward and a
 shaded `±1σ` band across seeds (`σ²` is the cross-seed variance). The same
 options are available in `manual_experiment`, `multilevel_framework`,
-`multilevel_multieps`, `multilevel_dsac`, and `adapted_sac`.
+`multilevel_dual_learner`, `multilevel_multieps`, `multilevel_dsac`, and
+`adapted_sac`.
 
 The top level contains only the aggregate training and replay-buffer variance
 plots. Both show the trailing moving mean and a `±1` standard-deviation band

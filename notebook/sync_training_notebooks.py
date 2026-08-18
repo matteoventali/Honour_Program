@@ -13,6 +13,7 @@ NOTEBOOK_DIR = PROJECT_ROOT / "notebook"
 NOTEBOOK_SOURCES = {
     "notebook_manual_experiment.ipynb": "manual_experiment/src",
     "notebook_multilevel_framework.ipynb": "multilevel_framework/src",
+    "notebook_multilevel_dual_learner.ipynb": "multilevel_dual_learner/src",
     "notebook_multilevel_dsac.ipynb": "multilevel_dsac/src",
     "notebook_multilevel_multieps.ipynb": "multilevel_multieps/src",
     "notebook_adapted_sac.ipynb": "adapted_sac/src",
@@ -20,6 +21,7 @@ NOTEBOOK_SOURCES = {
 
 MULTILEVEL_NOTEBOOKS = {
     "notebook_multilevel_framework.ipynb",
+    "notebook_multilevel_dual_learner.ipynb",
 }
 
 
