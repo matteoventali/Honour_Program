@@ -47,9 +47,18 @@ class ReplayBuffer:
         self.phase_counts = np.zeros(num_phases, dtype=np.int64)
         self.position = 0
 
-    def push(self, state, action, reward, next_state, done):
+    def push(self, state, action, reward, next_state, done, bootstrap_discount):
         """Insert a transition and update DFA-state counts in constant time."""
-        transition = (state, action, reward, next_state, done)
+        if not 0.0 <= bootstrap_discount <= 1.0:
+            raise ValueError("bootstrap_discount must be in the interval [0, 1]")
+        transition = (
+            state,
+            action,
+            reward,
+            next_state,
+            done,
+            bootstrap_discount,
+        )
         phase_index = (
             int(np.argmax(state[-self.num_phases:]))
             if self.num_phases > 0
@@ -85,8 +94,11 @@ class ReplayBuffer:
         if any(index < 0 or index >= len(self.buffer) for index in indices):
             raise IndexError("minibatch index is outside the replay buffer")
         batch = [self.buffer[index] for index in indices]
-        state, action, reward, next_state, done = map(np.array, zip(*batch))
-        return state, action, reward, next_state, done
+        state, action, reward, next_state, done, bootstrap_discount = map(
+            np.array,
+            zip(*batch),
+        )
+        return state, action, reward, next_state, done, bootstrap_discount
 
     def __len__(self):
         return len(self.buffer)
@@ -183,7 +195,7 @@ class HierarchicalDQNLearner:
                 self.replay_rng,
             )
 
-        states, actions, rewards, next_states, dones = self.memory.sample(
+        states, actions, rewards, next_states, dones, bootstrap_discounts = self.memory.sample(
             self.batch_size,
             batch_indices,
         )
@@ -194,13 +206,14 @@ class HierarchicalDQNLearner:
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
+        bootstrap_discounts = torch.FloatTensor(bootstrap_discounts).unsqueeze(1).to(self.device)
         
         q_values = self.policy_net(states).gather(1, actions)
         
         with torch.no_grad():
             best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
             next_q_values = self.target_net(next_states).gather(1, best_actions)
-            target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
+            target_q_values = rewards + (1 - dones) * bootstrap_discounts * next_q_values
             
         loss = F.mse_loss(q_values, target_q_values)
         self.optimizer.zero_grad()

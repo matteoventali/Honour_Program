@@ -64,6 +64,10 @@ Le reti partono da inizializzazioni diverse ma deterministiche; l'esplorazione
 epsilon-greedy usa uno stream locale al biased. Durante gli aggiornamenti i due
 replay buffer, mantenuti allineati, ricevono gli stessi indici di minibatch:
 così reward shaped e non shaped vengono confrontati sulle medesime esperienze.
+Il trainer espone inoltre `--n-step` (default `1` per retrocompatibilità). Per
+accelerare la propagazione del reward terminale nell'unbiased si può usare
+`--n-step 5`; le finestre residue a fine episodio usano automaticamente il
+discount `gamma**k` corrispondente alla loro lunghezza effettiva.
 
 La variante `multilevel_dsac` mantiene la stessa gerarchia ma usa il SAC
 discreto di CleanRL adattato a osservazioni vettoriali e alle quattro azioni

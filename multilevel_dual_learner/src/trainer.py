@@ -8,7 +8,7 @@ import os
 import random
 import re
 import shutil
-from collections import Counter
+from collections import Counter, deque
 from pathlib import Path
 
 # ==============================
@@ -226,6 +226,79 @@ def _evaluate_initial_automaton_state(observation, abstract_mdp):
     return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
 
 
+def _aggregate_n_step_window(transitions, gamma):
+    """Collapse one pending prefix into paired discounted replay transitions."""
+    if not transitions:
+        raise ValueError("at least one transition is required")
+
+    (
+        initial_state,
+        initial_action,
+        _biased_reward,
+        _unbiased_reward,
+        _next_state,
+        _terminal,
+    ) = transitions[0]
+    biased_return = 0.0
+    unbiased_return = 0.0
+    final_next_state = None
+    terminal = False
+    actual_steps = 0
+
+    for actual_steps, transition in enumerate(transitions, start=1):
+        (
+            _state,
+            _action,
+            biased_reward,
+            unbiased_reward,
+            final_next_state,
+            terminal,
+        ) = transition
+        discount = gamma ** (actual_steps - 1)
+        biased_return += discount * biased_reward
+        unbiased_return += discount * unbiased_reward
+        if terminal:
+            break
+
+    bootstrap_discount = gamma ** actual_steps
+    shared = (
+        initial_state,
+        initial_action,
+        final_next_state,
+        terminal,
+        bootstrap_discount,
+    )
+    return biased_return, unbiased_return, shared
+
+
+def _emit_n_step_prefix(pending_transitions, n_step, gamma, biased_memory, unbiased_memory):
+    """Write the oldest pending prefix to both aligned replay buffers."""
+    window_size = min(n_step, len(pending_transitions))
+    window = list(pending_transitions)[:window_size]
+    biased_return, unbiased_return, shared = _aggregate_n_step_window(
+        window,
+        gamma,
+    )
+    state, action, next_state, terminal, bootstrap_discount = shared
+    biased_memory.push(
+        state,
+        action,
+        biased_return,
+        next_state,
+        terminal,
+        bootstrap_discount,
+    )
+    unbiased_memory.push(
+        state,
+        action,
+        unbiased_return,
+        next_state,
+        terminal,
+        bootstrap_discount,
+    )
+    pending_transitions.popleft()
+
+
 def _format_counter(counter):
     """Convert a DFA transition counter into a compact human-readable string."""
     if not counter:
@@ -245,7 +318,7 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed):
+def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed, n_step):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
@@ -258,7 +331,7 @@ def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstrac
     header = (
         "\n=== NEW RUN ===\n"
         "ground_learners=biased_behavior(task+shaping), unbiased_output(task_only)\n"
-        f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
+        f"episodes={episodes}, n_step={n_step}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"eval_interval={eval_interval}, eval_episodes={eval_episodes}, eval_seed={eval_seed}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
@@ -458,7 +531,7 @@ def _evaluation_score(metrics):
     )
 
 
-def _validate_training_setup(automaton, state_to_index, episodes, log_interval, eval_interval, eval_episodes):
+def _validate_training_setup(automaton, state_to_index, episodes, log_interval, eval_interval, eval_episodes, n_step):
     """Validate DFA consistency and the numeric parameters required by training."""
     if automaton.get_initial_q() not in state_to_index:
         raise ValueError("The DFA initial state is missing from automaton.states")
@@ -472,9 +545,11 @@ def _validate_training_setup(automaton, state_to_index, episodes, log_interval, 
         raise ValueError("eval_interval must be greater than zero")
     if eval_episodes <= 0:
         raise ValueError("eval_episodes must be greater than zero")
+    if n_step <= 0:
+        raise ValueError("n_step must be greater than zero")
 
 
-def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode):
+def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, n_step):
     """Select and name the numeric histories returned by the training loop."""
     return {
         "task_rewards": histories["task_rewards"],
@@ -494,6 +569,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "automaton_states": automaton_states,
         "best_mean_task_reward": best_mean_reward,
         "best_policy_episode": best_policy_episode,
+        "n_step": n_step,
         "best_biased_eval_success_rate": max(histories["biased_eval_success_rates"]),
         "best_unbiased_eval_success_rate": max(histories["unbiased_eval_success_rates"]),
         "evaluation_steps": histories["evaluation_steps"],
@@ -510,7 +586,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, eval_interval=500, eval_episodes=50, eval_seed=100000, seed=None, policy_suffix=""):
+def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, eval_interval=500, eval_episodes=50, eval_seed=100000, n_step=1, seed=None, policy_suffix=""):
     """
     Train paired off-policy DDQN learners with one shared environment stream.
 
@@ -532,9 +608,12 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         log_interval,
         eval_interval,
         eval_episodes,
+        n_step,
     )
     if biased_agent.batch_size != unbiased_agent.batch_size:
         raise ValueError("biased and unbiased learners must use the same batch size")
+    if biased_agent.gamma != unbiased_agent.gamma:
+        raise ValueError("biased and unbiased learners must use the same gamma")
     minibatch_seed = None if seed is None else seed + 4_000_003
     minibatch_rng = random.Random(minibatch_seed)
 
@@ -588,7 +667,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed)
+    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed, n_step)
 
     try:
         for episode in range(episodes):
@@ -598,6 +677,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             if q not in state_to_index:
                 raise RuntimeError(f"DFA returned unknown initial state {q!r} after evaluating s0")
             augmented_state = _augment_state(raw_state, q, state_to_index)
+            pending_transitions = deque()
 
             # Reset counters local to the current episode.
             succeeded = automaton.is_goal_reached(q)
@@ -681,20 +761,33 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 # The behavior learner is biased by shaping.  The off-policy
                 # output learner receives the same sample with task reward only.
                 biased_learning_reward = synthetic_goal_reward + shaping_signal
-                biased_agent.memory.push(
-                    augmented_state,
-                    action,
-                    biased_learning_reward,
-                    next_augmented_state,
-                    bootstrap_terminal,
+                pending_transitions.append(
+                    (
+                        augmented_state,
+                        action,
+                        biased_learning_reward,
+                        synthetic_goal_reward,
+                        next_augmented_state,
+                        bootstrap_terminal,
+                    )
                 )
-                unbiased_agent.memory.push(
-                    augmented_state,
-                    action,
-                    synthetic_goal_reward,
-                    next_augmented_state,
-                    bootstrap_terminal,
-                )
+                if len(pending_transitions) >= n_step:
+                    _emit_n_step_prefix(
+                        pending_transitions,
+                        n_step,
+                        biased_agent.gamma,
+                        biased_agent.memory,
+                        unbiased_agent.memory,
+                    )
+                if episode_done:
+                    while pending_transitions:
+                        _emit_n_step_prefix(
+                            pending_transitions,
+                            n_step,
+                            biased_agent.gamma,
+                            biased_agent.memory,
+                            unbiased_agent.memory,
+                        )
                 if (
                     len(biased_agent.memory) != len(unbiased_agent.memory)
                     or biased_agent.memory.position != unbiased_agent.memory.position
@@ -836,7 +929,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             log_handle.close()
 
     # Return named histories to avoid ambiguous tuple positions.
-    return _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode)
+    return _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, n_step)
 
 
 # ==============================
@@ -914,6 +1007,7 @@ def main(args):
         f"Abstractions: {level_summary}\n"
         f"Inter-level shaping scale: "
         f"{abstraction_config.inter_level_shaping_scale}\n"
+        f"Ground DDQN return: {args.n_step}-step\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
@@ -989,7 +1083,7 @@ def main(args):
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, n_step=args.n_step, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/dual_learner_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -1054,6 +1148,12 @@ if __name__ == "__main__":
         help="Ordered grid hierarchy (level1 defines automaton coordinates).",
     )
     parser.add_argument("--eps-decay", type=float, default=0.9996)
+    parser.add_argument(
+        "--n-step",
+        type=_positive_int,
+        default=1,
+        help="Number of transitions used by each DDQN return (default: 1).",
+    )
     parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument(
