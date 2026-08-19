@@ -217,7 +217,23 @@ def save_sequential_heatmaps(
                 val = matrix[y, x]
                 if val > 0.0: 
                     text_color = 'white' if val < (computed_vmax / 2) else 'black'
-                    plt.text(x, y, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=7)
+                    truth_assignment = abstract_mdp._get_truth_assignment(x, y)
+                    next_q = abstract_mdp.automaton.get_next_q(
+                        current_q, truth_assignment
+                    )
+                    value_y = y + 0.13 if next_q != current_q else y
+                    plt.text(x, value_y, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=7)
+                    if next_q != current_q:
+                        plt.text(
+                            x,
+                            y - 0.18,
+                            f"→{next_q}",
+                            ha='center',
+                            va='center',
+                            color='#d32f2f',
+                            fontsize=6.5,
+                            fontweight='bold',
+                        )
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         

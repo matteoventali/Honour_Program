@@ -4,6 +4,7 @@ import unittest
 
 from abstract_mdps import ManualWaypointMDP
 from manual_automaton import AlternatingGoalsAutomaton, CyclicWaypointsAutomaton
+from spatial_regions import CircularRegion
 
 
 class CyclicWaypointsAutomatonTests(unittest.TestCase):
@@ -38,7 +39,11 @@ class CyclicWaypointsAutomatonTests(unittest.TestCase):
     def test_mdp_rewards_only_the_last_waypoint(self):
         automaton = CyclicWaypointsAutomaton(["a", "b", "c"])
         mdp = ManualWaypointMDP(
-            waypoints_dict={"a": (1, 0), "b": (2, 0), "c": (3, 0)},
+            regions={
+                "a": CircularRegion(-0.25, 0.75, 0.01),
+                "b": CircularRegion(0.25, 0.75, 0.01),
+                "c": CircularRegion(0.75, 0.75, 0.01),
+            },
             automaton=automaton,
             width=4,
             height=1,
@@ -52,7 +57,7 @@ class CyclicWaypointsAutomatonTests(unittest.TestCase):
         state, reward = mdp.get_transitions(state, 3)
         self.assertEqual((state, reward), ((3, 0, "q1"), 10.0))
 
-    def test_invalid_cycles_and_missing_waypoints_are_rejected(self):
+    def test_invalid_cycles_and_missing_regions_are_rejected(self):
         with self.assertRaises(ValueError):
             CyclicWaypointsAutomaton([])
         with self.assertRaises(ValueError):
@@ -60,7 +65,22 @@ class CyclicWaypointsAutomatonTests(unittest.TestCase):
 
         automaton = CyclicWaypointsAutomaton(["a", "b"])
         with self.assertRaises(ValueError):
-            automaton.validate_waypoints({"a": (0, 0)}, width=2, height=2)
+            automaton.validate_regions({"a": CircularRegion(0.0, 0.5, 0.1)})
+
+    def test_region_crossing_a_boundary_labels_both_cells(self):
+        automaton = CyclicWaypointsAutomaton(["goal"])
+        mdp = ManualWaypointMDP(
+            regions={"goal": CircularRegion(0.0, 0.75, 0.05)},
+            automaton=automaton,
+            width=4,
+            height=1,
+        )
+        self.assertEqual(mdp.region_cells["goal"], {(1, 0), (2, 0)})
+        self.assertEqual(mdp._get_truth_assignment(1, 0), {"goal": True})
+        self.assertEqual(
+            mdp.get_environment_truth_assignment((-0.2, 0.75)),
+            {"goal": False},
+        )
 
     def test_old_two_goal_api_keeps_the_same_states(self):
         automaton = AlternatingGoalsAutomaton()

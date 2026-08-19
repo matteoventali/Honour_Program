@@ -198,9 +198,10 @@ def save_sequential_heatmaps(
     
     width, height = abstract_mdp.width, abstract_mdp.height
     
-    # Exclude product states that are inconsistent with the proposition label
-    # of their current cell. Entering such a cell would already have advanced
-    # the DFA, so those states are unreachable in this abstraction.
+    # Keep every product-state value visible. Cells whose abstract label would
+    # advance the DFA are annotated, but their source-q value remains useful:
+    # with continuous regions the real agent may enter the circle without
+    # changing abstract cell, and training reads exactly this potential.
     def canonical_q(x, y, q):
         truth_assignment = abstract_mdp._get_truth_assignment(x, y)
         return abstract_mdp.automaton.get_next_q(q, truth_assignment)
@@ -212,7 +213,6 @@ def save_sequential_heatmaps(
                 q == current_q
                 and 0 <= x < width
                 and 0 <= y < height
-                and canonical_q(x, y, q) == q
             ):
                 matrix[y, x] = value
                 
@@ -229,28 +229,30 @@ def save_sequential_heatmaps(
             for x in range(width):
                 val = matrix[y, x]
                 if np.isnan(val):
-                    next_q = canonical_q(x, y, current_q)
-                    plt.text(
-                        x,
-                        y,
-                        f"→q{next_q}",
-                        ha='center',
-                        va='center',
-                        color='#d32f2f',
-                        fontsize=7,
-                        fontweight='bold',
-                    )
                     continue
                 text_color = 'white' if val < color_midpoint else 'black'
+                next_q = canonical_q(x, y, current_q)
+                value_y = y + 0.13 if next_q != current_q else y
                 plt.text(
                     x,
-                    y,
+                    value_y,
                     f"{val:.1f}",
                     ha='center',
                     va='center',
                     color=text_color,
                     fontsize=7,
                 )
+                if next_q != current_q:
+                    plt.text(
+                        x,
+                        y - 0.18,
+                        f"→q{next_q}",
+                        ha='center',
+                        va='center',
+                        color='#d32f2f',
+                        fontsize=6.5,
+                        fontweight='bold',
+                    )
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         

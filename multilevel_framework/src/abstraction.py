@@ -45,7 +45,6 @@ class AbstractionConfig:
     """
 
     levels: tuple[GridLevel, ...]
-    inter_level_shaping_scale: float = 1.0
 
     def __post_init__(self):
         if not self.levels:
@@ -53,17 +52,6 @@ class AbstractionConfig:
         names = [level.name for level in self.levels]
         if len(names) != len(set(names)):
             raise ValueError("Abstraction level names must be unique")
-        if (
-            isinstance(self.inter_level_shaping_scale, bool)
-            or not isinstance(self.inter_level_shaping_scale, (int, float))
-            or not math.isfinite(self.inter_level_shaping_scale)
-        ):
-            raise ValueError("inter_level_shaping_scale must be a finite number")
-        object.__setattr__(
-            self,
-            "inter_level_shaping_scale",
-            float(self.inter_level_shaping_scale),
-        )
 
     @property
     def primary(self):
@@ -90,13 +78,7 @@ class AbstractionConfig:
                     f"{name} must define grid_w/grid_h (or width/height)"
                 )
             levels.append(GridLevel(width=width, height=height, name=name))
-        return cls(
-            tuple(levels),
-            inter_level_shaping_scale=data.get(
-                "inter_level_shaping_scale",
-                1.0,
-            ),
-        )
+        return cls(tuple(levels))
 
     @classmethod
     def load(cls, path):

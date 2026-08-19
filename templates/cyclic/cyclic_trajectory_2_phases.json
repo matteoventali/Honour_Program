@@ -3,8 +3,8 @@
     "grid_h": 12,
     "goal_reward": 10000,
     "waypoint_cycle": ["g1", "g2"],
-    "waypoints_dict": {
-        "g1": [1, 8],
-        "g2": [8, 8]
+    "regions": {
+        "g1": {"center": [-0.75, 1.0625], "radius": 0.12},
+        "g2": {"center": [0.416667, 1.0625], "radius": 0.12}
     }
 }

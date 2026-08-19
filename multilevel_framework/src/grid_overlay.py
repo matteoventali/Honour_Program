@@ -16,9 +16,10 @@ from typing import Mapping, Sequence
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Ellipse, Rectangle
 
-from abstraction import AbstractionConfig, map_waypoints
+from abstraction import AbstractionConfig
+from spatial_regions import CircularRegion, load_regions, rasterize_regions
 from utils import phi_mapping_grid, spatial_grid_boundaries
 
 
@@ -147,7 +148,7 @@ def draw_abstract_grid(
     geometry: LunarLanderGeometry,
     grid_w: int,
     grid_h: int,
-    waypoints: Mapping[str, Sequence[int]] | None = None,
+    regions: Mapping[str, CircularRegion] | None = None,
     observation: Sequence[float] | None = None,
     title: str = "LunarLander with Abstract Grid",
 ):
@@ -188,28 +189,33 @@ def draw_abstract_grid(
             )
         )
 
-    for name, coordinates in (waypoints or {}).items():
-        if len(coordinates) != 2:
-            raise ValueError(f"Waypoint {name!r} must contain [x, y]")
-        grid_x, grid_y = int(coordinates[0]), int(coordinates[1])
-        if not (0 <= grid_x < grid_w and 0 <= grid_y < grid_h):
-            raise ValueError(f"Waypoint {name!r} is outside the abstract grid")
-        pixel_x, pixel_y = abstract_cell_to_pixel(
-            grid_x, grid_y, grid_w, grid_h, geometry
+    region_palette = ("#ffca28", "#7c4dff", "#00c853", "#ff6d00", "#00b8d4")
+    rasterized = rasterize_regions(regions, grid_w, grid_h) if regions else {}
+    for region_index, (name, region) in enumerate((regions or {}).items()):
+        color = region_palette[region_index % len(region_palette)]
+        for cell_index, (grid_x, grid_y) in enumerate(sorted(rasterized[name])):
+            x0, x1 = sorted((x_lines[grid_x], x_lines[grid_x + 1]))
+            y0, y1 = sorted((y_lines[grid_y], y_lines[grid_y + 1]))
+            axis.add_patch(
+                Rectangle(
+                    (x0, y0), x1 - x0, y1 - y0,
+                    facecolor=color, edgecolor=color, linewidth=0.8, alpha=0.16,
+                    label=f"{name}: intersected cells" if cell_index == 0 else None,
+                    zorder=2,
+                )
+            )
+        center = observation_to_pixel((region.center_x, region.center_y), geometry)
+        radius_x = abs(observation_to_pixel((region.center_x + region.radius, region.center_y), geometry)[0] - center[0])
+        radius_y = abs(observation_to_pixel((region.center_x, region.center_y + region.radius), geometry)[1] - center[1])
+        axis.add_patch(
+            Ellipse(
+                center, 2 * radius_x, 2 * radius_y,
+                facecolor=color, edgecolor="black", linewidth=1.8, alpha=0.38,
+                label=f"{name}: continuous region", zorder=4,
+            )
         )
-        axis.scatter(pixel_x, pixel_y, s=150, marker="o", color="#ffca28",
-                     edgecolor="black", linewidth=1.3, zorder=5)
-        axis.annotate(
-            f"{name} ({grid_x}, {grid_y})",
-            (pixel_x, pixel_y),
-            xytext=(7, -10),
-            textcoords="offset points",
-            color="black",
-            fontsize=9,
-            fontweight="bold",
-            bbox={"boxstyle": "round,pad=0.25", "fc": "#ffca28", "alpha": 0.9},
-            zorder=6,
-        )
+        axis.annotate(name, center, ha="center", va="center", fontsize=9,
+                      fontweight="bold", color="black", zorder=6)
 
     axis.set_xlim(0, geometry.viewport_width)
     # A small part of the configured y-domain can lie above the RGB viewport.
@@ -265,22 +271,7 @@ def generate_overlay(
             f"level must be between 1 and {len(abstraction_config.levels)}"
         )
     selected_level = abstraction_config.levels[level - 1]
-    primary_level = abstraction_config.primary
-    primary_waypoints = {
-        name: tuple(coordinates)
-        for name, coordinates in config.get("waypoints_dict", {}).items()
-    }
-    waypoints = (
-        primary_waypoints
-        if level == 1
-        else map_waypoints(
-            primary_waypoints,
-            primary_level.width,
-            primary_level.height,
-            selected_level.width,
-            selected_level.height,
-        )
-    )
+    regions = load_regions(config.get("regions"))
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,7 +285,7 @@ def generate_overlay(
             geometry=geometry,
             grid_w=selected_level.width,
             grid_h=selected_level.height,
-            waypoints=waypoints,
+            regions=regions,
             observation=observation,
             title=(
                 f"LunarLander — level{level} ({selected_level.name}, "

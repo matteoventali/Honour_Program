@@ -2,13 +2,19 @@
 
 from collections import defaultdict
 
+from spatial_regions import (
+    rasterize_regions,
+    truth_assignment_from_cell,
+    truth_assignment_from_observation,
+)
+
 
 class ManualWaypointMDP:
     """Grid abstraction whose state is ``(x, y, q)``."""
 
     def __init__(
         self,
-        waypoints_dict,
+        regions,
         automaton,
         width=12,
         height=12,
@@ -19,7 +25,8 @@ class ManualWaypointMDP:
         self.height = height
         self.gamma = gamma
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7]
-        self.waypoints_dict = waypoints_dict
+        self.regions = regions
+        self.region_cells = rasterize_regions(regions, width, height)
         self.automaton = automaton
         self.num_phases = self.automaton.num_phases
         self.states = [
@@ -32,11 +39,12 @@ class ManualWaypointMDP:
         self.v_star = defaultdict(float)
 
     def _get_truth_assignment(self, x, y):
-        """Map grid coordinates to waypoint proposition values."""
-        return {
-            proposition: (x == waypoint_x and y == waypoint_y)
-            for proposition, (waypoint_x, waypoint_y) in self.waypoints_dict.items()
-        }
+        """Evaluate propositions on the intersected-cell over-approximation."""
+        return truth_assignment_from_cell(self.region_cells, x, y)
+
+    def get_environment_truth_assignment(self, observation):
+        """Evaluate propositions exactly on a continuous environment state."""
+        return truth_assignment_from_observation(self.regions, observation)
 
     def get_transitions(self, state, action):
         """Apply one abstract movement and one automaton transition."""

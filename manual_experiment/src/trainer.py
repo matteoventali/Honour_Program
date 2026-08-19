@@ -22,6 +22,7 @@ import torch
 from abstract_mdps import ManualWaypointMDP
 from agent import HierarchicalDQNLearner
 from manual_automaton import CyclicWaypointsAutomaton
+from spatial_regions import load_regions
 from utils import phi_mapping_sequential, plot_buffer_fractions, plot_buffer_variance, plot_shaping_reward_breakdown, plot_training_variance, save_sequential_heatmaps
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -192,8 +193,7 @@ def _augment_state(observation, q, state_to_index):
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
     """Consume the initial observation and return the first active automaton state."""
-    initial_x, initial_y = _abstract_position(observation, abstract_mdp)
-    initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
+    initial_truth_assignment = abstract_mdp.get_environment_truth_assignment(observation)
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
     return abstract_mdp.automaton.advance(
         pre_trace_q, initial_truth_assignment
@@ -219,21 +219,21 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
+def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
     """Write the configuration and automaton metadata for a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
     shaping_formula = (
-        "K*(gamma*Phi(next)-Phi(state))"
+        "gamma*Phi(next)-Phi(state)"
         if training_shaping_gamma
-        else "K*(Phi(next)-Phi(state))"
+        else "Phi(next)-Phi(state)"
     )
     header = (
         "\n=== NEW RUN ===\n"
-        f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
+        f"episodes={episodes}, shaping={use_shaping}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
-        f"waypoints={abstract_mdp.waypoints_dict}\n"
+        f"regions={{{', '.join(f'{name}: {region.as_dict()}' for name, region in abstract_mdp.regions.items())}}}\n"
         f"automaton_states={automaton_states}, initial={automaton.get_initial_q()}, accepting={sorted(automaton.accepting_states)}\n"
     )
     log_handle.write(header)
@@ -335,7 +335,7 @@ def _build_training_results(histories, buffer_histories, automaton_states, best_
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
     """
     Train the DDQN agent with the manual automaton and one global epsilon.
 
@@ -392,7 +392,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
+    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
 
     try:
         for episode in range(episodes):
@@ -435,7 +435,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 abstract_state = (x, y, q)
 
                 # Advance the automaton using propositions true on arrival.
-                truth_assignment = abstract_mdp._get_truth_assignment(next_x, next_y)
+                truth_assignment = abstract_mdp.get_environment_truth_assignment(next_raw_state)
                 automaton_step = automaton.advance(q, truth_assignment)
                 next_q = automaton_step.next_state
                 if next_q not in state_to_index:
@@ -483,7 +483,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     phi_state = abstract_mdp.v_star.get(abstract_state, 0.0)
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
                     training_discount = abstract_mdp.gamma if training_shaping_gamma else 1.0
-                    shaping_signal = K * (training_discount * phi_next_state - phi_state)
+                    shaping_signal = training_discount * phi_next_state - phi_state
 
                 # Store the transition and perform one DDQN optimization step.
                 learning_reward = synthetic_goal_reward + shaping_signal
@@ -601,25 +601,20 @@ def main(args):
     if not args.post_process:
         _archive_config(config_path, experiment_dir, "trajectory.json")
 
-    waypoints = {
-        name: tuple(coordinates)
-        for name, coordinates in config.get(
-            "waypoints_dict", {"g1": [1, 8], "g2": [8, 8]}
-        ).items()
-    }
+    regions = load_regions(config.get("regions"))
     gamma = float(config.get("gamma", 0.99))
     goal_reward = float(config.get("goal_reward", 10000))
     grid_w = int(config.get("grid_w", 12))
     grid_h = int(config.get("grid_h", 12))
 
-    # The cycle order is explicit; when omitted, JSON waypoint insertion order
+    # The cycle order is explicit; when omitted, JSON region insertion order
     # provides a convenient backwards-compatible default.
-    waypoint_cycle = config.get("waypoint_cycle", list(waypoints))
+    waypoint_cycle = config.get("waypoint_cycle", list(regions))
     automaton = CyclicWaypointsAutomaton(waypoint_cycle)
-    automaton.validate_waypoints(waypoints, width=grid_w, height=grid_h)
+    automaton.validate_regions(regions)
     print(
         "=== MANUAL AUTOMATON TRAINING (single epsilon) ===\n"
-        f"Waypoints: {waypoints}\n"
+        f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
         f"Automaton: states={automaton.states}, stable={automaton.active_states}, "
         f"initial={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
@@ -632,7 +627,7 @@ def main(args):
 
     # Heatmaps depend only on the saved task configuration, not on agent training.
     abstract_mdp = ManualWaypointMDP(
-        waypoints_dict=waypoints,
+        regions=regions,
         automaton=automaton,
         width=grid_w,
         height=grid_h,
@@ -669,7 +664,7 @@ def main(args):
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -723,7 +718,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--config", default="trajectory.json")
     parser.add_argument("--eps-decay", type=float, default=0.9996)
-    parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)
     parser.add_argument(

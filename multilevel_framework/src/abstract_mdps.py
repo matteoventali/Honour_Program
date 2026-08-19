@@ -2,7 +2,12 @@ import re
 import warnings
 from collections import defaultdict
 
-from abstraction import map_state, map_waypoints
+from abstraction import map_state
+from spatial_regions import (
+    rasterize_regions,
+    truth_assignment_from_cell,
+    truth_assignment_from_observation,
+)
 
 class LTLfAutomaton:
     """
@@ -146,7 +151,7 @@ class LTLfWaypointMDP:
     """
     def __init__(
         self,
-        waypoints_dict,
+        regions,
         ltlf_automaton,
         width=12,
         height=12,
@@ -162,7 +167,8 @@ class LTLfWaypointMDP:
         self.gamma = gamma
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7] # Include diagonal movements.
         
-        self.waypoints_dict = waypoints_dict
+        self.regions = regions
+        self.region_cells = rasterize_regions(regions, width, height)
         self.automaton = ltlf_automaton
         self.num_phases = self.automaton.num_phases
         
@@ -172,17 +178,17 @@ class LTLfWaypointMDP:
         self.goal_reward = goal_reward
         self.v_star = defaultdict(float)
         self.upper_level_mdp = None
-        self.inter_level_shaping_scale = 0.0
         self.value_iteration_iterations = 0
         
     def _get_truth_assignment(self, x, y):
         """
         Map the current grid coordinates to a Boolean proposition assignment.
         """
-        truth_assignment = {}
-        for prop_name, (wp_x, wp_y) in self.waypoints_dict.items():
-            truth_assignment[prop_name] = (x == wp_x and y == wp_y)
-        return truth_assignment
+        return truth_assignment_from_cell(self.region_cells, x, y)
+
+    def get_environment_truth_assignment(self, observation):
+        """Evaluate propositions exactly on a continuous environment state."""
+        return truth_assignment_from_observation(self.regions, observation)
 
     def get_transitions(self, state, action):
         x, y, q = state
@@ -209,11 +215,10 @@ class LTLfWaypointMDP:
         return next_state, 0.0
 
     def map_state_to_upper_level(self, state):
-        """Map a state and apply the upper level's coarser proposition labels.
+        """Map a state spatially while preserving its real-trace DFA state.
 
-        A waypoint labels its complete macro-cell in the upper abstraction.
-        Consequently the mapped DFA state must consume that macro-cell's
-        valuation instead of blindly preserving the lower-level ``q``.
+        Task progress belongs to the real continuous trace. Mapping a product
+        state between spatial abstractions must therefore preserve ``q``.
         """
         if self.upper_level_mdp is None:
             raise ValueError(f"{self.level_name} has no upper abstraction level")
@@ -224,12 +229,7 @@ class LTLfWaypointMDP:
             target_width=self.upper_level_mdp.width,
             target_height=self.upper_level_mdp.height,
         )
-        upper_x, upper_y, q = upper_state
-        upper_truth_assignment = (
-            self.upper_level_mdp._get_truth_assignment(upper_x, upper_y)
-        )
-        upper_q = self.automaton.get_next_q(q, upper_truth_assignment)
-        return upper_x, upper_y, upper_q
+        return upper_state
 
     def get_upper_level_potential(self, state):
         """Map ``state`` canonically and read the upper-level V*."""
@@ -239,15 +239,12 @@ class LTLfWaypointMDP:
         return self.upper_level_mdp.v_star.get(upper_state, 0.0)
 
     def get_inter_level_shaping_reward(self, state, next_state):
-        """Return K * (gamma * V_upper(map(s')) - V_upper(map(s)))."""
+        """Return the gamma-discounted inter-level potential difference."""
         if self.upper_level_mdp is None:
             return 0.0
         state_potential = self.get_upper_level_potential(state)
         next_state_potential = self.get_upper_level_potential(next_state)
-        return self.inter_level_shaping_scale * (
-            self.gamma * next_state_potential
-            - state_potential
-        )
+        return self.gamma * next_state_potential - state_potential
 
     def print_policy(self):
         arrows = {
@@ -301,7 +298,6 @@ class LTLfWaypointMDP:
         self,
         theta=0.001,
         upper_level_mdp=None,
-        shaping_scale=1.0,
         print_policy=True,
     ):
         """Compute V*, reading an optional upper-level potential online."""
@@ -309,14 +305,11 @@ class LTLfWaypointMDP:
             raise ValueError("theta must be greater than zero")
 
         self.upper_level_mdp = upper_level_mdp
-        self.inter_level_shaping_scale = (
-            float(shaping_scale) if self.upper_level_mdp is not None else 0.0
-        )
         # Upper-level values are neither copied nor used as an initialisation:
         # each PBRS evaluation maps the current states and reads upper V* online.
         self.v_star = defaultdict(float)
         shaping_label = (
-            f", online PBRS K={self.inter_level_shaping_scale:g}"
+            ", online gamma-discounted PBRS"
             if self.upper_level_mdp is not None
             else ", no inter-level shaping"
         )
@@ -372,7 +365,7 @@ class MultiLevelWaypointMDP:
 
     def __init__(
         self,
-        waypoints_dict,
+        regions,
         ltlf_automaton,
         abstraction_config,
         gamma=0.99,
@@ -384,45 +377,33 @@ class MultiLevelWaypointMDP:
         self.goal_reward = goal_reward
         self.levels = []
 
-        primary = abstraction_config.primary
-        primary_waypoints = {
-            name: tuple(coordinates) for name, coordinates in waypoints_dict.items()
-        }
-        for index, level in enumerate(abstraction_config.levels):
-            if index == 0:
-                level_waypoints = primary_waypoints
-            else:
-                level_waypoints = map_waypoints(
-                    primary_waypoints,
-                    primary.width,
-                    primary.height,
-                    level.width,
-                    level.height,
-                )
-                self._warn_on_waypoint_collisions(level.name, level_waypoints)
-            self.levels.append(
-                LTLfWaypointMDP(
-                    waypoints_dict=level_waypoints,
-                    ltlf_automaton=ltlf_automaton,
-                    width=level.width,
-                    height=level.height,
-                    gamma=gamma,
-                    goal_reward=goal_reward,
-                    level_name=level.name,
-                )
+        for level in abstraction_config.levels:
+            level_mdp = LTLfWaypointMDP(
+                regions=regions,
+                ltlf_automaton=ltlf_automaton,
+                width=level.width,
+                height=level.height,
+                gamma=gamma,
+                goal_reward=goal_reward,
+                level_name=level.name,
             )
+            self._warn_on_region_collisions(level_mdp)
+            self.levels.append(level_mdp)
 
     @staticmethod
-    def _warn_on_waypoint_collisions(level_name, waypoints):
+    def _warn_on_region_collisions(level):
         cells_to_names = defaultdict(list)
-        for name, cell in waypoints.items():
-            cells_to_names[cell].append(name)
+        for name, cells in level.region_cells.items():
+            for cell in cells:
+                cells_to_names[cell].append(name)
         collisions = {
-            cell: names for cell, names in cells_to_names.items() if len(names) > 1
+            cell: names
+            for cell, names in cells_to_names.items()
+            if len(names) > 1
         }
         if collisions:
             warnings.warn(
-                f"{level_name} maps multiple propositions to the same cells: "
+                f"{level.level_name} maps multiple propositions to the same cells: "
                 f"{collisions}. They will be true simultaneously on that level.",
                 UserWarning,
                 stacklevel=3,
@@ -440,9 +421,6 @@ class MultiLevelWaypointMDP:
             current_mdp.value_iteration(
                 theta=theta,
                 upper_level_mdp=following_mdp,
-                shaping_scale=(
-                    self.abstraction_config.inter_level_shaping_scale
-                ),
                 print_policy=print_policies,
             )
             following_mdp = current_mdp

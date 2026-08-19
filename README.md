@@ -42,6 +42,19 @@ Le configurazioni riutilizzabili sono raccolte in `templates/`:
 - `templates/trajectories/` per i task sequenziali;
 - `templates/cyclic/` per i task ciclici.
 
+I task definiscono ogni proposizione come una regione circolare continua nelle
+coordinate normalizzate di LunarLander (`x` in `[-1, 1]`, `y` in `[0, 1.5]`):
+
+```json
+"regions": {
+  "goal": {"center": [0.42, 1.05], "radius": 0.12}
+}
+```
+
+Training e valutazione verificano l'appartenenza sullo stato continuo. Per il
+planning astratto, ogni regione etichetta tutte le celle che interseca; ogni
+livello della gerarchia viene rasterizzato direttamente dalla regione continua.
+
 I notebook attivi sono:
 
 - `notebook/notebook_multilevel_framework.ipynb`;

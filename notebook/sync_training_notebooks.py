@@ -15,71 +15,10 @@ NOTEBOOK_SOURCES = {
     "notebook_multilevel_framework.ipynb": "multilevel_framework/src",
 }
 
-MULTILEVEL_NOTEBOOKS = {
-    "notebook_multilevel_framework.ipynb",
+REQUIRED_WRITEFILES = {
+    "notebook_manual_experiment.ipynb": ("spatial_regions.py",),
+    "notebook_multilevel_framework.ipynb": ("spatial_regions.py",),
 }
-
-
-def _replace_once(text: str, old: str, new: str, description: str) -> str:
-    count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f"Expected one {description}, found {count}")
-    return text.replace(old, new, 1)
-
-
-def _multilevel_trainer_variant(source: str) -> str:
-    """Preserve the notebooks' configurable training-time shaping discount."""
-    source = _replace_once(
-        source,
-        "def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states):",
-        "def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):",
-        "run-header signature",
-    )
-    source = _replace_once(
-        source,
-        '        f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\\n"\n',
-        '        f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\\n"\n'
-        '        f"training_shaping_gamma={training_shaping_gamma}\\n"\n',
-        "training-shaping log entry",
-    )
-    source = _replace_once(
-        source,
-        'def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, seed=None, policy_suffix=""):',
-        'def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):',
-        "training-loop signature",
-    )
-    source = _replace_once(
-        source,
-        "    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states)\n",
-        "    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)\n",
-        "run-header invocation",
-    )
-    source = _replace_once(
-        source,
-        "                    shaping_signal = K * (abstract_mdp.gamma * phi_next_state - phi_state)\n",
-        "                    training_discount = abstract_mdp.gamma if training_shaping_gamma else 1.0\n"
-        "                    shaping_signal = K * (training_discount * phi_next_state - phi_state)\n",
-        "training shaping equation",
-    )
-    source = _replace_once(
-        source,
-        "log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)",
-        "log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)",
-        "multi-seed training invocation",
-    )
-    source = _replace_once(
-        source,
-        '    parser.add_argument("--no-shaping", action="store_true")\n',
-        '    parser.add_argument(\n'
-        '        "--training-shaping-gamma",\n'
-        '        action=argparse.BooleanOptionalAction,\n'
-        '        default=True,\n'
-        '        help="Use gamma*Phi(next)-Phi(state) during DDQN training.",\n'
-        '    )\n'
-        '    parser.add_argument("--no-shaping", action="store_true")\n',
-        "training-shaping CLI option",
-    )
-    return source
 
 
 def _writefile_source(filename: str, body: str) -> list[str]:
@@ -87,6 +26,12 @@ def _writefile_source(filename: str, body: str) -> list[str]:
 
 
 def _update_configuration(source: str) -> str:
+    source = re.sub(r"(?m)^SHAPING_SCALE\s*=.*\n", "", source)
+    source = re.sub(
+        r'(?m)^print\(f"Shaping scale: \{SHAPING_SCALE\}"\)\n',
+        "",
+        source,
+    )
     if not re.search(r"(?m)^NUM_SEEDS\s*=", source):
         source = re.sub(
             r"(?m)^(EPISODES\s*=.*\n)",
@@ -133,14 +78,14 @@ def _update_configuration(source: str) -> str:
 
     if not re.search(r"(?m)^TRAINING_USE_GAMMA\s*=", source):
         source = re.sub(
-            r"(?m)^(SHAPING_SCALE\s*=.*\n)",
+            r"(?m)^(EPSILON_DECAY\s*=.*\n)",
             r"\1TRAINING_USE_GAMMA = True\n",
             source,
             count=1,
         )
     if 'print(f"Training uses gamma: {TRAINING_USE_GAMMA}")' not in source:
         source = re.sub(
-            r'(?m)^(print\(f"Shaping scale: \{SHAPING_SCALE\}"\)\n)',
+            r'(?m)^(print\(f"Epsilon decay: \{EPSILON_DECAY\}"\)\n)',
             r'\1print(f"Training uses gamma: {TRAINING_USE_GAMMA}")\n',
             source,
             count=1,
@@ -149,6 +94,14 @@ def _update_configuration(source: str) -> str:
 
 
 def _update_training_command(source: str) -> str:
+    source = source.replace(
+        '    "--shaping-scale",\n    str(SHAPING_SCALE),\n',
+        "",
+    )
+    source = source.replace(
+        '    "--shaping-scale", str(SHAPING_SCALE),\n',
+        "",
+    )
     old_conditional = (
         'if SEED is not None:\n'
         '    command.extend(["--seed", str(SEED)])\n'
@@ -210,6 +163,31 @@ def _update_result_preview(source: str) -> str:
 def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
     notebook_path = NOTEBOOK_DIR / notebook_name
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    source_root = PROJECT_ROOT / source_directory
+
+    existing_targets = {
+        "".join(cell.get("source", [])).splitlines()[0].split(maxsplit=1)[1]
+        for cell in notebook["cells"]
+        if "".join(cell.get("source", [])).startswith("%%writefile ")
+    }
+    for filename in REQUIRED_WRITEFILES.get(notebook_name, ()):
+        if filename in existing_targets:
+            continue
+        body = (source_root / filename).read_text(encoding="utf-8")
+        new_cell = {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": _writefile_source(filename, body),
+        }
+        insertion_index = next(
+            index
+            for index, cell in enumerate(notebook["cells"])
+            if "".join(cell.get("source", [])).startswith("%%writefile abstract_mdps.py")
+        )
+        notebook["cells"].insert(insertion_index, new_cell)
+        existing_targets.add(filename)
 
     writefile_targets = set()
     for cell in notebook["cells"]:
@@ -217,7 +195,6 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         if source.startswith("%%writefile "):
             writefile_targets.add(source.splitlines()[0].split(maxsplit=1)[1])
 
-    source_root = PROJECT_ROOT / source_directory
     source_by_filename = {
         filename: (source_root / filename).read_text(encoding="utf-8")
         for filename in writefile_targets
@@ -228,14 +205,6 @@ def synchronize_notebook(notebook_name: str, source_directory: str) -> None:
         raise RuntimeError(
             f"Missing source files for {notebook_name}: {sorted(missing_sources)}"
         )
-
-    trainer_source = source_by_filename["trainer.py"]
-    if (
-        notebook_name in MULTILEVEL_NOTEBOOKS
-        and "--training-shaping-gamma" not in trainer_source
-    ):
-        trainer_source = _multilevel_trainer_variant(trainer_source)
-    source_by_filename["trainer.py"] = trainer_source
 
     replaced = {filename: 0 for filename in source_by_filename}
     for cell in notebook["cells"]:

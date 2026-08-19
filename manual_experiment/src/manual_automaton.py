@@ -99,28 +99,11 @@ class CyclicWaypointsAutomaton:
         """Return the stable state reached after applying epsilon closure."""
         return self.advance(current_q, truth_assignment).next_state
 
-    def validate_waypoints(self, waypoints: Mapping[str, tuple[int, int]], width: int, height: int) -> None:
-        """Validate the propositions and coordinates required by the automaton."""
-        if width <= 0 or height <= 0:
-            raise ValueError("Grid dimensions must be positive")
-
-        missing = sorted(self.required_propositions - set(waypoints))
+    def validate_regions(self, regions: Mapping[str, object]) -> None:
+        """Validate that every cycle proposition has a continuous region."""
+        missing = sorted(self.required_propositions - set(regions))
         if missing:
-            raise ValueError(f"Missing required cycle waypoints: {missing}")
-
-        for name, coordinates in waypoints.items():
-            if not isinstance(coordinates, (tuple, list)) or len(coordinates) != 2:
-                raise ValueError(
-                    f"Waypoint {name!r} must contain exactly two coordinates"
-                )
-            x, y = coordinates
-            if not isinstance(x, int) or not isinstance(y, int):
-                raise ValueError(f"Waypoint {name!r} coordinates must be integers")
-            if not 0 <= x < width or not 0 <= y < height:
-                raise ValueError(
-                    f"Waypoint {name!r} at ({x}, {y}) is outside "
-                    f"the {width}x{height} grid"
-                )
+            raise ValueError(f"Missing required cycle regions: {missing}")
 
     def describe_cycle(self) -> str:
         """Return a compact human-readable representation of the automaton."""

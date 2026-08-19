@@ -23,6 +23,7 @@ from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
 from agent import HierarchicalDQNLearner
 from automaton_validator import validate_automaton
+from spatial_regions import load_regions
 from utils import (
     phi_mapping_sequential,
     plot_buffer_fractions,
@@ -200,8 +201,7 @@ def _augment_state(observation, q, state_to_index):
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
     """Consume the initial observation from the DFA pre-trace state and return the first active state."""
-    initial_x, initial_y = _abstract_position(observation, abstract_mdp)
-    initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
+    initial_truth_assignment = abstract_mdp.get_environment_truth_assignment(observation)
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
     return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
 
@@ -225,24 +225,24 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
+def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
     shaping_formula = (
-        "K*(gamma*Phi(next)-Phi(state))"
+        "gamma*Phi(next)-Phi(state)"
         if training_shaping_gamma
-        else "K*(Phi(next)-Phi(state))"
+        else "Phi(next)-Phi(state)"
     )
     header = (
         "\n=== NEW RUN ===\n"
-        f"episodes={episodes}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
+        f"episodes={episodes}, shaping={use_shaping}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
-        f"inter_level_K={abstract_mdp.inter_level_shaping_scale}\n"
+        "inter_level_formula=gamma*Phi(next)-Phi(state)\n"
         f"formula={automaton.formula_str}\n"
-        f"waypoints={abstract_mdp.waypoints_dict}\n"
+        f"regions={{{', '.join(f'{name}: {region.as_dict()}' for name, region in abstract_mdp.regions.items())}}}\n"
         f"dfa_states={automaton_states}, pre_trace={automaton.get_initial_q()}, accepting={sorted(automaton.accepting_states)}\n"
     )
     log_handle.write(header)
@@ -344,7 +344,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
     """
     Train the DDQN agent with the LTLf automaton and one global epsilon.
 
@@ -401,7 +401,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
+    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
 
     try:
         for episode in range(episodes):
@@ -445,7 +445,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 abstract_state = (x, y, q)
 
                 # Advance the DFA using propositions true in the arrival state.
-                truth_assignment = abstract_mdp._get_truth_assignment(next_x, next_y)
+                truth_assignment = abstract_mdp.get_environment_truth_assignment(next_raw_state)
                 next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown state {next_q!r} from state {q!r}")
@@ -489,7 +489,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     phi_state = abstract_mdp.v_star.get(abstract_state, 0.0)
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
                     training_discount = abstract_mdp.gamma if training_shaping_gamma else 1.0
-                    shaping_signal = K * (training_discount * phi_next_state - phi_state)
+                    shaping_signal = training_discount * phi_next_state - phi_state
 
                 # Store the transition and perform one DDQN optimization step.
                 learning_reward = synthetic_goal_reward + shaping_signal
@@ -617,18 +617,14 @@ def main(args):
         _archive_config(abstraction_config_path, experiment_dir, "abstraction.json")
 
     formula = config.get("formula", "F(goal)")
-    waypoints = {name: tuple(coordinates) for name, coordinates in config.get("waypoints_dict", {"goal": [5, 0]}).items()}
+    regions = load_regions(config.get("regions"))
     gamma = float(config.get("gamma", 0.99))
     goal_reward = float(config.get("goal_reward", 10000))
-    primary_level = abstraction_config.primary
-
     # Build the DFA once for both training and post-processing.
     automaton = LTLfAutomaton(formula)
     validation_report = validate_automaton(
         automaton,
-        waypoints,
-        width=primary_level.width,
-        height=primary_level.height,
+        regions,
     )
     level_summary = ", ".join(
         f"{index}:{level.name}={level.width}x{level.height}"
@@ -637,10 +633,9 @@ def main(args):
     print(
         "=== LTLf TRAINING (single epsilon) ===\n"
         f"Formula: {formula}\n"
-        f"Waypoints: {waypoints}\n"
+        f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
         f"Abstractions: {level_summary}\n"
-        f"Inter-level shaping scale: "
-        f"{abstraction_config.inter_level_shaping_scale}\n"
+        "Inter-level shaping: gamma*Phi(next)-Phi(state)\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
@@ -653,7 +648,7 @@ def main(args):
 
     # Heatmaps depend only on the saved task configuration, not on agent training.
     multilevel_mdp = MultiLevelWaypointMDP(
-        waypoints_dict=waypoints,
+        regions=regions,
         ltlf_automaton=automaton,
         abstraction_config=abstraction_config,
         gamma=gamma,
@@ -690,7 +685,7 @@ def main(args):
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -746,7 +741,6 @@ if __name__ == "__main__":
         help="Ordered grid hierarchy (level1 defines automaton coordinates).",
     )
     parser.add_argument("--eps-decay", type=float, default=0.9996)
-    parser.add_argument("--shaping-scale", type=float, default=1.0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)
     parser.add_argument(

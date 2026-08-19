@@ -10,13 +10,17 @@ from abstraction import (
     overlapping_cells,
 )
 from abstract_mdps import LTLfWaypointMDP, MultiLevelWaypointMDP
+from spatial_regions import CircularRegion
+
+
+def _goal_region(x=0.75, y=0.75, radius=0.01):
+    return {"goal": CircularRegion(x, y, radius)}
 
 
 class AbstractionConfigTests(unittest.TestCase):
     def test_level1_is_primary_and_names_are_optional(self):
         config = AbstractionConfig.from_dict(
             {
-                "inter_level_shaping_scale": 0.5,
                 "levels": [
                     {"grid_w": 12, "grid_h": 8},
                     {"name": "coarse", "width": 5, "height": 3},
@@ -26,7 +30,6 @@ class AbstractionConfigTests(unittest.TestCase):
         self.assertEqual(config.primary.shape, (12, 8))
         self.assertEqual(config.levels[0].name, "level1")
         self.assertEqual(config.levels[1].name, "coarse")
-        self.assertEqual(config.inter_level_shaping_scale, 0.5)
 
     def test_empty_hierarchy_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -81,7 +84,7 @@ class _TinyAutomaton:
 class TerminalRewardTests(unittest.TestCase):
     def test_abstract_transitions_never_emit_reward(self):
         mdp = LTLfWaypointMDP(
-            waypoints_dict={"goal": (1, 0)},
+            regions=_goal_region(0.5),
             ltlf_automaton=_TinyAutomaton(),
             width=2,
             height=1,
@@ -98,7 +101,7 @@ class TerminalRewardTests(unittest.TestCase):
 
     def test_accepting_states_hold_the_goal_reward(self):
         mdp = LTLfWaypointMDP(
-            waypoints_dict={"goal": (1, 0)},
+            regions=_goal_region(0.5),
             ltlf_automaton=_TinyAutomaton(),
             width=2,
             height=1,
@@ -116,7 +119,6 @@ class HierarchyTests(unittest.TestCase):
     def test_level_i_uses_level_i_plus_one_as_shaping_potential(self):
         config = AbstractionConfig.from_dict(
             {
-                "inter_level_shaping_scale": 0.5,
                 "levels": [
                     {"grid_w": 4, "grid_h": 3},
                     {"grid_w": 3, "grid_h": 2},
@@ -125,7 +127,7 @@ class HierarchyTests(unittest.TestCase):
             }
         )
         hierarchy = MultiLevelWaypointMDP(
-            waypoints_dict={"goal": (3, 2)},
+            regions=_goal_region(0.75, 1.25),
             ltlf_automaton=_TinyAutomaton(),
             abstraction_config=config,
             gamma=0.9,
@@ -133,18 +135,13 @@ class HierarchyTests(unittest.TestCase):
         )
         hierarchy.compute_value_functions(theta=0.0001)
 
-        self.assertEqual(hierarchy.primary_mdp.waypoints_dict, {"goal": (3, 2)})
-        self.assertEqual(hierarchy.levels[1].waypoints_dict, {"goal": (2, 1)})
+        self.assertEqual(hierarchy.primary_mdp.region_cells["goal"], {(3, 2)})
+        self.assertEqual(hierarchy.levels[1].region_cells["goal"], {(2, 1)})
         self.assertIsNone(hierarchy.levels[-1].upper_level_mdp)
         self.assertIs(
             hierarchy.primary_mdp.upper_level_mdp,
             hierarchy.levels[1],
         )
-        self.assertEqual(
-            hierarchy.primary_mdp.inter_level_shaping_scale,
-            0.5,
-        )
-
         state = (0, 0, 0)
         next_state, _ = hierarchy.primary_mdp.get_transitions(state, 3)
         mapped_state = hierarchy.primary_mdp.map_state_to_upper_level(state)
@@ -157,10 +154,7 @@ class HierarchyTests(unittest.TestCase):
             hierarchy.primary_mdp.get_upper_level_potential(state),
             expected_state_potential,
         )
-        expected_shaping = 0.5 * (
-            0.9 * expected_next_potential
-            - expected_state_potential
-        )
+        expected_shaping = 0.9 * expected_next_potential - expected_state_potential
         self.assertAlmostEqual(
             hierarchy.primary_mdp.get_inter_level_shaping_reward(
                 state,
@@ -171,10 +165,9 @@ class HierarchyTests(unittest.TestCase):
         self.assertAlmostEqual(hierarchy.primary_mdp.v_star[(3, 2, 1)], 10.0)
 
     def test_upper_value_is_read_online_without_a_precomputed_table(self):
-        def build_hierarchy(shaping_scale):
+        def build_hierarchy():
             mdp_config = AbstractionConfig.from_dict(
                 {
-                    "inter_level_shaping_scale": shaping_scale,
                     "levels": [
                         {"grid_w": 4, "grid_h": 1},
                         {"grid_w": 2, "grid_h": 1},
@@ -182,7 +175,7 @@ class HierarchyTests(unittest.TestCase):
                 }
             )
             hierarchy = MultiLevelWaypointMDP(
-                waypoints_dict={"goal": (3, 0)},
+                regions=_goal_region(),
                 ltlf_automaton=_TinyAutomaton(),
                 abstraction_config=mdp_config,
                 gamma=0.9,
@@ -191,23 +184,17 @@ class HierarchyTests(unittest.TestCase):
             hierarchy.compute_value_functions(theta=0.0001)
             return hierarchy
 
-        shaped = build_hierarchy(1.0).primary_mdp
-        unshaped = build_hierarchy(0.0).primary_mdp
+        shaped = build_hierarchy().primary_mdp
 
         self.assertIsNotNone(shaped.upper_level_mdp)
         self.assertFalse(hasattr(shaped, "inter_level_potential"))
         self.assertFalse(hasattr(shaped, "warm_start_v_star"))
-        self.assertNotEqual(
-            shaped.v_star[(0, 0, 0)],
-            unshaped.v_star[(0, 0, 0)],
-        )
-
         state = (0, 0, 0)
         mapped_state = shaped.map_state_to_upper_level(state)
         shaped.upper_level_mdp.v_star[mapped_state] = 123.0
         self.assertEqual(shaped.get_upper_level_potential(state), 123.0)
 
-    def test_the_complete_upper_macro_cell_is_treated_as_goal(self):
+    def test_boundary_region_labels_every_intersected_cell_and_mapping_preserves_q(self):
         config = AbstractionConfig.from_dict(
             {
                 "levels": [
@@ -217,7 +204,7 @@ class HierarchyTests(unittest.TestCase):
             }
         )
         hierarchy = MultiLevelWaypointMDP(
-            waypoints_dict={"goal": (3, 0)},
+            regions=_goal_region(0.0, 0.75, 0.05),
             ltlf_automaton=_TinyAutomaton(),
             abstraction_config=config,
             gamma=0.9,
@@ -226,18 +213,12 @@ class HierarchyTests(unittest.TestCase):
         hierarchy.compute_value_functions(theta=0.0001)
         fine = hierarchy.primary_mdp
 
-        # Fine cell (2, 0) is not the exact goal (3, 0), but both belong to
-        # upper macro-cell (1, 0). The coarse view therefore advances q.
-        self.assertEqual(fine._get_truth_assignment(2, 0), {"goal": False})
+        self.assertEqual(fine.region_cells["goal"], {(1, 0), (2, 0)})
+        self.assertEqual(hierarchy.levels[1].region_cells["goal"], {(0, 0), (1, 0)})
         self.assertEqual(
             fine.map_state_to_upper_level((2, 0, 0)),
-            (1, 0, 1),
+            (1, 0, 0),
         )
-        self.assertEqual(
-            fine.get_upper_level_potential((2, 0, 0)),
-            10.0,
-        )
-        self.assertEqual(fine.v_star[(2, 0, 0)], 8.0)
 
 
 if __name__ == "__main__":
