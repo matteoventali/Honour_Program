@@ -114,8 +114,69 @@ class TerminalRewardTests(unittest.TestCase):
         self.assertEqual(mdp.v_star[(1, 0, 1)], 10.0)
         self.assertEqual(mdp.v_star[(0, 0, 0)], 9.0)
 
+    def test_standard_convention_rewards_goal_transition_and_terminal_value_is_zero(self):
+        mdp = LTLfWaypointMDP(
+            regions=_goal_region(0.5),
+            ltlf_automaton=_TinyAutomaton(),
+            width=2,
+            height=1,
+            gamma=0.9,
+            goal_reward=10.0,
+            reward_convention="standard",
+        )
+
+        next_state, reward = mdp.get_transitions((0, 0, 0), 3)
+        self.assertEqual(next_state, (1, 0, 1))
+        self.assertEqual(reward, 10.0)
+
+        _, repeated_reward = mdp.get_transitions((1, 0, 1), 3)
+        self.assertEqual(repeated_reward, 0.0)
+
+        mdp.value_iteration(theta=0.0001, print_policy=False)
+        self.assertEqual(mdp.v_star[(0, 0, 1)], 0.0)
+        self.assertEqual(mdp.v_star[(1, 0, 1)], 0.0)
+        self.assertEqual(mdp.v_star[(0, 0, 0)], 10.0)
+
+    def test_unknown_reward_convention_is_rejected(self):
+        with self.assertRaises(ValueError):
+            LTLfWaypointMDP(
+                regions=_goal_region(),
+                ltlf_automaton=_TinyAutomaton(),
+                reward_convention="unknown",
+            )
+
 
 class HierarchyTests(unittest.TestCase):
+    def test_standard_reward_convention_propagates_to_every_level(self):
+        config = AbstractionConfig.from_dict(
+            {
+                "levels": [
+                    {"grid_w": 4, "grid_h": 1},
+                    {"grid_w": 2, "grid_h": 1},
+                ]
+            }
+        )
+        hierarchy = MultiLevelWaypointMDP(
+            regions=_goal_region(),
+            ltlf_automaton=_TinyAutomaton(),
+            abstraction_config=config,
+            gamma=0.9,
+            goal_reward=10.0,
+            reward_convention="standard",
+        )
+        hierarchy.compute_value_functions(theta=0.0001)
+
+        for level in hierarchy.levels:
+            self.assertEqual(level.reward_convention, "standard")
+            for state in level.states:
+                if _TinyAutomaton.is_goal_reached(state[2]):
+                    self.assertEqual(level.v_star[state], 0.0)
+
+        goal_entry = (2, 0, 0)
+        next_state, reward = hierarchy.primary_mdp.get_transitions(goal_entry, 3)
+        self.assertEqual(next_state, (3, 0, 1))
+        self.assertEqual(reward, 10.0)
+
     def test_level_i_uses_level_i_plus_one_as_shaping_potential(self):
         config = AbstractionConfig.from_dict(
             {

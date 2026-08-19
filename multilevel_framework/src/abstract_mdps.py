@@ -158,6 +158,7 @@ class LTLfWaypointMDP:
         gamma=0.99,
         goal_reward=10000,
         level_name="level1",
+        reward_convention="legacy",
     ):
         if width <= 0 or height <= 0:
             raise ValueError("Abstract grid dimensions must be positive")
@@ -165,6 +166,11 @@ class LTLfWaypointMDP:
         self.height = height
         self.level_name = level_name
         self.gamma = gamma
+        if reward_convention not in {"legacy", "standard"}:
+            raise ValueError(
+                "reward_convention must be 'legacy' or 'standard'"
+            )
+        self.reward_convention = reward_convention
         self.actions = [0, 1, 2, 3, 4, 5, 6, 7] # Include diagonal movements.
         
         self.regions = regions
@@ -209,9 +215,18 @@ class LTLfWaypointMDP:
         next_q = self.automaton.get_next_q(q, truth_assignment)
 
         next_state = (next_x, next_y, next_q)
-        # Match the single-level LunarLander convention: abstract transitions
-        # never emit reward. The task reward is represented by the boundary
-        # value assigned to accepting product states during value iteration.
+        if self.reward_convention == "standard":
+            # Standard episodic convention: reward the first transition into
+            # an accepting product state. Accepting states themselves remain
+            # terminal with V=0, so their self-loops never emit reward again.
+            reached_goal = (
+                not self.automaton.is_goal_reached(q)
+                and self.automaton.is_goal_reached(next_q)
+            )
+            return next_state, self.goal_reward if reached_goal else 0.0
+
+        # Legacy convention: transitions emit no task reward and accepting
+        # product states receive goal_reward as a boundary value in VI.
         return next_state, 0.0
 
     def map_state_to_upper_level(self, state):
@@ -320,7 +335,11 @@ class LTLfWaypointMDP:
 
         for s in self.states:
             if self.automaton.is_goal_reached(s[2]):
-                self.v_star[s] = self.goal_reward
+                self.v_star[s] = (
+                    self.goal_reward
+                    if self.reward_convention == "legacy"
+                    else 0.0
+                )
 
         iterations = 0
         while True:
@@ -370,11 +389,13 @@ class MultiLevelWaypointMDP:
         abstraction_config,
         gamma=0.99,
         goal_reward=10000,
+        reward_convention="legacy",
     ):
         self.automaton = ltlf_automaton
         self.abstraction_config = abstraction_config
         self.gamma = gamma
         self.goal_reward = goal_reward
+        self.reward_convention = reward_convention
         self.levels = []
 
         for level in abstraction_config.levels:
@@ -386,6 +407,7 @@ class MultiLevelWaypointMDP:
                 gamma=gamma,
                 goal_reward=goal_reward,
                 level_name=level.name,
+                reward_convention=reward_convention,
             )
             self._warn_on_region_collisions(level_mdp)
             self.levels.append(level_mdp)

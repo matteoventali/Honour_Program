@@ -239,6 +239,7 @@ def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_m
         "\n=== NEW RUN ===\n"
         f"episodes={episodes}, shaping={use_shaping}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
         f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
+        f"abstract_reward_convention={abstract_mdp.reward_convention}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
         "inter_level_formula=gamma*Phi(next)-Phi(state)\n"
         f"formula={automaton.formula_str}\n"
@@ -636,6 +637,7 @@ def main(args):
         f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
         f"Abstractions: {level_summary}\n"
         "Inter-level shaping: gamma*Phi(next)-Phi(state)\n"
+        f"Abstract reward convention: {args.abstract_reward_convention}\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
@@ -653,6 +655,7 @@ def main(args):
         abstraction_config=abstraction_config,
         gamma=gamma,
         goal_reward=goal_reward,
+        reward_convention=args.abstract_reward_convention,
     )
     multilevel_mdp.compute_value_functions()
     save_multilevel_heatmaps(
@@ -767,6 +770,16 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Use gamma*Phi(next)-Phi(state) during training; disable to use Phi(next)-Phi(state).",
+    )
+    parser.add_argument(
+        "--abstract-reward-convention",
+        choices=["legacy", "standard"],
+        default="legacy",
+        help=(
+            "Abstract MDP reward semantics: 'legacy' assigns goal_reward as "
+            "the accepting-state boundary value; 'standard' assigns it on "
+            "the transition into acceptance and keeps terminal V=0."
+        ),
     )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
