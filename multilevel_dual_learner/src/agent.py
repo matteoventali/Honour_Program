@@ -193,6 +193,7 @@ class HierarchicalDQNLearner:
         self.tau = tau
         self.target_update_freq = target_update_freq
         self.optimization_steps = 0
+        self.collect_detailed_diagnostics = False
         self.reset_diagnostics()
         self.eps = 1.0
         self.eps_min = 0.01
@@ -298,7 +299,10 @@ class HierarchicalDQNLearner:
         diagnostics["positive_samples"] += positive_count
         diagnostics["samples"] += rewards.numel()
         diagnostics["positive_batches"] += int(positive_count > 0)
-        if self.optimization_steps % 100 == 0:
+        if (
+            self.collect_detailed_diagnostics
+            and self.optimization_steps % 100 == 0
+        ):
             gradient_squared_norm = sum(
                 parameter.grad.detach().pow(2).sum()
                 for parameter in self.policy_net.parameters()

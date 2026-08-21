@@ -109,6 +109,16 @@ class _UnchangedAbstractStateEnvironment:
 
 
 class DualLearnerTrainingTest(unittest.TestCase):
+    def test_heavy_diagnostics_are_independent_from_greedy_evaluation(self):
+        self.assertTrue(trainer._is_evaluation_due(499, 2000, 500))
+        self.assertFalse(trainer._is_heavy_diagnostics_due(499, 2000))
+
+        self.assertFalse(trainer._is_evaluation_due(999, 2000, 1500))
+        self.assertTrue(trainer._is_heavy_diagnostics_due(999, 2000))
+
+        self.assertTrue(trainer._is_evaluation_due(1999, 2000, 1500))
+        self.assertTrue(trainer._is_heavy_diagnostics_due(1999, 2000))
+
     def test_shared_transition_uses_distinct_rewards(self):
         biased = _Learner()
         unbiased = _Learner()

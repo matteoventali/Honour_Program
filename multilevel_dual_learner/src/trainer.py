@@ -40,6 +40,7 @@ FRAMEWORK_DIR = (
     if os.path.basename(SCRIPT_DIR) == "src"
     else SCRIPT_DIR
 )
+HEAVY_DIAGNOSTICS_INTERVAL = 1000
 
 
 # ==============================
@@ -278,6 +279,7 @@ def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_m
         f"unbiased_reward_scale={unbiased_reward_scale}\n"
         f"zero_init_unbiased_output={zero_init_unbiased_output}\n"
         f"eval_interval={eval_interval}, eval_episodes={eval_episodes}, eval_seed={eval_seed}\n"
+        f"heavy_diagnostics_interval={HEAVY_DIAGNOSTICS_INTERVAL}\n"
         f"gamma_shaping={gamma_shaping}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
         "inter_level_formula=gamma*Phi(next)-Phi(state)\n"
@@ -294,6 +296,19 @@ def _should_log(episode, episodes, log_interval):
     return episode == 0 or episode + 1 == episodes or (episode + 1) % log_interval == 0
 
 
+def _is_evaluation_due(episode, episodes, eval_interval):
+    """Return whether greedy evaluation is due for the current episode."""
+    return episode + 1 == episodes or (episode + 1) % eval_interval == 0
+
+
+def _is_heavy_diagnostics_due(episode, episodes):
+    """Return whether expensive optimizer and policy diagnostics are due."""
+    return (
+        episode + 1 == episodes
+        or (episode + 1) % HEAVY_DIAGNOSTICS_INTERVAL == 0
+    )
+
+
 def _build_training_log(
     episode,
     episodes,
@@ -303,6 +318,7 @@ def _build_training_log(
     unbiased_agent,
     histories,
     cumulative_counters,
+    include_detailed_diagnostics=False,
 ):
     """Build a report containing recent metrics and cumulative DFA counters."""
     window = min(log_interval, episode + 1)
@@ -345,7 +361,11 @@ def _build_training_log(
         for agent in (biased_agent, unbiased_agent)
         for attribute in ("policy_net", "device")
     )
-    comparison_size = min(1024, len(replay_transitions)) if can_compare_policies else 0
+    comparison_size = (
+        min(1024, len(replay_transitions))
+        if include_detailed_diagnostics and can_compare_policies
+        else 0
+    )
     greedy_agreement = float("nan")
     if comparison_size:
         comparison_states = np.asarray(
@@ -361,6 +381,12 @@ def _build_training_log(
         greedy_agreement = float((biased_actions == unbiased_actions).float().mean().item())
 
     def format_learner_diagnostics(name, diagnostics):
+        if not include_detailed_diagnostics:
+            return (
+                f"{name} optimizer ({diagnostics['updates']} updates): "
+                f"positive samples={diagnostics['positive_sample_fraction']:.3%}, "
+                f"positive batches={diagnostics['positive_batch_fraction']:.1%}\n"
+            )
         return (
             f"{name} optimizer ({diagnostics['updates']} updates, {diagnostics['stats_updates']} sampled): "
             f"loss mean/max={diagnostics['mean_loss']:.4g}/{diagnostics['max_loss']:.4g}, "
@@ -370,6 +396,12 @@ def _build_training_log(
             f"positive samples={diagnostics['positive_sample_fraction']:.3%}, "
             f"positive batches={diagnostics['positive_batch_fraction']:.1%}\n"
         )
+
+    agreement_line = (
+        f"greedy action agreement      : {greedy_agreement:.1%} on {comparison_size} buffer states\n"
+        if include_detailed_diagnostics
+        else ""
+    )
 
     return (
         "\n"
@@ -385,7 +417,7 @@ def _build_training_log(
         f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
         f"biased epsilon (next episode): {histories['epsilons'][-1]:.5f}\n"
         f"shared dual replay buffer    : {len(biased_agent.memory)} samples [{buffer_details}]\n"
-        f"greedy action agreement      : {greedy_agreement:.1%} on {comparison_size} buffer states\n"
+        f"{agreement_line}"
         f"{format_learner_diagnostics('biased  ', biased_diagnostics)}"
         f"{format_learner_diagnostics('unbiased', unbiased_diagnostics)}"
         f"DFA state visits in window   : {recent_visits_details}\n"
@@ -535,7 +567,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=None, unbiased_reward_scale=1.0, log_file=None, log_interval=100, eval_interval=500, eval_episodes=50, eval_seed=100000, seed=None, policy_suffix=""):
+def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=None, unbiased_reward_scale=1.0, log_file=None, log_interval=100, eval_interval=1000, eval_episodes=50, eval_seed=100000, seed=None, policy_suffix=""):
     """
     Train paired off-policy DDQN learners with one shared environment stream.
 
@@ -638,6 +670,11 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
 
     try:
         for episode in range(episodes):
+            evaluation_due = _is_evaluation_due(episode, episodes, eval_interval)
+            heavy_diagnostics_due = _is_heavy_diagnostics_due(episode, episodes)
+            biased_agent.collect_detailed_diagnostics = heavy_diagnostics_due
+            unbiased_agent.collect_detailed_diagnostics = heavy_diagnostics_due
+
             # Reset the environment and consume s0 before selecting the first action.
             raw_state, _ = env.reset(seed=seed if episode == 0 else None)
             q = _evaluate_initial_automaton_state(raw_state, abstract_mdp)
@@ -841,14 +878,31 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 state_entry_histories[index].append(episode_state_entries[index])
 
             # Print recent and cumulative diagnostics at the requested interval.
-            if _should_log(episode, episodes, log_interval):
+            if (
+                _should_log(episode, episodes, log_interval)
+                or evaluation_due
+                or heavy_diagnostics_due
+            ):
                 cumulative_counters = {"state_visits": cumulative_state_visits, "state_entries": cumulative_state_entries, "transitions": cumulative_transitions, "initial_acceptances": cumulative_initial_acceptances, "env_terminated": cumulative_env_terminated, "env_truncated": cumulative_env_truncated}
-                _write_log(_build_training_log(episode, episodes, log_interval, automaton_states, biased_agent, unbiased_agent, histories, cumulative_counters), log_handle)
+                _write_log(
+                    _build_training_log(
+                        episode,
+                        episodes,
+                        log_interval,
+                        automaton_states,
+                        biased_agent,
+                        unbiased_agent,
+                        histories,
+                        cumulative_counters,
+                        include_detailed_diagnostics=heavy_diagnostics_due,
+                    ),
+                    log_handle,
+                )
 
             # Evaluate both policies greedily on identical held-out episodes.
             # The final training episode is always evaluated even when it is
             # not an exact multiple of eval_interval.
-            if (episode + 1) % eval_interval == 0 or episode + 1 == episodes:
+            if evaluation_due:
                 _write_log(
                     f"\nStarting autonomous greedy evaluation at episode {episode + 1} "
                     f"({eval_episodes} episodes per learner)...\n",
@@ -1196,7 +1250,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--eval-interval",
         type=_positive_int,
-        default=500,
+        default=1000,
         help="Run autonomous greedy evaluation every N training episodes.",
     )
     parser.add_argument(
