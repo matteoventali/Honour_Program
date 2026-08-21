@@ -56,6 +56,10 @@ class ReplayBuffer:
             next_state,
             done,
         )
+        self._insert(state, transition)
+
+    def _insert(self, state, transition):
+        """Insert an already assembled transition into the ring buffer."""
         phase_index = (
             int(np.argmax(state[-self.num_phases:]))
             if self.num_phases > 0
@@ -109,6 +113,40 @@ class ReplayBuffer:
         if len(self.buffer) == 0:
             return 0.0
         return float(self.phase_counts[q_index] / len(self.buffer))
+
+
+class DualReplayBuffer(ReplayBuffer):
+    """One aligned replay storing the distinct rewards of both learners."""
+
+    def push(
+        self,
+        state,
+        action,
+        biased_reward,
+        unbiased_reward,
+        next_state,
+        done,
+    ):
+        transition = (
+            state,
+            action,
+            biased_reward,
+            unbiased_reward,
+            next_state,
+            done,
+        )
+        self._insert(state, transition)
+
+    def sample(self, batch_size, indices):
+        """Read one minibatch with both reward channels."""
+        if len(indices) != batch_size:
+            raise ValueError("indices must contain exactly batch_size entries")
+        if len(set(indices)) != len(indices):
+            raise ValueError("minibatch indices must be unique")
+        if any(index < 0 or index >= len(self.buffer) for index in indices):
+            raise IndexError("minibatch index is outside the replay buffer")
+        batch = [self.buffer[index] for index in indices]
+        return tuple(np.array(field) for field in zip(*batch))
 
 class HierarchicalDQNLearner:
     def __init__(
@@ -214,15 +252,34 @@ class HierarchicalDQNLearner:
             batch_indices,
         )
         positive_count = int(np.count_nonzero(rewards > 0))
-        
+
         states = torch.FloatTensor(states).to(self.device)
         actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
 
+        return self.optimize_tensor_batch(
+            states,
+            actions,
+            rewards,
+            next_states,
+            dones,
+            positive_count,
+        )
+
+    def optimize_tensor_batch(
+        self,
+        states,
+        actions,
+        rewards,
+        next_states,
+        dones,
+        positive_count,
+    ):
+        """Optimize from an already materialized device batch."""
         q_values = self.policy_net(states).gather(1, actions)
-        
+
         with torch.no_grad():
             best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
             next_q_values = self.target_net(next_states).gather(1, best_actions)

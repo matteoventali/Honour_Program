@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 import trainer
-from agent import HierarchicalDQNLearner, ReplayBuffer
+from agent import DualReplayBuffer, HierarchicalDQNLearner, ReplayBuffer
 
 
 class _Memory:
@@ -37,15 +37,24 @@ class _Learner:
         self.eps_decay = 0.9
         self.action_calls = 0
         self.optimization_calls = 0
-        self.optimization_batches = []
+        self.optimization_rewards = []
+        self.device = torch.device("cpu")
 
     def select_action(self, _state):
         self.action_calls += 1
         return 2
 
-    def optimize_model(self, batch_indices=None):
+    def optimize_tensor_batch(
+        self,
+        _states,
+        _actions,
+        rewards,
+        _next_states,
+        _dones,
+        _positive_count,
+    ):
         self.optimization_calls += 1
-        self.optimization_batches.append(tuple(batch_indices) if batch_indices is not None else None)
+        self.optimization_rewards.append(rewards.cpu().numpy().reshape(-1).tolist())
 
 
 class _Automaton:
@@ -133,18 +142,15 @@ class DualLearnerTrainingTest(unittest.TestCase):
         self.assertEqual(unbiased.action_calls, 0)
         self.assertEqual(biased.optimization_calls, 1)
         self.assertEqual(unbiased.optimization_calls, 1)
-        self.assertEqual(biased.optimization_batches, [(0,)])
-        self.assertEqual(unbiased.optimization_batches, [(0,)])
+        self.assertEqual(biased.optimization_rewards, [[12.5]])
+        self.assertEqual(unbiased.optimization_rewards, [[10.0]])
 
-        biased_transition = biased.memory.transitions[0]
-        unbiased_transition = unbiased.memory.transitions[0]
-        self.assertEqual(biased_transition[1], unbiased_transition[1])
-        self.assertAlmostEqual(biased_transition[2], 12.5)
-        self.assertAlmostEqual(unbiased_transition[2], 10.0)
-        self.assertTrue(biased_transition[4])
-        self.assertTrue(unbiased_transition[4])
-        self.assertEqual(len(biased_transition), 5)
-        self.assertEqual(len(unbiased_transition), 5)
+        self.assertIs(biased.memory, unbiased.memory)
+        transition = biased.memory.buffer[0]
+        self.assertAlmostEqual(transition[2], 12.5)
+        self.assertAlmostEqual(transition[3], 10.0)
+        self.assertTrue(transition[5])
+        self.assertEqual(len(transition), 6)
         self.assertEqual(metrics["biased_learning_rewards"], [12.5])
         self.assertEqual(metrics["unbiased_learning_rewards"], [10.0])
         self.assertEqual(evaluate.call_count, 2)
@@ -177,7 +183,7 @@ class DualLearnerTrainingTest(unittest.TestCase):
                 log_interval=1,
             )
 
-        self.assertAlmostEqual(biased.memory.transitions[0][2], 12.0)
+        self.assertAlmostEqual(biased.memory.buffer[0][2], 12.0)
         self.assertAlmostEqual(metrics["biased_gamma"], 0.8)
         self.assertAlmostEqual(metrics["unbiased_gamma"], 0.95)
 
@@ -210,8 +216,40 @@ class DualLearnerTrainingTest(unittest.TestCase):
             )
 
         self.assertEqual(metrics["shaping_rewards"], [0.0])
-        self.assertEqual(biased.memory.transitions[0][2], 0.0)
+        self.assertEqual(biased.memory.buffer[0][2], 0.0)
         self.assertEqual(metrics["gamma_shaping"], 1.0)
+
+    def test_unbiased_reward_scale_does_not_change_task_or_biased_reward(self):
+        biased = _Learner()
+        unbiased = _Learner()
+        evaluation_result = {
+            "success_rate": 0.0,
+            "mean_task_reward": 0.0,
+            "mean_episode_length": 1.0,
+        }
+        with patch.object(
+            trainer,
+            "_abstract_position",
+            side_effect=lambda observation, _mdp: (int(observation[0]), 0),
+        ), patch.object(
+            trainer,
+            "_evaluate_agent_greedily",
+            return_value=evaluation_result,
+        ):
+            metrics = trainer.run_sequential_training(
+                env=_Environment(), biased_agent=biased,
+                unbiased_agent=unbiased, abstract_mdp=_AbstractMDP(),
+                episodes=1, goal_reward=10.0, save_policy=False,
+                unbiased_reward_scale=0.1, log_interval=1,
+            )
+
+        transition = biased.memory.buffer[0]
+        self.assertAlmostEqual(transition[2], 12.5)
+        self.assertAlmostEqual(transition[3], 1.0)
+        self.assertEqual(metrics["task_rewards"], [10.0])
+        self.assertEqual(metrics["biased_learning_rewards"], [12.5])
+        self.assertEqual(metrics["unbiased_learning_rewards"], [1.0])
+        self.assertEqual(metrics["unbiased_reward_scale"], 0.1)
 
 
 class ReplayBufferSamplingTest(unittest.TestCase):
@@ -226,6 +264,17 @@ class ReplayBufferSamplingTest(unittest.TestCase):
             [2, 0],
         )
         np.testing.assert_array_equal(rewards, np.asarray([30.0, 10.0]))
+
+    def test_dual_buffer_stores_shared_transition_once_with_two_rewards(self):
+        buffer = DualReplayBuffer(capacity=10, num_phases=0)
+        state = np.asarray([1.0], dtype=np.float32)
+        buffer.push(state, 2, 3.0, 0.25, state + 1.0, False)
+
+        sampled = buffer.sample(1, [0])
+        self.assertEqual(len(buffer), 1)
+        self.assertEqual(len(buffer.buffer[0]), 6)
+        self.assertEqual(sampled[2].tolist(), [3.0])
+        self.assertEqual(sampled[3].tolist(), [0.25])
 
 
 class _Space:

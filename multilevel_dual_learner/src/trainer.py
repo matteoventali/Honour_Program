@@ -21,7 +21,7 @@ import torch
 
 from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
-from agent import HierarchicalDQNLearner
+from agent import DualReplayBuffer, HierarchicalDQNLearner
 from automaton_validator import validate_automaton
 from spatial_regions import load_regions
 from utils import (
@@ -59,6 +59,14 @@ def _discount_factor(value):
     number = float(value)
     if not 0.0 < number <= 1.0:
         raise argparse.ArgumentTypeError("must be in the interval (0, 1]")
+    return number
+
+
+def _positive_float(value):
+    """Parse a strictly positive floating-point value."""
+    number = float(value)
+    if number <= 0.0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
     return number
 
 
@@ -255,7 +263,7 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, biased_gamma, unbiased_gamma, zero_init_unbiased_output):
+def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, biased_gamma, unbiased_gamma, unbiased_reward_scale, zero_init_unbiased_output):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
@@ -264,8 +272,10 @@ def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_m
     header = (
         "\n=== NEW RUN ===\n"
         "ground_learners=biased_behavior(task+shaping), unbiased_output(task_only)\n"
+        "replay_buffer=shared_with_biased_and_unbiased_reward_channels\n"
         f"episodes={episodes}, shaping={use_shaping}, goal_reward={goal_reward}\n"
         f"abstract_gamma={abstract_mdp.gamma}, biased_gamma={biased_gamma}, unbiased_gamma={unbiased_gamma}\n"
+        f"unbiased_reward_scale={unbiased_reward_scale}\n"
         f"zero_init_unbiased_output={zero_init_unbiased_output}\n"
         f"eval_interval={eval_interval}, eval_episodes={eval_episodes}, eval_seed={eval_seed}\n"
         f"gamma_shaping={gamma_shaping}, shaping_formula={shaping_formula}\n"
@@ -374,8 +384,7 @@ def _build_training_log(
         f"DFA transitions / episode   : {np.mean(histories['dfa_transitions'][recent_slice]):.2f}\n"
         f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
         f"biased epsilon (next episode): {histories['epsilons'][-1]:.5f}\n"
-        f"biased replay buffer         : {len(biased_agent.memory)} samples [{buffer_details}]\n"
-        f"unbiased replay buffer       : {len(unbiased_agent.memory)} samples\n"
+        f"shared dual replay buffer    : {len(biased_agent.memory)} samples [{buffer_details}]\n"
         f"greedy action agreement      : {greedy_agreement:.1%} on {comparison_size} buffer states\n"
         f"{format_learner_diagnostics('biased  ', biased_diagnostics)}"
         f"{format_learner_diagnostics('unbiased', unbiased_diagnostics)}"
@@ -483,7 +492,7 @@ def _validate_training_setup(automaton, state_to_index, episodes, log_interval, 
         raise ValueError("eval_episodes must be greater than zero")
 
 
-def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, abstract_gamma, biased_gamma, unbiased_gamma, gamma_shaping, zero_init_unbiased_output):
+def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, abstract_gamma, biased_gamma, unbiased_gamma, gamma_shaping, unbiased_reward_scale, zero_init_unbiased_output):
     """Select and name the numeric histories returned by the training loop."""
     return {
         "task_rewards": histories["task_rewards"],
@@ -507,6 +516,8 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "biased_gamma": biased_gamma,
         "unbiased_gamma": unbiased_gamma,
         "gamma_shaping": gamma_shaping,
+        "unbiased_reward_scale": unbiased_reward_scale,
+        "shared_dual_replay_buffer": True,
         "zero_init_unbiased_output": zero_init_unbiased_output,
         "best_biased_eval_success_rate": max(histories["biased_eval_success_rates"]),
         "best_unbiased_eval_success_rate": max(histories["unbiased_eval_success_rates"]),
@@ -524,7 +535,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=None, log_file=None, log_interval=100, eval_interval=500, eval_episodes=50, eval_seed=100000, seed=None, policy_suffix=""):
+def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=None, unbiased_reward_scale=1.0, log_file=None, log_interval=100, eval_interval=500, eval_episodes=50, eval_seed=100000, seed=None, policy_suffix=""):
     """
     Train paired off-policy DDQN learners with one shared environment stream.
 
@@ -553,13 +564,27 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         gamma_shaping = biased_agent.gamma
     if not 0.0 < gamma_shaping <= 1.0:
         raise ValueError("gamma_shaping must be in the interval (0, 1]")
+    if unbiased_reward_scale <= 0.0:
+        raise ValueError("unbiased_reward_scale must be greater than zero")
+    if biased_agent.device != unbiased_agent.device:
+        raise ValueError("biased and unbiased learners must use the same device")
     minibatch_seed = None if seed is None else seed + 4_000_003
     minibatch_rng = random.Random(minibatch_seed)
+
+    # Store both reward views once and materialize each shared minibatch once.
+    memory_capacity = min(
+        getattr(biased_agent.memory, "capacity", 300000),
+        getattr(unbiased_agent.memory, "capacity", 300000),
+    )
+    shared_memory = DualReplayBuffer(memory_capacity, num_states)
+    biased_agent.memory = shared_memory
+    unbiased_agent.memory = shared_memory
 
     # Store episode-level metrics for plots and post-processing.
     task_reward_history = []
     learning_reward_history = []
     shaping_reward_history = []
+    unbiased_learning_reward_history = []
     epsilon_history = []
     episode_length_history = []
     success_history = []
@@ -574,7 +599,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         "task_rewards": task_reward_history,
         "learning_rewards": learning_reward_history,
         "biased_learning_rewards": learning_reward_history,
-        "unbiased_learning_rewards": task_reward_history,
+        "unbiased_learning_rewards": unbiased_learning_reward_history,
         "shaping_rewards": shaping_reward_history,
         "epsilons": epsilon_history,
         "episode_lengths": episode_length_history,
@@ -609,7 +634,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
     zero_init_unbiased_output = bool(
         getattr(unbiased_agent, "output_layer_zero_initialized", False)
     )
-    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, biased_agent.gamma, unbiased_agent.gamma, zero_init_unbiased_output)
+    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, biased_agent.gamma, unbiased_agent.gamma, unbiased_reward_scale, zero_init_unbiased_output)
 
     try:
         for episode in range(episodes):
@@ -626,6 +651,9 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             episode_steps = 0
             episode_task_reward = float(goal_reward) if succeeded else 0.0
             episode_shaping_reward = 0.0
+            episode_unbiased_learning_reward = (
+                episode_task_reward * unbiased_reward_scale
+            )
             episode_abstract_changes = 0
             episode_dfa_transitions = 0
             episode_state_visits = [0] * num_states
@@ -705,38 +733,74 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 # The behavior learner is biased by shaping.  The off-policy
                 # output learner receives the same sample with task reward only.
                 biased_learning_reward = synthetic_goal_reward + shaping_signal
-                biased_agent.memory.push(
+                unbiased_learning_reward = (
+                    synthetic_goal_reward * unbiased_reward_scale
+                )
+                shared_memory.push(
                     augmented_state,
                     action,
                     biased_learning_reward,
+                    unbiased_learning_reward,
                     next_augmented_state,
                     bootstrap_terminal,
                 )
-                unbiased_agent.memory.push(
-                    augmented_state,
-                    action,
-                    synthetic_goal_reward,
-                    next_augmented_state,
-                    bootstrap_terminal,
-                )
-                if (
-                    len(biased_agent.memory) != len(unbiased_agent.memory)
-                    or biased_agent.memory.position != unbiased_agent.memory.position
-                ):
-                    raise RuntimeError("ground-learner replay buffers are out of sync")
-                batch_indices = None
-                if len(biased_agent.memory) >= biased_agent.batch_size:
+                if len(shared_memory) >= biased_agent.batch_size:
                     batch_indices = biased_agent.memory.sample_indices(
                         biased_agent.batch_size,
                         minibatch_rng,
                     )
-                biased_agent.optimize_model(batch_indices)
-                unbiased_agent.optimize_model(batch_indices)
+                    (
+                        batch_states,
+                        batch_actions,
+                        batch_biased_rewards,
+                        batch_unbiased_rewards,
+                        batch_next_states,
+                        batch_dones,
+                    ) = shared_memory.sample(
+                        biased_agent.batch_size,
+                        batch_indices,
+                    )
+                    device = biased_agent.device
+                    states_tensor = torch.as_tensor(
+                        batch_states, dtype=torch.float32, device=device
+                    )
+                    actions_tensor = torch.as_tensor(
+                        batch_actions, dtype=torch.long, device=device
+                    ).unsqueeze(1)
+                    next_states_tensor = torch.as_tensor(
+                        batch_next_states, dtype=torch.float32, device=device
+                    )
+                    dones_tensor = torch.as_tensor(
+                        batch_dones, dtype=torch.float32, device=device
+                    ).unsqueeze(1)
+                    biased_rewards_tensor = torch.as_tensor(
+                        batch_biased_rewards, dtype=torch.float32, device=device
+                    ).unsqueeze(1)
+                    unbiased_rewards_tensor = torch.as_tensor(
+                        batch_unbiased_rewards, dtype=torch.float32, device=device
+                    ).unsqueeze(1)
+                    biased_agent.optimize_tensor_batch(
+                        states_tensor,
+                        actions_tensor,
+                        biased_rewards_tensor,
+                        next_states_tensor,
+                        dones_tensor,
+                        int(np.count_nonzero(batch_biased_rewards > 0)),
+                    )
+                    unbiased_agent.optimize_tensor_batch(
+                        states_tensor,
+                        actions_tensor,
+                        unbiased_rewards_tensor,
+                        next_states_tensor,
+                        dones_tensor,
+                        int(np.count_nonzero(batch_unbiased_rewards > 0)),
+                    )
 
                 # Update the episode totals and move to the next state.
                 episode_steps += 1
                 episode_task_reward += synthetic_goal_reward
                 episode_shaping_reward += shaping_signal
+                episode_unbiased_learning_reward += unbiased_learning_reward
                 raw_state = next_raw_state
                 augmented_state = next_augmented_state
                 q = next_q
@@ -758,6 +822,9 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             episode_learning_reward = episode_task_reward + episode_shaping_reward
             task_reward_history.append(episode_task_reward)
             shaping_reward_history.append(episode_shaping_reward)
+            unbiased_learning_reward_history.append(
+                episode_unbiased_learning_reward
+            )
             learning_reward_history.append(episode_learning_reward)
             epsilon_history.append(next_epsilon)
             episode_length_history.append(episode_steps)
@@ -871,6 +938,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         biased_agent.gamma,
         unbiased_agent.gamma,
         gamma_shaping,
+        unbiased_reward_scale,
         zero_init_unbiased_output,
     )
 
@@ -951,6 +1019,7 @@ def main(args):
         "Ground DDQN return: one-step\n"
         f"Discount factors: abstract={gamma}, biased={biased_gamma}, "
         f"unbiased={unbiased_gamma}\n"
+        f"Unbiased reward scale: {args.unbiased_reward_scale}\n"
         f"Zero-init unbiased output: {args.zero_init_unbiased_output}\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
@@ -1029,7 +1098,7 @@ def main(args):
                 if args.zero_init_unbiased_output:
                     unbiased_agent.zero_initialize_output_layer()
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, gamma_shaping=(biased_gamma if args.gamma_shaping is None else args.gamma_shaping), log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, gamma_shaping=(biased_gamma if args.gamma_shaping is None else args.gamma_shaping), unbiased_reward_scale=args.unbiased_reward_scale, log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/dual_learner_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -1116,6 +1185,12 @@ if __name__ == "__main__":
         "--zero-init-unbiased-output",
         action="store_true",
         help="Initialize only the unbiased policy/target output layers to zero (default: disabled).",
+    )
+    parser.add_argument(
+        "--unbiased-reward-scale",
+        type=_positive_float,
+        default=1.0,
+        help="Multiply only the unbiased learner reward by this factor (default: 1.0).",
     )
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument(
