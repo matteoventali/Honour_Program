@@ -452,6 +452,7 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
     successes = 0
     task_rewards = []
     episode_lengths = []
+    transition_counts = Counter()
     env = gym.make("LunarLander-v3", continuous=False)
     was_training = agent.policy_net.training
     agent.policy_net.eval()
@@ -477,9 +478,12 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
                 truth_assignment = abstract_mdp.get_environment_truth_assignment(
                     next_raw_state
                 )
-                q = automaton.get_next_q(q, truth_assignment)
+                previous_q = q
+                q = automaton.get_next_q(previous_q, truth_assignment)
                 if q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown evaluation state {q!r}")
+                if q != previous_q:
+                    transition_counts[(previous_q, q)] += 1
                 succeeded = automaton.is_goal_reached(q)
                 raw_state = next_raw_state
                 steps += 1
@@ -496,6 +500,7 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
         "success_rate": successes / episodes,
         "mean_task_reward": float(np.mean(task_rewards)),
         "mean_episode_length": float(np.mean(episode_lengths)),
+        "transition_counts": transition_counts,
     }
 
 
@@ -956,9 +961,11 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                     f"biased   : success={evaluation_results['biased']['success_rate']:.1%}, "
                     f"task reward={evaluation_results['biased']['mean_task_reward']:.3f}, "
                     f"length={evaluation_results['biased']['mean_episode_length']:.1f}\n"
+                    f"biased DFA transitions   : {_format_counter(evaluation_results['biased'].get('transition_counts', Counter()))}\n"
                     f"unbiased : success={evaluation_results['unbiased']['success_rate']:.1%}, "
                     f"task reward={evaluation_results['unbiased']['mean_task_reward']:.3f}, "
-                    f"length={evaluation_results['unbiased']['mean_episode_length']:.1f}\n",
+                    f"length={evaluation_results['unbiased']['mean_episode_length']:.1f}\n"
+                    f"unbiased DFA transitions : {_format_counter(evaluation_results['unbiased'].get('transition_counts', Counter()))}\n",
                     log_handle,
                 )
 
