@@ -1130,7 +1130,7 @@ def main(args):
             try:
                 _set_training_seed(run_seed, env)
                 biased_initialization_seed = run_seed
-                unbiased_initialization_seed = run_seed + 1_000_003
+                unbiased_initialization_seed = run_seed
                 biased_exploration_seed = run_seed + 2_000_003
                 print(
                     "Learner seeds: "
