@@ -104,6 +104,8 @@ class HierarchicalDQNLearner:
         target_update_freq=1000,
         network_type="standard",
         policy_dir="policy",
+        stochastic_bellman_update=False,
+        bellman_alpha=0.1,
     ):
         if extra_state_dims < 0:
             raise ValueError("extra_state_dims cannot be negative")
@@ -113,6 +115,8 @@ class HierarchicalDQNLearner:
             raise ValueError("target_update_freq must be greater than zero")
         if network_type not in {"standard", "dueling"}:
             raise ValueError("network_type must be one of: standard, dueling")
+        if not 0.0 < bellman_alpha <= 1.0:
+            raise ValueError("bellman_alpha must be in the interval (0, 1]")
 
         self.env = env
         self.abstract_mdp = abstract_mdp
@@ -122,6 +126,8 @@ class HierarchicalDQNLearner:
         self.policy_dir = os.fspath(policy_dir)
         self.network_type = network_type
         self.algo_name = "Dueling DDQN" if network_type == "dueling" else "DDQN"
+        self.stochastic_bellman_update = stochastic_bellman_update
+        self.bellman_alpha = bellman_alpha
         
         self.batch_size = 64
         self.lr = 1e-3
@@ -175,6 +181,13 @@ class HierarchicalDQNLearner:
             best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
             next_q_values = self.target_net(next_states).gather(1, best_actions)
             target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
+            if self.stochastic_bellman_update:
+                # Stochastic-approximation form of the Bellman update:
+                # Q <- Q + alpha * (target_DDQN - Q).  q_values is detached
+                # because the right-hand side is the regression target.
+                target_q_values = q_values.detach() + self.bellman_alpha * (
+                    target_q_values - q_values.detach()
+                )
             
         loss = F.mse_loss(q_values, target_q_values)
         self.optimizer.zero_grad()

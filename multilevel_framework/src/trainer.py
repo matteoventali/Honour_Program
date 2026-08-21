@@ -631,6 +631,9 @@ def main(args):
         f"{index}:{level.name}={level.width}x{level.height}"
         for index, level in enumerate(abstraction_config.levels, start=1)
     )
+    bellman_summary = str(args.stochastic_bellman_update)
+    if args.stochastic_bellman_update:
+        bellman_summary += f" (alpha={args.bellman_alpha})"
     print(
         "=== LTLf TRAINING (single epsilon) ===\n"
         f"Formula: {formula}\n"
@@ -638,6 +641,7 @@ def main(args):
         f"Abstractions: {level_summary}\n"
         "Inter-level shaping: gamma*Phi(next)-Phi(state)\n"
         f"Abstract reward convention: {args.abstract_reward_convention}\n"
+        f"Stochastic Bellman update: {bellman_summary}\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
         f"accepting={sorted(automaton.accepting_states)}\n"
@@ -686,6 +690,8 @@ def main(args):
                     target_update_freq=args.target_update_freq,
                     network_type=args.network_type,
                     policy_dir=policy_dir,
+                    stochastic_bellman_update=args.stochastic_bellman_update,
+                    bellman_alpha=args.bellman_alpha,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
                 metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
@@ -764,6 +770,21 @@ if __name__ == "__main__":
         choices=["standard", "dueling"],
         default="standard",
         help="Q-network architecture: standard MLP or dueling value/advantage streams.",
+    )
+    parser.add_argument(
+        "--stochastic-bellman-update",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use Q <- Q + alpha*(target_DDQN-Q) as the regression target "
+            "(disabled by default)."
+        ),
+    )
+    parser.add_argument(
+        "--bellman-alpha",
+        type=float,
+        default=0.1,
+        help="Alpha used by --stochastic-bellman-update (default: 0.1).",
     )
     parser.add_argument(
         "--training-shaping-gamma",

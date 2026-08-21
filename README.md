@@ -29,6 +29,13 @@ Dalla root della repository:
   --episodes 1000 --num-seeds 5 --seed 42
 ```
 
+Nel `multilevel_framework`, il target con aggiornamento stocastico di Bellman
+e alpha è opzionale e disabilitato di default. Si abilita aggiungendo:
+
+```bash
+--stochastic-bellman-update --bellman-alpha 0.1
+```
+
 I launcher costruiscono l'immagine Docker del framework, verificano la
 disponibilita di CUDA e montano la directory del framework in `/workspace`.
 Gli script `run_evaluation.sh` usano lo stesso ambiente per valutare policy
