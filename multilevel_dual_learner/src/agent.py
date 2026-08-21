@@ -47,17 +47,14 @@ class ReplayBuffer:
         self.phase_counts = np.zeros(num_phases, dtype=np.int64)
         self.position = 0
 
-    def push(self, state, action, reward, next_state, done, bootstrap_discount):
+    def push(self, state, action, reward, next_state, done):
         """Insert a transition and update DFA-state counts in constant time."""
-        if not 0.0 <= bootstrap_discount <= 1.0:
-            raise ValueError("bootstrap_discount must be in the interval [0, 1]")
         transition = (
             state,
             action,
             reward,
             next_state,
             done,
-            bootstrap_discount,
         )
         phase_index = (
             int(np.argmax(state[-self.num_phases:]))
@@ -94,11 +91,11 @@ class ReplayBuffer:
         if any(index < 0 or index >= len(self.buffer) for index in indices):
             raise IndexError("minibatch index is outside the replay buffer")
         batch = [self.buffer[index] for index in indices]
-        state, action, reward, next_state, done, bootstrap_discount = map(
+        state, action, reward, next_state, done = map(
             np.array,
             zip(*batch),
         )
-        return state, action, reward, next_state, done, bootstrap_discount
+        return state, action, reward, next_state, done
 
     def __len__(self):
         return len(self.buffer)
@@ -146,6 +143,7 @@ class HierarchicalDQNLearner:
         self.policy_name = policy_name
         self.policy_dir = os.fspath(policy_dir)
         self.network_type = network_type
+        self.output_layer_zero_initialized = False
         self.algo_name = "Dueling DDQN" if network_type == "dueling" else "DDQN"
         self.exploration_rng = ran.Random(random_seed)
         replay_seed = None if random_seed is None else random_seed + 1
@@ -178,6 +176,22 @@ class HierarchicalDQNLearner:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
         self.memory = ReplayBuffer(capacity=300000, num_phases=extra_state_dims)
 
+    def zero_initialize_output_layer(self):
+        """Set every action value to zero without changing hidden features."""
+        with torch.no_grad():
+            if self.network_type == "standard":
+                nn.init.zeros_(self.policy_net.fc3.weight)
+                nn.init.zeros_(self.policy_net.fc3.bias)
+            else:
+                nn.init.zeros_(self.policy_net.value_stream.weight)
+                nn.init.zeros_(self.policy_net.value_stream.bias)
+                nn.init.zeros_(self.policy_net.advantage_stream.weight)
+                nn.init.zeros_(self.policy_net.advantage_stream.bias)
+
+        # Bootstrap from the same zero-valued function from the first update.
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.output_layer_zero_initialized = True
+
     def select_action(self, state):
         if self.exploration_rng.random() < self.eps:
             return self.exploration_rng.randrange(self.env.action_space.n)
@@ -195,7 +209,7 @@ class HierarchicalDQNLearner:
                 self.replay_rng,
             )
 
-        states, actions, rewards, next_states, dones, bootstrap_discounts = self.memory.sample(
+        states, actions, rewards, next_states, dones = self.memory.sample(
             self.batch_size,
             batch_indices,
         )
@@ -206,14 +220,13 @@ class HierarchicalDQNLearner:
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(self.device)
-        bootstrap_discounts = torch.FloatTensor(bootstrap_discounts).unsqueeze(1).to(self.device)
-        
+
         q_values = self.policy_net(states).gather(1, actions)
         
         with torch.no_grad():
             best_actions = self.policy_net(next_states).argmax(dim=1).unsqueeze(1)
             next_q_values = self.target_net(next_states).gather(1, best_actions)
-            target_q_values = rewards + (1 - dones) * bootstrap_discounts * next_q_values
+            target_q_values = rewards + (1 - dones) * self.gamma * next_q_values
             
         loss = F.mse_loss(q_values, target_q_values)
         self.optimizer.zero_grad()

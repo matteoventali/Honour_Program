@@ -1,11 +1,11 @@
 import unittest
-from collections import deque
 from unittest.mock import patch
 
 import numpy as np
+import torch
 
 import trainer
-from agent import ReplayBuffer
+from agent import HierarchicalDQNLearner, ReplayBuffer
 
 
 class _Memory:
@@ -143,8 +143,8 @@ class DualLearnerTrainingTest(unittest.TestCase):
         self.assertAlmostEqual(unbiased_transition[2], 10.0)
         self.assertTrue(biased_transition[4])
         self.assertTrue(unbiased_transition[4])
-        self.assertAlmostEqual(biased_transition[5], 0.9)
-        self.assertAlmostEqual(unbiased_transition[5], 0.9)
+        self.assertEqual(len(biased_transition), 5)
+        self.assertEqual(len(unbiased_transition), 5)
         self.assertEqual(metrics["biased_learning_rewards"], [12.5])
         self.assertEqual(metrics["unbiased_learning_rewards"], [10.0])
         self.assertEqual(evaluate.call_count, 2)
@@ -178,8 +178,6 @@ class DualLearnerTrainingTest(unittest.TestCase):
             )
 
         self.assertAlmostEqual(biased.memory.transitions[0][2], 12.0)
-        self.assertAlmostEqual(biased.memory.transitions[0][5], 0.8)
-        self.assertAlmostEqual(unbiased.memory.transitions[0][5], 0.95)
         self.assertAlmostEqual(metrics["biased_gamma"], 0.8)
         self.assertAlmostEqual(metrics["unbiased_gamma"], 0.95)
 
@@ -221,104 +219,51 @@ class ReplayBufferSamplingTest(unittest.TestCase):
         buffer = ReplayBuffer(capacity=10, num_phases=0)
         for reward in (10.0, 20.0, 30.0):
             state = np.asarray([reward], dtype=np.float32)
-            buffer.push(state, 0, reward, state, False, 0.9)
+            buffer.push(state, 0, reward, state, False)
 
-        _states, _actions, rewards, _next_states, _dones, discounts = buffer.sample(
+        _states, _actions, rewards, _next_states, _dones = buffer.sample(
             2,
             [2, 0],
         )
         np.testing.assert_array_equal(rewards, np.asarray([30.0, 10.0]))
-        np.testing.assert_array_equal(discounts, np.asarray([0.9, 0.9]))
 
 
-class NStepReturnTest(unittest.TestCase):
-    def test_five_step_return_keeps_rewards_separate(self):
-        transitions = []
-        for index in range(5):
-            transitions.append(
-                (
-                    np.asarray([index], dtype=np.float32),
-                    index,
-                    float(index + 1),
-                    10.0 if index == 4 else 0.0,
-                    np.asarray([index + 1], dtype=np.float32),
-                    index == 4,
-                )
-            )
+class _Space:
+    def __init__(self, shape=None, n=None):
+        self.shape = shape
+        self.n = n
 
-        biased_return, unbiased_return, shared = trainer._aggregate_n_step_window(
-            transitions,
-            gamma=0.9,
+
+class _NetworkEnvironment:
+    observation_space = _Space(shape=(3,))
+    action_space = _Space(n=4)
+
+
+class ZeroOutputInitializationTest(unittest.TestCase):
+    def _build_learner(self, network_type):
+        return HierarchicalDQNLearner(
+            env=_NetworkEnvironment(),
+            extra_state_dims=2,
+            network_type=network_type,
         )
 
-        expected_biased = sum(0.9**index * (index + 1) for index in range(5))
-        self.assertAlmostEqual(biased_return, expected_biased)
-        self.assertAlmostEqual(unbiased_return, 0.9**4 * 10.0)
-        self.assertTrue(shared[3])
-        self.assertAlmostEqual(shared[4], 0.9**5)
+    def test_standard_output_and_target_are_zero_initialized_on_request(self):
+        learner = self._build_learner("standard")
+        learner.zero_initialize_output_layer()
+        states = torch.randn(7, 5, device=learner.device)
 
-    def test_short_truncated_prefix_bootstraps_with_actual_length(self):
-        transitions = [
-            ("s0", 0, 1.0, 0.0, "s1", False),
-            ("s1", 1, 2.0, 0.0, "s2", False),
-        ]
-        biased_return, unbiased_return, shared = trainer._aggregate_n_step_window(
-            transitions,
-            gamma=0.9,
-        )
+        self.assertTrue(learner.output_layer_zero_initialized)
+        self.assertTrue(torch.equal(learner.policy_net(states), torch.zeros(7, 4, device=learner.device)))
+        self.assertTrue(torch.equal(learner.target_net(states), torch.zeros(7, 4, device=learner.device)))
 
-        self.assertAlmostEqual(biased_return, 1.0 + 0.9 * 2.0)
-        self.assertEqual(unbiased_return, 0.0)
-        self.assertEqual(shared[2], "s2")
-        self.assertFalse(shared[3])
-        self.assertAlmostEqual(shared[4], 0.9**2)
+    def test_dueling_outputs_and_target_are_zero_initialized_on_request(self):
+        learner = self._build_learner("dueling")
+        learner.zero_initialize_output_layer()
+        states = torch.randn(7, 5, device=learner.device)
 
-    def test_distinct_gammas_discount_each_n_step_return_and_bootstrap(self):
-        transitions = [
-            ("s0", 0, 1.0, 1.0, "s1", False),
-            ("s1", 1, 2.0, 2.0, "s2", False),
-        ]
-        biased_return, unbiased_return, shared = trainer._aggregate_n_step_window(
-            transitions, gamma=0.8, unbiased_gamma=0.95,
-        )
-
-        self.assertAlmostEqual(biased_return, 1.0 + 0.8 * 2.0)
-        self.assertAlmostEqual(unbiased_return, 1.0 + 0.95 * 2.0)
-        self.assertAlmostEqual(shared[4], 0.8**2)
-        self.assertAlmostEqual(shared[5], 0.95**2)
-
-    def test_terminal_flush_propagates_reward_to_five_prefixes(self):
-        pending = deque(
-            (
-                f"s{index}",
-                index,
-                10.0 if index == 4 else 0.0,
-                10.0 if index == 4 else 0.0,
-                f"s{index + 1}",
-                index == 4,
-            )
-            for index in range(5)
-        )
-        biased_memory = _Memory()
-        unbiased_memory = _Memory()
-
-        while pending:
-            trainer._emit_n_step_prefix(
-                pending,
-                n_step=5,
-                gamma=0.9,
-                biased_memory=biased_memory,
-                unbiased_memory=unbiased_memory,
-            )
-
-        expected_rewards = [0.9**power * 10.0 for power in range(4, -1, -1)]
-        self.assertEqual(len(unbiased_memory.transitions), 5)
-        for transition, expected_reward in zip(
-            unbiased_memory.transitions,
-            expected_rewards,
-        ):
-            self.assertAlmostEqual(transition[2], expected_reward)
-            self.assertTrue(transition[4])
+        self.assertTrue(learner.output_layer_zero_initialized)
+        self.assertTrue(torch.equal(learner.policy_net(states), torch.zeros(7, 4, device=learner.device)))
+        self.assertTrue(torch.equal(learner.target_net(states), torch.zeros(7, 4, device=learner.device)))
 
 
 if __name__ == "__main__":
