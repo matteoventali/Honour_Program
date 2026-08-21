@@ -53,6 +53,14 @@ def _positive_int(value):
     return number
 
 
+def _discount_factor(value):
+    """Parse a valid discounted-return factor."""
+    number = float(value)
+    if not 0.0 < number <= 1.0:
+        raise argparse.ArgumentTypeError("must be in the interval (0, 1]")
+    return number
+
+
 def _experiment_name(value):
     """Validate a safe single-directory experiment name."""
     name = str(value).strip()
@@ -225,21 +233,16 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma):
+def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
-    shaping_formula = (
-        "gamma*Phi(next)-Phi(state)"
-        if training_shaping_gamma
-        else "Phi(next)-Phi(state)"
-    )
+    shaping_formula = "gamma_shaping*Phi(next)-Phi(state)"
     header = (
         "\n=== NEW RUN ===\n"
         f"episodes={episodes}, shaping={use_shaping}, goal_reward={goal_reward}, gamma={abstract_mdp.gamma}\n"
-        f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
-        f"abstract_reward_convention={abstract_mdp.reward_convention}\n"
+        f"gamma_shaping={gamma_shaping}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
         "inter_level_formula=gamma*Phi(next)-Phi(state)\n"
         f"formula={automaton.formula_str}\n"
@@ -320,7 +323,7 @@ def _validate_training_setup(automaton, state_to_index, episodes, log_interval):
         raise ValueError("log_interval must be greater than zero")
 
 
-def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode):
+def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, gamma_shaping):
     """Select and name the numeric histories returned by the training loop."""
     return {
         "task_rewards": histories["task_rewards"],
@@ -338,6 +341,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "automaton_states": automaton_states,
         "best_mean_learning_reward": best_mean_reward,
         "best_policy_episode": best_policy_episode,
+        "gamma_shaping": gamma_shaping,
     }
 
 
@@ -345,7 +349,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, log_file=None, log_interval=100, training_shaping_gamma=True, seed=None, policy_suffix=""):
+def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=1.0, log_file=None, log_interval=100, seed=None, policy_suffix=""):
     """
     Train the DDQN agent with the LTLf automaton and one global epsilon.
 
@@ -361,6 +365,8 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Fail early if the DFA or training parameters are inconsistent.
     _validate_training_setup(automaton, state_to_index, episodes, log_interval)
+    if not 0.0 < gamma_shaping <= 1.0:
+        raise ValueError("gamma_shaping must be in the interval (0, 1]")
 
     # Store episode-level metrics for plots and post-processing.
     task_reward_history = []
@@ -402,7 +408,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma)
+    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping)
 
     try:
         for episode in range(episodes):
@@ -484,13 +490,14 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                 bootstrap_terminal = env_terminated or succeeded
                 next_augmented_state = _augment_state(next_raw_state, next_q, state_to_index)
 
-                # Evaluate shaping only when the complete abstract state changes.
+                # Evaluate the potential difference on every environment step.
+                # With gamma_shaping=1, unchanged abstract states yield zero,
+                # reproducing the previous cell-change heuristic exactly.
                 shaping_signal = 0.0
-                if use_shaping and abstract_changed:
+                if use_shaping:
                     phi_state = abstract_mdp.v_star.get(abstract_state, 0.0)
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
-                    training_discount = abstract_mdp.gamma if training_shaping_gamma else 1.0
-                    shaping_signal = training_discount * phi_next_state - phi_state
+                    shaping_signal = gamma_shaping * phi_next_state - phi_state
 
                 # Store the transition and perform one DDQN optimization step.
                 learning_reward = synthetic_goal_reward + shaping_signal
@@ -564,7 +571,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             log_handle.close()
 
     # Return named histories to avoid ambiguous tuple positions.
-    return _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode)
+    return _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, gamma_shaping)
 
 
 # ==============================
@@ -640,7 +647,7 @@ def main(args):
         f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
         f"Abstractions: {level_summary}\n"
         "Inter-level shaping: gamma*Phi(next)-Phi(state)\n"
-        f"Abstract reward convention: {args.abstract_reward_convention}\n"
+        f"Training gamma_shaping: {args.gamma_shaping}\n"
         f"Stochastic Bellman update: {bellman_summary}\n"
         "Automaton coordinates and training potential: level1\n"
         f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
@@ -659,7 +666,6 @@ def main(args):
         abstraction_config=abstraction_config,
         gamma=gamma,
         goal_reward=goal_reward,
-        reward_convention=args.abstract_reward_convention,
     )
     multilevel_mdp.compute_value_functions()
     save_multilevel_heatmaps(
@@ -694,7 +700,7 @@ def main(args):
                     bellman_alpha=args.bellman_alpha,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, gamma_shaping=args.gamma_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/single_epsilon_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -787,20 +793,10 @@ if __name__ == "__main__":
         help="Alpha used by --stochastic-bellman-update (default: 0.1).",
     )
     parser.add_argument(
-        "--training-shaping-gamma",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use gamma*Phi(next)-Phi(state) during training; disable to use Phi(next)-Phi(state).",
-    )
-    parser.add_argument(
-        "--abstract-reward-convention",
-        choices=["legacy", "standard"],
-        default="legacy",
-        help=(
-            "Abstract MDP reward semantics: 'legacy' assigns goal_reward as "
-            "the accepting-state boundary value; 'standard' assigns it on "
-            "the transition into acceptance and keeps terminal V=0."
-        ),
+        "--gamma-shaping",
+        type=_discount_factor,
+        default=1.0,
+        help="Discount used in Phi shaping (default: 1.0).",
     )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
