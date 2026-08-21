@@ -23,6 +23,7 @@ from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
 from agent import HierarchicalDQNLearner
 from automaton_validator import validate_automaton
+from spatial_regions import load_regions
 from utils import (
     phi_mapping_sequential,
     plot_buffer_fractions,
@@ -228,8 +229,9 @@ def _augment_state(observation, q, state_to_index):
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
     """Consume the initial observation from the DFA pre-trace state and return the first active state."""
-    initial_x, initial_y = _abstract_position(observation, abstract_mdp)
-    initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
+    initial_truth_assignment = abstract_mdp.get_environment_truth_assignment(
+        observation
+    )
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
     return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
 
@@ -343,27 +345,23 @@ def _write_log(message, log_handle=None):
         log_handle.flush()
 
 
-def _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed, n_step, biased_gamma, unbiased_gamma):
+def _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, n_step, biased_gamma, unbiased_gamma):
     """Write the configuration and DFA metadata at the beginning of a training run."""
     if not log_handle:
         return
     automaton = abstract_mdp.automaton
-    shaping_formula = (
-        "K*(gamma*Phi(next)-Phi(state))"
-        if training_shaping_gamma
-        else "K*(Phi(next)-Phi(state))"
-    )
+    shaping_formula = "gamma_shaping*Phi(next)-Phi(state)"
     header = (
         "\n=== NEW RUN ===\n"
         "ground_learners=biased_behavior(task+shaping), unbiased_output(task_only)\n"
-        f"episodes={episodes}, n_step={n_step}, shaping={use_shaping}, K={K}, goal_reward={goal_reward}\n"
+        f"episodes={episodes}, n_step={n_step}, shaping={use_shaping}, goal_reward={goal_reward}\n"
         f"abstract_gamma={abstract_mdp.gamma}, biased_gamma={biased_gamma}, unbiased_gamma={unbiased_gamma}\n"
         f"eval_interval={eval_interval}, eval_episodes={eval_episodes}, eval_seed={eval_seed}\n"
-        f"training_shaping_gamma={training_shaping_gamma}, shaping_formula={shaping_formula}\n"
+        f"gamma_shaping={gamma_shaping}, shaping_formula={shaping_formula}\n"
         f"inter_level_shaping={abstract_mdp.upper_level_mdp is not None}, "
-        f"inter_level_K={abstract_mdp.inter_level_shaping_scale}\n"
+        "inter_level_formula=gamma*Phi(next)-Phi(state)\n"
         f"formula={automaton.formula_str}\n"
-        f"waypoints={abstract_mdp.waypoints_dict}\n"
+        f"regions={{{', '.join(f'{name}: {region.as_dict()}' for name, region in abstract_mdp.regions.items())}}}\n"
         f"dfa_states={automaton_states}, pre_trace={automaton.get_initial_q()}, accepting={sorted(automaton.accepting_states)}\n"
     )
     log_handle.write(header)
@@ -524,8 +522,9 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
                     action = agent.policy_net(state_tensor).argmax(dim=1).item()
 
                 next_raw_state, _ignored_reward, terminated, truncated, _ = env.step(action)
-                next_x, next_y = _abstract_position(next_raw_state, abstract_mdp)
-                truth_assignment = abstract_mdp._get_truth_assignment(next_x, next_y)
+                truth_assignment = abstract_mdp.get_environment_truth_assignment(
+                    next_raw_state
+                )
                 q = automaton.get_next_q(q, truth_assignment)
                 if q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown evaluation state {q!r}")
@@ -575,7 +574,7 @@ def _validate_training_setup(automaton, state_to_index, episodes, log_interval, 
         raise ValueError("n_step must be greater than zero")
 
 
-def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, n_step, abstract_gamma, biased_gamma, unbiased_gamma):
+def _build_training_results(histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, n_step, abstract_gamma, biased_gamma, unbiased_gamma, gamma_shaping):
     """Select and name the numeric histories returned by the training loop."""
     return {
         "task_rewards": histories["task_rewards"],
@@ -599,6 +598,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "abstract_gamma": abstract_gamma,
         "biased_gamma": biased_gamma,
         "unbiased_gamma": unbiased_gamma,
+        "gamma_shaping": gamma_shaping,
         "best_biased_eval_success_rate": max(histories["biased_eval_success_rates"]),
         "best_unbiased_eval_success_rate": max(histories["unbiased_eval_success_rates"]),
         "evaluation_steps": histories["evaluation_steps"],
@@ -615,7 +615,7 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 # Training loop
 # ==============================
 
-def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, K=1.0, log_file=None, log_interval=100, training_shaping_gamma=True, eval_interval=500, eval_episodes=50, eval_seed=100000, n_step=1, seed=None, policy_suffix=""):
+def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=None, log_file=None, log_interval=100, eval_interval=500, eval_episodes=50, eval_seed=100000, n_step=1, seed=None, policy_suffix=""):
     """
     Train paired off-policy DDQN learners with one shared environment stream.
 
@@ -641,6 +641,10 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
     )
     if biased_agent.batch_size != unbiased_agent.batch_size:
         raise ValueError("biased and unbiased learners must use the same batch size")
+    if gamma_shaping is None:
+        gamma_shaping = biased_agent.gamma
+    if not 0.0 < gamma_shaping <= 1.0:
+        raise ValueError("gamma_shaping must be in the interval (0, 1]")
     minibatch_seed = None if seed is None else seed + 4_000_003
     minibatch_rng = random.Random(minibatch_seed)
 
@@ -694,7 +698,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    _write_run_header(log_handle, episodes, use_shaping, K, goal_reward, abstract_mdp, automaton_states, training_shaping_gamma, eval_interval, eval_episodes, eval_seed, n_step, biased_agent.gamma, unbiased_agent.gamma)
+    _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, n_step, biased_agent.gamma, unbiased_agent.gamma)
 
     try:
         for episode in range(episodes):
@@ -739,7 +743,9 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 abstract_state = (x, y, q)
 
                 # Advance the DFA using propositions true in the arrival state.
-                truth_assignment = abstract_mdp._get_truth_assignment(next_x, next_y)
+                truth_assignment = abstract_mdp.get_environment_truth_assignment(
+                    next_raw_state
+                )
                 next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown state {next_q!r} from state {q!r}")
@@ -777,13 +783,14 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 bootstrap_terminal = env_terminated or succeeded
                 next_augmented_state = _augment_state(next_raw_state, next_q, state_to_index)
 
-                # Evaluate shaping only when the complete abstract state changes.
+                # Evaluate the potential difference on every environment step.
+                # With gamma_shaping=1, unchanged abstract states yield zero,
+                # reproducing the previous cell-change heuristic exactly.
                 shaping_signal = 0.0
-                if use_shaping and abstract_changed:
+                if use_shaping:
                     phi_state = abstract_mdp.v_star.get(abstract_state, 0.0)
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
-                    training_discount = biased_agent.gamma if training_shaping_gamma else 1.0
-                    shaping_signal = K * (training_discount * phi_next_state - phi_state)
+                    shaping_signal = gamma_shaping * phi_next_state - phi_state
 
                 # The behavior learner is biased by shaping.  The off-policy
                 # output learner receives the same sample with task reward only.
@@ -969,6 +976,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         abstract_mdp.gamma,
         biased_agent.gamma,
         unbiased_agent.gamma,
+        gamma_shaping,
     )
 
 
@@ -1023,7 +1031,7 @@ def main(args):
         _archive_config(abstraction_config_path, experiment_dir, "abstraction.json")
 
     formula = config.get("formula", "F(goal)")
-    waypoints = {name: tuple(coordinates) for name, coordinates in config.get("waypoints_dict", {"goal": [5, 0]}).items()}
+    regions = load_regions(config.get("regions"))
     gamma = float(config.get("gamma", 0.99))
     biased_gamma = gamma if args.biased_gamma is None else args.biased_gamma
     unbiased_gamma = gamma if args.unbiased_gamma is None else args.unbiased_gamma
@@ -1034,9 +1042,7 @@ def main(args):
     automaton = LTLfAutomaton(formula)
     validation_report = validate_automaton(
         automaton,
-        waypoints,
-        width=primary_level.width,
-        height=primary_level.height,
+        regions,
     )
     level_summary = ", ".join(
         f"{index}:{level.name}={level.width}x{level.height}"
@@ -1045,10 +1051,8 @@ def main(args):
     print(
         "=== LTLf TRAINING (dual ground learners) ===\n"
         f"Formula: {formula}\n"
-        f"Waypoints: {waypoints}\n"
+        f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
         f"Abstractions: {level_summary}\n"
-        f"Inter-level shaping scale: "
-        f"{abstraction_config.inter_level_shaping_scale}\n"
         f"Ground DDQN return: {args.n_step}-step\n"
         f"Discount factors: abstract={gamma}, biased={biased_gamma}, "
         f"unbiased={unbiased_gamma}\n"
@@ -1064,7 +1068,7 @@ def main(args):
 
     # Heatmaps depend only on the saved task configuration, not on agent training.
     multilevel_mdp = MultiLevelWaypointMDP(
-        waypoints_dict=waypoints,
+        regions=regions,
         ltlf_automaton=automaton,
         abstraction_config=abstraction_config,
         gamma=gamma,
@@ -1127,7 +1131,7 @@ def main(args):
                     policy_dir=policy_dir,
                 )
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
-                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, K=args.shaping_scale, log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, training_shaping_gamma=args.training_shaping_gamma, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, n_step=args.n_step, seed=run_seed, policy_suffix=policy_suffix)
+                metrics = run_sequential_training(env=env, biased_agent=biased_agent, unbiased_agent=unbiased_agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, gamma_shaping=(biased_gamma if args.gamma_shaping is None else args.gamma_shaping), log_file=f"{log_dir}/dual_learner_training_seed_{run_seed}.log", log_interval=args.log_interval, eval_interval=args.eval_interval, eval_episodes=args.eval_episodes, eval_seed=args.eval_seed, n_step=args.n_step, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
                 save_training_data(f"{data_dir}/dual_learner_data_seed_{run_seed}.npz", **metrics)
             finally:
@@ -1210,7 +1214,12 @@ if __name__ == "__main__":
         default=1,
         help="Number of transitions used by each DDQN return (default: 1).",
     )
-    parser.add_argument("--shaping-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--gamma-shaping",
+        type=_discount_factor,
+        default=None,
+        help="Discount used in Phi shaping (default: biased gamma; use 1 for the cell-change-equivalent heuristic).",
+    )
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument(
         "--eval-interval",
@@ -1249,12 +1258,6 @@ if __name__ == "__main__":
         choices=["standard", "dueling"],
         default="standard",
         help="Q-network architecture: standard MLP or dueling value/advantage streams.",
-    )
-    parser.add_argument(
-        "--training-shaping-gamma",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use gamma*Phi(next)-Phi(state) during training; disable to use Phi(next)-Phi(state).",
     )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")

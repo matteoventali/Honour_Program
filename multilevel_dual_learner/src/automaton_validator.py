@@ -85,35 +85,22 @@ class AutomatonValidationReport:
 # DFA validation
 # ==============================
 
-def validate_automaton(automaton, waypoints_dict, width=None, height=None, max_propositions=12, raise_on_error=True):
-    """Validate DFA structure, guards, reachability, propositions, and waypoint coordinates."""
+def validate_automaton(automaton, regions, max_propositions=12, raise_on_error=True):
+    """Validate DFA structure, guards, reachability, and region propositions."""
     propositions = _extract_formula_propositions(automaton.formula_str)
     report = AutomatonValidationReport(automaton.formula_str, propositions)
     states = set(automaton.states)
-    waypoint_propositions = set(waypoints_dict)
+    region_propositions = set(regions)
 
-    # Validate formula propositions and waypoint declarations.
-    missing_waypoints = sorted(set(propositions) - waypoint_propositions)
-    unused_waypoints = sorted(waypoint_propositions - set(propositions))
-    if missing_waypoints:
-        report.add_error(f"Formula propositions without coordinates: {missing_waypoints}")
-    if unused_waypoints:
-        report.add_warning(f"Waypoint propositions not used by the formula: {unused_waypoints}")
+    # Validate formula propositions and region declarations.
+    missing_regions = sorted(set(propositions) - region_propositions)
+    unused_regions = sorted(region_propositions - set(propositions))
+    if missing_regions:
+        report.add_error(f"Formula propositions without regions: {missing_regions}")
+    if unused_regions:
+        report.add_warning(f"Region propositions not used by the formula: {unused_regions}")
     if len(propositions) > max_propositions:
         report.add_error(f"The formula has {len(propositions)} propositions; exhaustive validation is limited to {max_propositions}")
-
-    # Validate waypoint coordinate structure and grid bounds.
-    for proposition, coordinates in waypoints_dict.items():
-        if not isinstance(coordinates, (tuple, list)) or len(coordinates) != 2:
-            report.add_error(f"Waypoint {proposition!r} must contain exactly two coordinates")
-            continue
-        x, y = coordinates
-        if not isinstance(x, int) or not isinstance(y, int):
-            report.add_error(f"Waypoint {proposition!r} coordinates must be integers")
-        if width is not None and not 0 <= x < width:
-            report.add_error(f"Waypoint {proposition!r} has x={x}, outside [0, {width - 1}]")
-        if height is not None and not 0 <= y < height:
-            report.add_error(f"Waypoint {proposition!r} has y={y}, outside [0, {height - 1}]")
 
     # Validate initial, accepting, source, and destination states.
     if not states:

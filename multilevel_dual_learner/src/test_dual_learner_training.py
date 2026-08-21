@@ -68,8 +68,7 @@ class _AbstractMDP:
     height = 1
     gamma = 0.9
     upper_level_mdp = None
-    inter_level_shaping_scale = 0.0
-    waypoints_dict = {"goal": (1, 0)}
+    regions = {}
 
     def __init__(self):
         self.automaton = _Automaton()
@@ -78,15 +77,26 @@ class _AbstractMDP:
     def _get_truth_assignment(self, x, _y):
         return {"goal": x == 1}
 
+    def get_environment_truth_assignment(self, observation):
+        return {"goal": observation[0] == 1}
+
 
 class _Environment:
     def reset(self, seed=None):
-        return np.asarray([0.0], dtype=np.float32), {}
+        return np.asarray([0.0, 0.0], dtype=np.float32), {}
 
     def step(self, action):
         if action != 2:
             raise AssertionError("The action must come from the biased learner")
-        return np.asarray([1.0], dtype=np.float32), 999.0, False, False, {}
+        return np.asarray([1.0, 0.0], dtype=np.float32), 999.0, False, False, {}
+
+
+class _UnchangedAbstractStateEnvironment:
+    def reset(self, seed=None):
+        return np.asarray([0.0, 0.0], dtype=np.float32), {}
+
+    def step(self, action):
+        return np.asarray([0.0, 0.0], dtype=np.float32), 0.0, True, False, {}
 
 
 class DualLearnerTrainingTest(unittest.TestCase):
@@ -116,7 +126,6 @@ class DualLearnerTrainingTest(unittest.TestCase):
                 episodes=1,
                 goal_reward=10.0,
                 save_policy=False,
-                K=1.0,
                 log_interval=1,
             )
 
@@ -165,7 +174,7 @@ class DualLearnerTrainingTest(unittest.TestCase):
                 env=_Environment(), biased_agent=biased,
                 unbiased_agent=unbiased, abstract_mdp=_AbstractMDP(),
                 episodes=1, goal_reward=10.0, save_policy=False,
-                K=1.0, log_interval=1,
+                log_interval=1,
             )
 
         self.assertAlmostEqual(biased.memory.transitions[0][2], 12.0)
@@ -173,6 +182,38 @@ class DualLearnerTrainingTest(unittest.TestCase):
         self.assertAlmostEqual(unbiased.memory.transitions[0][5], 0.95)
         self.assertAlmostEqual(metrics["biased_gamma"], 0.8)
         self.assertAlmostEqual(metrics["unbiased_gamma"], 0.95)
+
+    def test_gamma_shaping_one_matches_cell_change_heuristic(self):
+        biased = _Learner()
+        unbiased = _Learner()
+        evaluation_result = {
+            "success_rate": 0.0,
+            "mean_task_reward": 0.0,
+            "mean_episode_length": 1.0,
+        }
+        with patch.object(
+            trainer,
+            "_abstract_position",
+            return_value=(0, 0),
+        ), patch.object(
+            trainer,
+            "_evaluate_agent_greedily",
+            return_value=evaluation_result,
+        ):
+            metrics = trainer.run_sequential_training(
+                env=_UnchangedAbstractStateEnvironment(),
+                biased_agent=biased,
+                unbiased_agent=unbiased,
+                abstract_mdp=_AbstractMDP(),
+                episodes=1,
+                save_policy=False,
+                gamma_shaping=1.0,
+                log_interval=1,
+            )
+
+        self.assertEqual(metrics["shaping_rewards"], [0.0])
+        self.assertEqual(biased.memory.transitions[0][2], 0.0)
+        self.assertEqual(metrics["gamma_shaping"], 1.0)
 
 
 class ReplayBufferSamplingTest(unittest.TestCase):

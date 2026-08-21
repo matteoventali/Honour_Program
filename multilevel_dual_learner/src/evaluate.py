@@ -26,6 +26,7 @@ from grid_overlay import (
     draw_abstract_grid,
     geometry_from_env,
 )
+from spatial_regions import load_regions, rasterize_regions
 from utils import (
     LEARNING_REWARD_COLOR,
     RAW_DATA_COLOR,
@@ -89,14 +90,14 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dict,
+def evaluate_policy(policy, policy_dir, episodes, render, formula, regions,
                     goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard"):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
     policy_name = policy_path.name
     automaton = LTLfAutomaton(formula)
-    abstract_mdp = LTLfWaypointMDP(waypoints_dict=waypoints_dict, ltlf_automaton=automaton, width=grid_w, height=grid_h, goal_reward=goal_reward)
+    abstract_mdp = LTLfWaypointMDP(regions=regions, ltlf_automaton=automaton, width=grid_w, height=grid_h, goal_reward=goal_reward)
     automaton_states = list(automaton.states)
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
 
@@ -140,8 +141,7 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
 
             # Training consumes the valuation at s0 before choosing the first action.
             initial_q = automaton.get_initial_q()
-            initial_x, initial_y = _abstract_position(observation, initial_q, grid_w, grid_h)
-            initial_truth_assignment = abstract_mdp._get_truth_assignment(initial_x, initial_y)
+            initial_truth_assignment = abstract_mdp.get_environment_truth_assignment(observation)
             q = automaton.get_next_q(initial_q, initial_truth_assignment)
             if q not in state_to_index:
                 raise RuntimeError(f"DFA returned unknown state {q!r}")
@@ -171,7 +171,7 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, waypoints_dic
                 x, y = _abstract_position(next_observation, q, grid_w, grid_h)
                 if tracing and (x, y) != cell_trace[-1]:
                     cell_trace.append((x, y))
-                truth_assignment = abstract_mdp._get_truth_assignment(x, y)
+                truth_assignment = abstract_mdp.get_environment_truth_assignment(next_observation)
                 next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown state {next_q!r}")
@@ -269,7 +269,7 @@ def plot_comparison(results, window_size, output_dir):
     return output_path
 
 
-def plot_grid_traces(result, waypoints_dict, grid_w, grid_h, output_dir):
+def plot_grid_traces(result, regions, grid_w, grid_h, output_dir):
     """Save one abstract-grid path image for every recorded episode."""
     output_paths = []
     trace_data = zip(
@@ -283,7 +283,7 @@ def plot_grid_traces(result, waypoints_dict, grid_w, grid_h, output_dir):
             geometry=geometry,
             grid_w=grid_w,
             grid_h=grid_h,
-            waypoints=waypoints_dict,
+            regions=regions,
             title=f"Agent Abstract-Cell Trace — Episode {episode_index}",
         )
         axis = figure.axes[0]
@@ -332,17 +332,17 @@ def plot_grid_traces(result, waypoints_dict, grid_w, grid_h, output_dir):
     return output_paths
 
 
-def format_waypoint_trace(cells, waypoints_dict):
-    """Report the first cell-change index at which each waypoint was visited."""
+def format_region_trace(cells, regions, grid_w, grid_h):
+    """Report first contact with each rasterized region in a cell trace."""
     first_visit = {}
     for index, cell in enumerate(cells):
         first_visit.setdefault(tuple(cell), index)
-    return ", ".join(
-        f"{name}=reached@{first_visit[tuple(position)]}"
-        if tuple(position) in first_visit
-        else f"{name}=missed"
-        for name, position in waypoints_dict.items()
-    )
+    region_cells = rasterize_regions(regions, grid_w, grid_h)
+    statuses = []
+    for name, occupied_cells in region_cells.items():
+        visits = [first_visit[cell] for cell in occupied_cells if cell in first_visit]
+        statuses.append(f"{name}=cell-contact@{min(visits)}" if visits else f"{name}=missed")
+    return ", ".join(statuses)
 
 
 # ==============================
@@ -478,8 +478,7 @@ def main():
     abstraction_config = AbstractionConfig.load(args.abstraction_config.expanduser())
 
     formula = config["formula"]
-    raw_waypoints = config["waypoints_dict"]
-    waypoints_dict = {name: tuple(coordinates) for name, coordinates in raw_waypoints.items()}
+    regions = load_regions(config.get("regions"))
     grid_w = abstraction_config.primary.width
     grid_h = abstraction_config.primary.height
     goal_reward = float(config.get("goal_reward", 10000.0))
@@ -490,7 +489,7 @@ def main():
         traced_episodes = min(args.trace_episodes, args.episodes) if args.trace_grid else 0
         result = evaluate_policy(
             policy, args.policy_dir, args.episodes, args.render, formula,
-            waypoints_dict, goal_reward, grid_w, grid_h, args.seed,
+            regions, goal_reward, grid_w, grid_h, args.seed,
             trace_episodes=traced_episodes,
             network_type=args.network_type,
         )
@@ -507,14 +506,14 @@ def main():
         print(f"Plot saved to: {plot_policy(result, args.window, args.output_dir)}")
         if args.trace_grid:
             trace_paths = plot_grid_traces(
-                result, waypoints_dict, grid_w, grid_h, args.output_dir
+                result, regions, grid_w, grid_h, args.output_dir
             )
             for episode_index, (cells, trace_path) in enumerate(
                 zip(result["grid_traces"], trace_paths), start=1
             ):
-                waypoint_status = format_waypoint_trace(cells, waypoints_dict)
+                region_status = format_region_trace(cells, regions, grid_w, grid_h)
                 print(
-                    f"Grid trace episode {episode_index}: {waypoint_status} | "
+                    f"Grid trace episode {episode_index}: {region_status} | "
                     f"saved to: {trace_path}"
                 )
 

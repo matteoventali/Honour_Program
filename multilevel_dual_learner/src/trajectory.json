@@ -1,8 +1,8 @@
 {
     "formula": "F(wp1 & X(F(g1)))",
     "goal_reward": 10000,
-    "waypoints_dict": {
-        "wp1": [1, 8],
-        "g1": [8, 8]
+    "regions": {
+        "wp1": {"center": [-0.75, 1.0625], "radius": 0.1},
+        "g1": {"center": [0.416667, 1.0625], "radius": 0.1}
     }
 }
