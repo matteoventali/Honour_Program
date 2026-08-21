@@ -932,6 +932,24 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                     histories[f"{learner_name}_eval_task_rewards"].append(result["mean_task_reward"])
                     histories[f"{learner_name}_eval_episode_lengths"].append(result["mean_episode_length"])
 
+                # Keep recoverable snapshots of the networks evaluated at this
+                # checkpoint.  Unlike the best policies, these are overwritten
+                # at every evaluation and therefore always represent the most
+                # recently evaluated learners.
+                if save_policy:
+                    _save_named_policy(
+                        biased_agent,
+                        f"last_policy_biased{policy_suffix}.pth",
+                    )
+                    _save_named_policy(
+                        unbiased_agent,
+                        f"last_policy_unbiased{policy_suffix}.pth",
+                    )
+                    _write_log(
+                        f"Last learner snapshots updated at evaluation episode {episode + 1}.\n",
+                        log_handle,
+                    )
+
                 _write_log(
                     "\n"
                     f"[Greedy evaluation at episode {episode + 1} | {eval_episodes} fixed-seed episodes]\n"

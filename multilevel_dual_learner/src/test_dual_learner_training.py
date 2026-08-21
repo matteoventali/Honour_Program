@@ -109,6 +109,37 @@ class _UnchangedAbstractStateEnvironment:
 
 
 class DualLearnerTrainingTest(unittest.TestCase):
+    def test_last_policies_are_updated_at_each_evaluation(self):
+        biased = _Learner()
+        unbiased = _Learner()
+        evaluation_result = {
+            "success_rate": 0.0,
+            "mean_task_reward": 0.0,
+            "mean_episode_length": 1.0,
+        }
+        with patch.object(
+            trainer,
+            "_abstract_position",
+            return_value=(0, 0),
+        ), patch.object(
+            trainer,
+            "_evaluate_agent_greedily",
+            return_value=evaluation_result,
+        ), patch.object(trainer, "_save_named_policy") as save_policy:
+            trainer.run_sequential_training(
+                env=_UnchangedAbstractStateEnvironment(),
+                biased_agent=biased,
+                unbiased_agent=unbiased,
+                abstract_mdp=_AbstractMDP(),
+                episodes=1,
+                save_policy=True,
+                log_interval=1,
+            )
+
+        saved_names = [call.args[1] for call in save_policy.call_args_list]
+        self.assertEqual(saved_names.count("last_policy_biased.pth"), 2)
+        self.assertEqual(saved_names.count("last_policy_unbiased.pth"), 2)
+
     def test_heavy_diagnostics_are_independent_from_greedy_evaluation(self):
         self.assertTrue(trainer._is_evaluation_due(499, 2000, 500))
         self.assertFalse(trainer._is_heavy_diagnostics_due(499, 2000))

@@ -4,7 +4,4 @@ __pycache__/
 *$py.class
 
 # Training artifacts (one directory per named experiment)
-/lunarLander/results/
-/manual_experiment/results/
-/multilevel_framework/results/
-/diagnostic/results
+/*/results/
