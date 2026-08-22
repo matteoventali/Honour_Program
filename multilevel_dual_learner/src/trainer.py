@@ -21,7 +21,7 @@ import torch
 
 from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
-from agent import DualReplayBuffer, HierarchicalDQNLearner
+from agent import DualReplayBuffer, HierarchicalDQNLearner, TabularQLearner
 from automaton_validator import validate_automaton
 from spatial_regions import load_regions
 from utils import (
@@ -29,6 +29,7 @@ from utils import (
     plot_buffer_fractions,
     plot_buffer_variance,
     plot_dual_learner_evaluation,
+    plot_tabular_learning_diagnostics,
     plot_shaping_reward_breakdown,
     plot_training_variance,
     save_multilevel_heatmaps,
@@ -71,13 +72,19 @@ def _positive_float(value):
     return number
 
 
+def _learning_rate(value):
+    """Parse a learning rate in the tabular update interval."""
+    number = float(value)
+    if not 0.0 < number <= 1.0:
+        raise argparse.ArgumentTypeError("must be in the interval (0, 1]")
+    return number
+
+
 def _experiment_name(value):
     """Validate a safe single-directory experiment name."""
     name = str(value).strip()
     if len(name) > 100 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
-        raise argparse.ArgumentTypeError(
-            "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
-        )
+        raise argparse.ArgumentTypeError( "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'" )
     return name
 
 
@@ -91,12 +98,7 @@ def _resolve_config_path(requested_path, default_filename, experiment_dir, post_
     )
     candidates = []
     if post_process and uses_default:
-        candidates.extend(
-            [
-                Path(experiment_dir) / default_filename,
-                Path(experiment_dir) / "results" / default_filename,
-            ]
-        )
+        candidates.extend( [ Path(experiment_dir) / default_filename, Path(experiment_dir) / "results" / default_filename, ] )
     candidates.append(requested)
     if not requested.is_absolute():
         candidates.append(Path(SCRIPT_DIR) / requested)
@@ -187,10 +189,7 @@ def _create_seeded_learner(*, initialization_seed, random_seed, **learner_kwargs
         torch.manual_seed(initialization_seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(initialization_seed)
-        return HierarchicalDQNLearner(
-            random_seed=random_seed,
-            **learner_kwargs,
-        )
+        return HierarchicalDQNLearner( random_seed=random_seed, **learner_kwargs, )
 
 
 def _aggregate_seed_metrics(seed_metrics, seeds):
@@ -203,9 +202,7 @@ def _aggregate_seed_metrics(seed_metrics, seeds):
         if key == "automaton_states":
             continue
         try:
-            aggregated[f"{key}_runs"] = np.stack(
-                [np.asarray(metrics[key]) for metrics in seed_metrics]
-            )
+            aggregated[f"{key}_runs"] = np.stack( [np.asarray(metrics[key]) for metrics in seed_metrics] )
         except ValueError as error:
             raise ValueError(f"Metric {key!r} has inconsistent shapes across seeds") from error
     for key in (
@@ -223,9 +220,7 @@ def _aggregate_seed_metrics(seed_metrics, seeds):
 
 def _abstract_position(observation, abstract_mdp):
     """Map a raw environment observation to its abstract spatial coordinates."""
-    x, y, _ = phi_mapping_sequential(
-        observation, 0, abstract_mdp.width, abstract_mdp.height
-    )
+    x, y, _ = phi_mapping_sequential( observation, 0, abstract_mdp.width, abstract_mdp.height )
     return x, y
 
 
@@ -238,9 +233,7 @@ def _augment_state(observation, q, state_to_index):
 
 def _evaluate_initial_automaton_state(observation, abstract_mdp):
     """Consume the initial observation from the DFA pre-trace state and return the first active state."""
-    initial_truth_assignment = abstract_mdp.get_environment_truth_assignment(
-        observation
-    )
+    initial_truth_assignment = abstract_mdp.get_environment_truth_assignment( observation )
     pre_trace_q = abstract_mdp.automaton.get_initial_q()
     return abstract_mdp.automaton.get_next_q(pre_trace_q, initial_truth_assignment)
 
@@ -309,17 +302,7 @@ def _is_heavy_diagnostics_due(episode, episodes):
     )
 
 
-def _build_training_log(
-    episode,
-    episodes,
-    log_interval,
-    automaton_states,
-    biased_agent,
-    unbiased_agent,
-    histories,
-    cumulative_counters,
-    include_detailed_diagnostics=False,
-):
+def _build_training_log( episode, episodes, log_interval, automaton_states, biased_agent, unbiased_agent, histories, cumulative_counters, include_detailed_diagnostics=False, ):
     """Build a report containing recent metrics and cumulative DFA counters."""
     window = min(log_interval, episode + 1)
     recent_slice = slice(-window, None)
@@ -356,11 +339,7 @@ def _build_training_log(
     # Compare both greedy policies on the same recent replay states without
     # consuming either learner's random stream or modifying the replay buffer.
     replay_transitions = getattr(biased_agent.memory, "buffer", [])
-    can_compare_policies = all(
-        hasattr(agent, attribute)
-        for agent in (biased_agent, unbiased_agent)
-        for attribute in ("policy_net", "device")
-    )
+    can_compare_policies = all( hasattr(agent, attribute) for agent in (biased_agent, unbiased_agent) for attribute in ("policy_net", "device") )
     comparison_size = (
         min(1024, len(replay_transitions))
         if include_detailed_diagnostics and can_compare_policies
@@ -368,19 +347,16 @@ def _build_training_log(
     )
     greedy_agreement = float("nan")
     if comparison_size:
-        comparison_states = np.asarray(
-            [transition[0] for transition in replay_transitions[-comparison_size:]],
-            dtype=np.float32,
-        )
+        comparison_states = np.asarray( [transition[0] for transition in replay_transitions[-comparison_size:]], dtype=np.float32, )
         state_tensor = torch.as_tensor(comparison_states, device=biased_agent.device)
         with torch.no_grad():
             biased_actions = biased_agent.policy_net(state_tensor).argmax(dim=1).cpu()
-            unbiased_actions = unbiased_agent.policy_net(
-                state_tensor.to(unbiased_agent.device)
-            ).argmax(dim=1).cpu()
+            unbiased_actions = unbiased_agent.policy_net( state_tensor.to(unbiased_agent.device) ).argmax(dim=1).cpu()
         greedy_agreement = float((biased_actions == unbiased_actions).float().mean().item())
 
     def format_learner_diagnostics(name, diagnostics):
+        if "mean_abs_td_error" in diagnostics:
+            return f"{name} tabular ({diagnostics['updates']} updates): |TD error| mean/max={diagnostics['mean_abs_td_error']:.4g}/{diagnostics['max_abs_td_error']:.4g}, positive updates={diagnostics['positive_sample_fraction']:.3%}\n"
         if not include_detailed_diagnostics:
             return (
                 f"{name} optimizer ({diagnostics['updates']} updates): "
@@ -397,11 +373,9 @@ def _build_training_log(
             f"positive batches={diagnostics['positive_batch_fraction']:.1%}\n"
         )
 
-    agreement_line = (
-        f"greedy action agreement      : {greedy_agreement:.1%} on {comparison_size} buffer states\n"
-        if include_detailed_diagnostics
-        else ""
-    )
+    agreement_line = f"greedy action agreement      : {greedy_agreement:.1%} on {comparison_size} buffer states\n" if comparison_size else ""
+    tabular_snapshot = unbiased_agent.metrics_snapshot() if isinstance(unbiased_agent, TabularQLearner) else None
+    tabular_line = f"tabular Q-table             : {tabular_snapshot['table_size']} states, {tabular_snapshot['updated_state_actions']} updated pairs, coverage={tabular_snapshot['state_action_coverage']:.3%}, positive updates={tabular_snapshot['positive_updates']}\n" if tabular_snapshot is not None else ""
 
     return (
         "\n"
@@ -417,6 +391,7 @@ def _build_training_log(
         f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
         f"biased epsilon (next episode): {histories['epsilons'][-1]:.5f}\n"
         f"shared dual replay buffer    : {len(biased_agent.memory)} samples [{buffer_details}]\n"
+        f"{tabular_line}"
         f"{agreement_line}"
         f"{format_learner_diagnostics('biased  ', biased_diagnostics)}"
         f"{format_learner_diagnostics('unbiased', unbiased_diagnostics)}"
@@ -438,6 +413,20 @@ def _save_named_policy(agent, policy_name):
     agent._save_policy()
 
 
+def _policy_extension(agent):
+    return "pkl" if isinstance(agent, TabularQLearner) else "pth"
+
+
+def _greedy_action(agent, augmented_state, return_known=False):
+    """Select a greedy action through the learner-specific representation."""
+    if isinstance(agent, TabularQLearner):
+        return agent.greedy_action(augmented_state, return_known=return_known)
+    with torch.inference_mode():
+        state_tensor = torch.as_tensor(augmented_state, dtype=torch.float32, device=agent.device).unsqueeze(0)
+        action = agent.policy_net(state_tensor).argmax(dim=1).item()
+    return (action, True) if return_known else action
+
+
 def _monitoring_average(values, episode, log_interval):
     """Return the mean over the active monitoring window."""
     window = min(log_interval, episode + 1)
@@ -454,8 +443,15 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
     episode_lengths = []
     transition_counts = Counter()
     env = gym.make("LunarLander-v3", continuous=False)
-    was_training = agent.policy_net.training
-    agent.policy_net.eval()
+    is_neural = hasattr(agent, "policy_net")
+    tabular_rng_state = agent.random_rng.getstate() if isinstance(agent, TabularQLearner) else None
+    if isinstance(agent, TabularQLearner):
+        agent.random_rng.seed(seed)
+    was_training = agent.policy_net.training if is_neural else False
+    if is_neural:
+        agent.policy_net.eval()
+    known_states = 0
+    evaluated_states = 0
     try:
         for evaluation_episode in range(episodes):
             raw_state, _ = env.reset(seed=seed + evaluation_episode)
@@ -466,18 +462,12 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
 
             while not (succeeded or terminated or truncated):
                 augmented_state = _augment_state(raw_state, q, state_to_index)
-                with torch.inference_mode():
-                    state_tensor = torch.as_tensor(
-                        augmented_state,
-                        dtype=torch.float32,
-                        device=agent.device,
-                    ).unsqueeze(0)
-                    action = agent.policy_net(state_tensor).argmax(dim=1).item()
+                action, known = _greedy_action(agent, augmented_state, return_known=True)
+                known_states += int(known)
+                evaluated_states += 1
 
                 next_raw_state, _ignored_reward, terminated, truncated, _ = env.step(action)
-                truth_assignment = abstract_mdp.get_environment_truth_assignment(
-                    next_raw_state
-                )
+                truth_assignment = abstract_mdp.get_environment_truth_assignment( next_raw_state )
                 previous_q = q
                 q = automaton.get_next_q(previous_q, truth_assignment)
                 if q not in state_to_index:
@@ -492,8 +482,10 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
             task_rewards.append(float(goal_reward) if succeeded else 0.0)
             episode_lengths.append(steps)
     finally:
-        if was_training:
+        if is_neural and was_training:
             agent.policy_net.train()
+        if tabular_rng_state is not None:
+            agent.random_rng.setstate(tabular_rng_state)
         env.close()
 
     return {
@@ -501,6 +493,7 @@ def _evaluate_agent_greedily(agent, abstract_mdp, episodes, goal_reward, seed):
         "mean_task_reward": float(np.mean(task_rewards)),
         "mean_episode_length": float(np.mean(episode_lengths)),
         "transition_counts": transition_counts,
+        "known_state_fraction": known_states / evaluated_states if evaluated_states else 1.0,
     }
 
 
@@ -565,6 +558,12 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "unbiased_eval_success_rates": histories["unbiased_eval_success_rates"],
         "unbiased_eval_task_rewards": histories["unbiased_eval_task_rewards"],
         "unbiased_eval_episode_lengths": histories["unbiased_eval_episode_lengths"],
+        "unbiased_eval_known_state_fractions": histories["unbiased_eval_known_state_fractions"],
+        "tabular_table_sizes": histories["tabular_table_sizes"],
+        "tabular_visited_states": histories["tabular_visited_states"],
+        "tabular_updated_state_actions": histories["tabular_updated_state_actions"],
+        "tabular_state_action_coverage": histories["tabular_state_action_coverage"],
+        "tabular_positive_updates": histories["tabular_positive_updates"],
     }
 
 
@@ -587,15 +586,9 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
     num_states = len(automaton_states)
 
     # Fail early if the DFA or training parameters are inconsistent.
-    _validate_training_setup(
-        automaton,
-        state_to_index,
-        episodes,
-        log_interval,
-        eval_interval,
-        eval_episodes,
-    )
-    if biased_agent.batch_size != unbiased_agent.batch_size:
+    _validate_training_setup( automaton, state_to_index, episodes, log_interval, eval_interval, eval_episodes, )
+    unbiased_is_tabular = isinstance(unbiased_agent, TabularQLearner)
+    if not unbiased_is_tabular and biased_agent.batch_size != unbiased_agent.batch_size:
         raise ValueError("biased and unbiased learners must use the same batch size")
     if gamma_shaping is None:
         gamma_shaping = biased_agent.gamma
@@ -603,19 +596,17 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         raise ValueError("gamma_shaping must be in the interval (0, 1]")
     if unbiased_reward_scale <= 0.0:
         raise ValueError("unbiased_reward_scale must be greater than zero")
-    if biased_agent.device != unbiased_agent.device:
+    if not unbiased_is_tabular and biased_agent.device != unbiased_agent.device:
         raise ValueError("biased and unbiased learners must use the same device")
     minibatch_seed = None if seed is None else seed + 4_000_003
     minibatch_rng = random.Random(minibatch_seed)
 
     # Store both reward views once and materialize each shared minibatch once.
-    memory_capacity = min(
-        getattr(biased_agent.memory, "capacity", 300000),
-        getattr(unbiased_agent.memory, "capacity", 300000),
-    )
+    memory_capacity = min(getattr(biased_agent.memory, "capacity", 300000), getattr(unbiased_agent.memory, "capacity", 300000)) if not unbiased_is_tabular else getattr(biased_agent.memory, "capacity", 300000)
     shared_memory = DualReplayBuffer(memory_capacity, num_states)
     biased_agent.memory = shared_memory
-    unbiased_agent.memory = shared_memory
+    if not unbiased_is_tabular:
+        unbiased_agent.memory = shared_memory
 
     # Store episode-level metrics for plots and post-processing.
     task_reward_history = []
@@ -653,6 +644,12 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
         "unbiased_eval_success_rates": [],
         "unbiased_eval_task_rewards": [],
         "unbiased_eval_episode_lengths": [],
+        "unbiased_eval_known_state_fractions": [],
+        "tabular_table_sizes": [],
+        "tabular_visited_states": [],
+        "tabular_updated_state_actions": [],
+        "tabular_state_action_coverage": [],
+        "tabular_positive_updates": [],
     }
 
     # Keep cumulative counters for diagnostics shown during training.
@@ -668,9 +665,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
 
     # Open one append-only log file for the complete run.
     log_handle = open(log_file, "a", encoding="utf-8") if log_file else None
-    zero_init_unbiased_output = bool(
-        getattr(unbiased_agent, "output_layer_zero_initialized", False)
-    )
+    zero_init_unbiased_output = bool( getattr(unbiased_agent, "output_layer_zero_initialized", False) )
     _write_run_header(log_handle, episodes, use_shaping, goal_reward, abstract_mdp, automaton_states, gamma_shaping, eval_interval, eval_episodes, eval_seed, biased_agent.gamma, unbiased_agent.gamma, unbiased_reward_scale, zero_init_unbiased_output)
 
     try:
@@ -678,7 +673,8 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             evaluation_due = _is_evaluation_due(episode, episodes, eval_interval)
             heavy_diagnostics_due = _is_heavy_diagnostics_due(episode, episodes)
             biased_agent.collect_detailed_diagnostics = heavy_diagnostics_due
-            unbiased_agent.collect_detailed_diagnostics = heavy_diagnostics_due
+            if hasattr(unbiased_agent, "collect_detailed_diagnostics"):
+                unbiased_agent.collect_detailed_diagnostics = heavy_diagnostics_due
 
             # Reset the environment and consume s0 before selecting the first action.
             raw_state, _ = env.reset(seed=seed if episode == 0 else None)
@@ -723,9 +719,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 abstract_state = (x, y, q)
 
                 # Advance the DFA using propositions true in the arrival state.
-                truth_assignment = abstract_mdp.get_environment_truth_assignment(
-                    next_raw_state
-                )
+                truth_assignment = abstract_mdp.get_environment_truth_assignment( next_raw_state )
                 next_q = automaton.get_next_q(q, truth_assignment)
                 if next_q not in state_to_index:
                     raise RuntimeError(f"DFA returned unknown state {next_q!r} from state {q!r}")
@@ -778,65 +772,14 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 unbiased_learning_reward = (
                     synthetic_goal_reward * unbiased_reward_scale
                 )
-                shared_memory.push(
-                    augmented_state,
-                    action,
-                    biased_learning_reward,
-                    unbiased_learning_reward,
-                    next_augmented_state,
-                    bootstrap_terminal,
-                )
+                shared_memory.push(augmented_state, action, biased_learning_reward, unbiased_learning_reward, next_augmented_state, bootstrap_terminal)
+                if unbiased_is_tabular:
+                    unbiased_agent.update(augmented_state, action, unbiased_learning_reward, next_augmented_state, bootstrap_terminal)
                 if len(shared_memory) >= biased_agent.batch_size:
-                    batch_indices = biased_agent.memory.sample_indices(
-                        biased_agent.batch_size,
-                        minibatch_rng,
-                    )
-                    (
-                        batch_states,
-                        batch_actions,
-                        batch_biased_rewards,
-                        batch_unbiased_rewards,
-                        batch_next_states,
-                        batch_dones,
-                    ) = shared_memory.sample(
-                        biased_agent.batch_size,
-                        batch_indices,
-                    )
-                    device = biased_agent.device
-                    states_tensor = torch.as_tensor(
-                        batch_states, dtype=torch.float32, device=device
-                    )
-                    actions_tensor = torch.as_tensor(
-                        batch_actions, dtype=torch.long, device=device
-                    ).unsqueeze(1)
-                    next_states_tensor = torch.as_tensor(
-                        batch_next_states, dtype=torch.float32, device=device
-                    )
-                    dones_tensor = torch.as_tensor(
-                        batch_dones, dtype=torch.float32, device=device
-                    ).unsqueeze(1)
-                    biased_rewards_tensor = torch.as_tensor(
-                        batch_biased_rewards, dtype=torch.float32, device=device
-                    ).unsqueeze(1)
-                    unbiased_rewards_tensor = torch.as_tensor(
-                        batch_unbiased_rewards, dtype=torch.float32, device=device
-                    ).unsqueeze(1)
-                    biased_agent.optimize_tensor_batch(
-                        states_tensor,
-                        actions_tensor,
-                        biased_rewards_tensor,
-                        next_states_tensor,
-                        dones_tensor,
-                        int(np.count_nonzero(batch_biased_rewards > 0)),
-                    )
-                    unbiased_agent.optimize_tensor_batch(
-                        states_tensor,
-                        actions_tensor,
-                        unbiased_rewards_tensor,
-                        next_states_tensor,
-                        dones_tensor,
-                        int(np.count_nonzero(batch_unbiased_rewards > 0)),
-                    )
+                    batch_indices = biased_agent.memory.sample_indices(biased_agent.batch_size, minibatch_rng)
+                    biased_agent.optimize_model(batch_indices, reward_channel="biased")
+                    if not unbiased_is_tabular:
+                        unbiased_agent.optimize_model(batch_indices, reward_channel="unbiased")
 
                 # Update the episode totals and move to the next state.
                 episode_steps += 1
@@ -854,19 +797,14 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                     cumulative_env_truncated += 1
 
             # Decay the single epsilon once at the end of the episode.
-            next_epsilon = max(
-                biased_agent.eps_min,
-                biased_agent.eps * biased_agent.eps_decay,
-            )
+            next_epsilon = max( biased_agent.eps_min, biased_agent.eps * biased_agent.eps_decay, )
             biased_agent.eps = next_epsilon
 
             # Save the metrics collected for this episode.
             episode_learning_reward = episode_task_reward + episode_shaping_reward
             task_reward_history.append(episode_task_reward)
             shaping_reward_history.append(episode_shaping_reward)
-            unbiased_learning_reward_history.append(
-                episode_unbiased_learning_reward
-            )
+            unbiased_learning_reward_history.append( episode_unbiased_learning_reward )
             learning_reward_history.append(episode_learning_reward)
             epsilon_history.append(next_epsilon)
             episode_length_history.append(episode_steps)
@@ -875,6 +813,12 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             abstract_change_history.append(episode_abstract_changes)
             dfa_transition_history.append(episode_dfa_transitions)
             transition_counter_history.append(episode_transitions)
+            tabular_metrics = unbiased_agent.metrics_snapshot() if unbiased_is_tabular else {"table_size": np.nan, "visited_states": np.nan, "updated_state_actions": np.nan, "state_action_coverage": np.nan, "positive_updates": np.nan}
+            histories["tabular_table_sizes"].append(tabular_metrics["table_size"])
+            histories["tabular_visited_states"].append(tabular_metrics["visited_states"])
+            histories["tabular_updated_state_actions"].append(tabular_metrics["updated_state_actions"])
+            histories["tabular_state_action_coverage"].append(tabular_metrics["state_action_coverage"])
+            histories["tabular_positive_updates"].append(tabular_metrics["positive_updates"])
 
             # Record replay-buffer composition, state visits, and entries from other states.
             for index in range(num_states):
@@ -889,85 +833,36 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                 or heavy_diagnostics_due
             ):
                 cumulative_counters = {"state_visits": cumulative_state_visits, "state_entries": cumulative_state_entries, "transitions": cumulative_transitions, "initial_acceptances": cumulative_initial_acceptances, "env_terminated": cumulative_env_terminated, "env_truncated": cumulative_env_truncated}
-                _write_log(
-                    _build_training_log(
-                        episode,
-                        episodes,
-                        log_interval,
-                        automaton_states,
-                        biased_agent,
-                        unbiased_agent,
-                        histories,
-                        cumulative_counters,
-                        include_detailed_diagnostics=heavy_diagnostics_due,
-                    ),
-                    log_handle,
-                )
+                _write_log( _build_training_log( episode, episodes, log_interval, automaton_states, biased_agent, unbiased_agent, histories, cumulative_counters, include_detailed_diagnostics=heavy_diagnostics_due, ), log_handle, )
 
             # Evaluate both policies greedily on identical held-out episodes.
             # The final training episode is always evaluated even when it is
             # not an exact multiple of eval_interval.
             if evaluation_due:
-                _write_log(
-                    f"\nStarting autonomous greedy evaluation at episode {episode + 1} "
-                    f"({eval_episodes} episodes per learner)...\n",
-                    log_handle,
-                )
-                biased_evaluation = _evaluate_agent_greedily(
-                    biased_agent,
-                    abstract_mdp,
-                    eval_episodes,
-                    goal_reward,
-                    eval_seed,
-                )
+                _write_log( f"\nStarting autonomous greedy evaluation at episode {episode + 1} " f"({eval_episodes} episodes per learner)...\n", log_handle, )
+                biased_evaluation = _evaluate_agent_greedily( biased_agent, abstract_mdp, eval_episodes, goal_reward, eval_seed, )
                 _write_log("Biased learner evaluation completed; evaluating unbiased learner...\n", log_handle)
                 evaluation_results = {
                     "biased": biased_evaluation,
-                    "unbiased": _evaluate_agent_greedily(
-                        unbiased_agent,
-                        abstract_mdp,
-                        eval_episodes,
-                        goal_reward,
-                        eval_seed,
-                    ),
+                    "unbiased": _evaluate_agent_greedily( unbiased_agent, abstract_mdp, eval_episodes, goal_reward, eval_seed, ),
                 }
                 histories["evaluation_steps"].append(episode + 1)
                 for learner_name, result in evaluation_results.items():
                     histories[f"{learner_name}_eval_success_rates"].append(result["success_rate"])
                     histories[f"{learner_name}_eval_task_rewards"].append(result["mean_task_reward"])
                     histories[f"{learner_name}_eval_episode_lengths"].append(result["mean_episode_length"])
+                histories["unbiased_eval_known_state_fractions"].append(evaluation_results["unbiased"]["known_state_fraction"])
 
                 # Keep recoverable snapshots of the networks evaluated at this
                 # checkpoint.  Unlike the best policies, these are overwritten
                 # at every evaluation and therefore always represent the most
                 # recently evaluated learners.
                 if save_policy:
-                    _save_named_policy(
-                        biased_agent,
-                        f"last_policy_biased{policy_suffix}.pth",
-                    )
-                    _save_named_policy(
-                        unbiased_agent,
-                        f"last_policy_unbiased{policy_suffix}.pth",
-                    )
-                    _write_log(
-                        f"Last learner snapshots updated at evaluation episode {episode + 1}.\n",
-                        log_handle,
-                    )
+                    _save_named_policy(biased_agent, f"last_policy_biased{policy_suffix}.{_policy_extension(biased_agent)}")
+                    _save_named_policy(unbiased_agent, f"last_policy_unbiased{policy_suffix}.{_policy_extension(unbiased_agent)}")
+                    _write_log( f"Last learner snapshots updated at evaluation episode {episode + 1}.\n", log_handle, )
 
-                _write_log(
-                    "\n"
-                    f"[Greedy evaluation at episode {episode + 1} | {eval_episodes} fixed-seed episodes]\n"
-                    f"biased   : success={evaluation_results['biased']['success_rate']:.1%}, "
-                    f"task reward={evaluation_results['biased']['mean_task_reward']:.3f}, "
-                    f"length={evaluation_results['biased']['mean_episode_length']:.1f}\n"
-                    f"biased DFA transitions   : {_format_counter(evaluation_results['biased'].get('transition_counts', Counter()))}\n"
-                    f"unbiased : success={evaluation_results['unbiased']['success_rate']:.1%}, "
-                    f"task reward={evaluation_results['unbiased']['mean_task_reward']:.3f}, "
-                    f"length={evaluation_results['unbiased']['mean_episode_length']:.1f}\n"
-                    f"unbiased DFA transitions : {_format_counter(evaluation_results['unbiased'].get('transition_counts', Counter()))}\n",
-                    log_handle,
-                )
+                _write_log( "\n" f"[Greedy evaluation at episode {episode + 1} | {eval_episodes} fixed-seed episodes]\n" f"biased   : success={evaluation_results['biased']['success_rate']:.1%}, " f"task reward={evaluation_results['biased']['mean_task_reward']:.3f}, " f"length={evaluation_results['biased']['mean_episode_length']:.1f}\n" f"biased DFA transitions   : {_format_counter(evaluation_results['biased'].get('transition_counts', Counter()))}\n" f"unbiased : success={evaluation_results['unbiased']['success_rate']:.1%}, " f"task reward={evaluation_results['unbiased']['mean_task_reward']:.3f}, " f"length={evaluation_results['unbiased']['mean_episode_length']:.1f}, " f"known states={evaluation_results['unbiased']['known_state_fraction']:.1%}\n" f"unbiased DFA transitions : {_format_counter(evaluation_results['unbiased'].get('transition_counts', Counter()))}\n", log_handle, )
 
                 # Each best checkpoint is selected from that learner's own
                 # autonomous evaluation, never from behavior trajectories.
@@ -983,22 +878,16 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
                     if is_new_best:
                         best_evaluation_scores[learner_name] = score
                         if save_policy:
-                            _save_named_policy(
-                                learner,
-                                f"best_policy_{learner_name}{policy_suffix}.pth",
-                            )
-                        _write_log(
-                            f"Best {learner_name} policy updated from autonomous evaluation at episode {episode + 1}.\n",
-                            log_handle,
-                        )
+                            _save_named_policy(learner, f"best_policy_{learner_name}{policy_suffix}.{_policy_extension(learner)}")
+                        _write_log( f"Best {learner_name} policy updated from autonomous evaluation at episode {episode + 1}.\n", log_handle, )
                         if learner_name == "unbiased":
                             best_mean_reward = evaluation_results[learner_name]["mean_task_reward"]
                             best_policy_episode = episode + 1
 
         # Save the final policy independently from its monitored performance.
         if save_policy:
-            _save_named_policy(unbiased_agent, f"last_policy_unbiased{policy_suffix}.pth")
-            _save_named_policy(biased_agent, f"last_policy_biased{policy_suffix}.pth")
+            _save_named_policy(unbiased_agent, f"last_policy_unbiased{policy_suffix}.{_policy_extension(unbiased_agent)}")
+            _save_named_policy(biased_agent, f"last_policy_biased{policy_suffix}.{_policy_extension(biased_agent)}")
             _write_log(f"Last learner snapshots saved after episode {episodes}. Algorithm output: unbiased policy. Best unbiased evaluation: episode {best_policy_episode}, mean task reward={best_mean_reward:.3f}\n", log_handle)
     finally:
         # Always close the log, including when training raises an exception.
@@ -1006,20 +895,7 @@ def run_sequential_training(env, biased_agent, unbiased_agent, abstract_mdp, epi
             log_handle.close()
 
     # Return named histories to avoid ambiguous tuple positions.
-    return _build_training_results(
-        histories,
-        initial_acceptance_history,
-        buffer_histories,
-        automaton_states,
-        best_mean_reward,
-        best_policy_episode,
-        abstract_mdp.gamma,
-        biased_agent.gamma,
-        unbiased_agent.gamma,
-        gamma_shaping,
-        unbiased_reward_scale,
-        zero_init_unbiased_output,
-    )
+    return _build_training_results( histories, initial_acceptance_history, buffer_histories, automaton_states, best_mean_reward, best_policy_episode, abstract_mdp.gamma, biased_agent.gamma, unbiased_agent.gamma, gamma_shaping, unbiased_reward_scale, zero_init_unbiased_output, )
 
 
 # ==============================
@@ -1054,15 +930,8 @@ def main(args):
     print(f"Experiment outputs: {experiment_dir}")
 
     # Load the temporal task and optional training parameters.
-    config_path = _resolve_config_path(
-        args.config, "trajectory.json", experiment_dir, args.post_process
-    )
-    abstraction_config_path = _resolve_config_path(
-        args.abstraction_config,
-        "abstraction.json",
-        experiment_dir,
-        args.post_process,
-    )
+    config_path = _resolve_config_path( args.config, "trajectory.json", experiment_dir, args.post_process )
+    abstraction_config_path = _resolve_config_path( args.abstraction_config, "abstraction.json", experiment_dir, args.post_process, )
     print(f"Task configuration: {config_path}")
     print(f"Abstraction configuration: {abstraction_config_path}")
     with config_path.open(encoding="utf-8") as config_file:
@@ -1082,48 +951,17 @@ def main(args):
 
     # Build the DFA once for both training and post-processing.
     automaton = LTLfAutomaton(formula)
-    validation_report = validate_automaton(
-        automaton,
-        regions,
-    )
-    level_summary = ", ".join(
-        f"{index}:{level.name}={level.width}x{level.height}"
-        for index, level in enumerate(abstraction_config.levels, start=1)
-    )
-    print(
-        "=== LTLf TRAINING (dual ground learners) ===\n"
-        f"Formula: {formula}\n"
-        f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
-        f"Abstractions: {level_summary}\n"
-        "Ground DDQN return: one-step\n"
-        f"Discount factors: abstract={gamma}, biased={biased_gamma}, "
-        f"unbiased={unbiased_gamma}\n"
-        f"Unbiased reward scale: {args.unbiased_reward_scale}\n"
-        f"Zero-init unbiased output: {args.zero_init_unbiased_output}\n"
-        "Automaton coordinates and training potential: level1\n"
-        f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
-        f"accepting={sorted(automaton.accepting_states)}\n"
-        "Gym reward is ignored by design.\n"
-        f"{validation_report.format()}"
-    )
+    validation_report = validate_automaton( automaton, regions, )
+    level_summary = ", ".join( f"{index}:{level.name}={level.width}x{level.height}" for index, level in enumerate(abstraction_config.levels, start=1) )
+    print( "=== LTLf TRAINING (dual ground learners) ===\n" f"Formula: {formula}\n" f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n" f"Abstractions: {level_summary}\n" "Ground DDQN return: one-step\n" f"Unbiased learner: {args.unbiased_learner}\n" f"Discount factors: abstract={gamma}, biased={biased_gamma}, " f"unbiased={unbiased_gamma}\n" f"Unbiased reward scale: {args.unbiased_reward_scale}\n" f"Zero-init unbiased output: {args.zero_init_unbiased_output}\n" "Automaton coordinates and training potential: level1\n" f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, " f"accepting={sorted(automaton.accepting_states)}\n" "Gym reward is ignored by design.\n" f"{validation_report.format()}" )
 
     if not args.post_process:
         automaton.render_graph(directory=image_dir)
 
     # Heatmaps depend only on the saved task configuration, not on agent training.
-    multilevel_mdp = MultiLevelWaypointMDP(
-        regions=regions,
-        ltlf_automaton=automaton,
-        abstraction_config=abstraction_config,
-        gamma=gamma,
-        goal_reward=goal_reward,
-    )
+    multilevel_mdp = MultiLevelWaypointMDP( regions=regions, ltlf_automaton=automaton, abstraction_config=abstraction_config, gamma=gamma, goal_reward=goal_reward, )
     multilevel_mdp.compute_value_functions()
-    save_multilevel_heatmaps(
-        multilevel_mdp,
-        filename_prefix="single_epsilon_exp",
-        output_root=os.path.join(image_dir, "heatmaps"),
-    )
+    save_multilevel_heatmaps( multilevel_mdp, filename_prefix="single_epsilon_exp", output_root=os.path.join(image_dir, "heatmaps"), )
     abstract_mdp = multilevel_mdp.primary_mdp
 
     if not args.post_process:
@@ -1139,41 +977,14 @@ def main(args):
                 biased_initialization_seed = run_seed
                 unbiased_initialization_seed = run_seed
                 biased_exploration_seed = run_seed + 2_000_003
-                print(
-                    "Learner seeds: "
-                    f"biased_init={biased_initialization_seed}, "
-                    f"unbiased_init={unbiased_initialization_seed}, "
-                    f"biased_exploration={biased_exploration_seed}, "
-                    f"shared_minibatches={run_seed + 4_000_003}"
-                )
-                biased_agent = _create_seeded_learner(
-                    initialization_seed=biased_initialization_seed,
-                    random_seed=biased_exploration_seed,
-                    env=env,
-                    max_episodes=args.episodes,
-                    eps_decay=args.eps_decay,
-                    gamma=biased_gamma,
-                    extra_state_dims=len(automaton.states),
-                    use_polyak=args.polyak,
-                    tau=args.polyak_tau,
-                    target_update_freq=args.target_update_freq,
-                    network_type=args.network_type,
-                    policy_dir=policy_dir,
-                )
-                unbiased_agent = _create_seeded_learner(
-                    initialization_seed=unbiased_initialization_seed,
-                    random_seed=run_seed + 3_000_003,
-                    env=env,
-                    max_episodes=args.episodes,
-                    eps_decay=args.eps_decay,
-                    gamma=unbiased_gamma,
-                    extra_state_dims=len(automaton.states),
-                    use_polyak=args.polyak,
-                    tau=args.polyak_tau,
-                    target_update_freq=args.target_update_freq,
-                    network_type=args.network_type,
-                    policy_dir=policy_dir,
-                )
+                print( "Learner seeds: " f"biased_init={biased_initialization_seed}, " f"unbiased_init={unbiased_initialization_seed}, " f"biased_exploration={biased_exploration_seed}, " f"shared_minibatches={run_seed + 4_000_003}" )
+                biased_agent = _create_seeded_learner( initialization_seed=biased_initialization_seed, random_seed=biased_exploration_seed, env=env, max_episodes=args.episodes, eps_decay=args.eps_decay, gamma=biased_gamma, extra_state_dims=len(automaton.states), use_polyak=args.polyak, tau=args.polyak_tau, target_update_freq=args.target_update_freq, network_type=args.network_type, policy_dir=policy_dir, )
+                if args.unbiased_learner == "tabular":
+                    unbiased_agent = TabularQLearner(env=env, num_phases=len(automaton.states), gamma=unbiased_gamma, alpha=args.tabular_alpha, policy_dir=policy_dir, random_seed=run_seed + 3_000_003)
+                else:
+                    unbiased_agent = _create_seeded_learner(initialization_seed=unbiased_initialization_seed, random_seed=run_seed + 3_000_003, env=env, max_episodes=args.episodes, eps_decay=args.eps_decay, gamma=unbiased_gamma, extra_state_dims=len(automaton.states), use_polyak=args.polyak, tau=args.polyak_tau, target_update_freq=args.target_update_freq, network_type=args.network_type, policy_dir=policy_dir)
+                if args.zero_init_unbiased_output and args.unbiased_learner == "tabular":
+                    raise ValueError("--zero-init-unbiased-output is only valid with --unbiased-learner ddqn")
                 if args.zero_init_unbiased_output:
                     unbiased_agent.zero_initialize_output_layer()
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
@@ -1205,22 +1016,18 @@ def main(args):
         plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{seed_plot_dir}/reward_breakdown_dual_learner.png", title=f"Biased vs Unbiased Reward — Seed {int(run_seed)}")
         if run_index < len(buffer_runs):
             plot_buffer_fractions(buffer_runs[run_index], filename=f"{seed_plot_dir}/buffer_fractions_dual_learner.png", window_size=args.plot_window, state_labels=data["automaton_states"], title=f"Shared Experience Composition — Seed {int(run_seed)}")
-    plot_training_variance(
-        learning_reward_runs,
-        window_size=args.plot_window,
-        filename=f"{plot_dir}/training_variance_dual_learner.png",
-        epsilon_histories=epsilon_runs,
-    )
+    plot_training_variance( learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_dual_learner.png", epsilon_histories=epsilon_runs, )
     plot_buffer_variance(buffer_runs, window_size=args.plot_window, filename=f"{plot_dir}/buffer_variance_dual_learner.png", state_labels=data["automaton_states"])
     evaluation_steps = data["evaluation_steps_runs"] if "evaluation_steps_runs" in data else data["evaluation_steps"][np.newaxis, ...]
     biased_eval_success = data["biased_eval_success_rates_runs"] if "biased_eval_success_rates_runs" in data else data["biased_eval_success_rates"][np.newaxis, ...]
     unbiased_eval_success = data["unbiased_eval_success_rates_runs"] if "unbiased_eval_success_rates_runs" in data else data["unbiased_eval_success_rates"][np.newaxis, ...]
-    plot_dual_learner_evaluation(
-        evaluation_steps,
-        biased_eval_success,
-        unbiased_eval_success,
-        filename=f"{plot_dir}/dual_learner_evaluation.png",
-    )
+    plot_dual_learner_evaluation(evaluation_steps, biased_eval_success, unbiased_eval_success, filename=f"{plot_dir}/dual_learner_evaluation.png")
+    tabular_table_runs = data["tabular_table_sizes_runs"] if "tabular_table_sizes_runs" in data else data["tabular_table_sizes"][np.newaxis, ...] if "tabular_table_sizes" in data else None
+    if tabular_table_runs is not None and np.isfinite(tabular_table_runs).any():
+        tabular_pair_runs = data["tabular_updated_state_actions_runs"] if "tabular_updated_state_actions_runs" in data else data["tabular_updated_state_actions"][np.newaxis, ...]
+        tabular_coverage_runs = data["tabular_state_action_coverage_runs"] if "tabular_state_action_coverage_runs" in data else data["tabular_state_action_coverage"][np.newaxis, ...]
+        known_state_runs = data["unbiased_eval_known_state_fractions_runs"] if "unbiased_eval_known_state_fractions_runs" in data else data["unbiased_eval_known_state_fractions"][np.newaxis, ...]
+        plot_tabular_learning_diagnostics(tabular_table_runs, tabular_pair_runs, tabular_coverage_runs, evaluation_steps, known_state_runs, filename=f"{plot_dir}/tabular_learning_diagnostics.png")
     print("\nFinished.")
 
 
@@ -1236,80 +1043,24 @@ if __name__ == "__main__":
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--config", default="trajectory.json")
-    parser.add_argument(
-        "--abstraction-config",
-        default="abstraction.json",
-        help="Ordered grid hierarchy (level1 defines automaton coordinates).",
-    )
+    parser.add_argument( "--abstraction-config", default="abstraction.json", help="Ordered grid hierarchy (level1 defines automaton coordinates).", )
     parser.add_argument("--eps-decay", type=float, default=0.9996)
-    parser.add_argument(
-        "--biased-gamma",
-        type=_discount_factor,
-        default=None,
-        help="Discount factor for the biased DDQN (default: trajectory.json gamma).",
-    )
-    parser.add_argument(
-        "--unbiased-gamma",
-        type=_discount_factor,
-        default=None,
-        help="Discount factor for the unbiased DDQN (default: trajectory.json gamma).",
-    )
-    parser.add_argument(
-        "--gamma-shaping",
-        type=_discount_factor,
-        default=None,
-        help="Discount used in Phi shaping (default: biased gamma; use 1 for the cell-change-equivalent heuristic).",
-    )
-    parser.add_argument(
-        "--zero-init-unbiased-output",
-        action="store_true",
-        help="Initialize only the unbiased policy/target output layers to zero (default: disabled).",
-    )
-    parser.add_argument(
-        "--unbiased-reward-scale",
-        type=_positive_float,
-        default=1.0,
-        help="Multiply only the unbiased learner reward by this factor (default: 1.0).",
-    )
+    parser.add_argument( "--biased-gamma", type=_discount_factor, default=None, help="Discount factor for the biased DDQN (default: trajectory.json gamma).", )
+    parser.add_argument( "--unbiased-gamma", type=_discount_factor, default=None, help="Discount factor for the unbiased DDQN (default: trajectory.json gamma).", )
+    parser.add_argument( "--gamma-shaping", type=_discount_factor, default=None, help="Discount used in Phi shaping (default: biased gamma; use 1 for the cell-change-equivalent heuristic).", )
+    parser.add_argument( "--zero-init-unbiased-output", action="store_true", help="Initialize only the unbiased policy/target output layers to zero (default: disabled).", )
+    parser.add_argument( "--unbiased-reward-scale", type=_positive_float, default=1.0, help="Multiply only the unbiased learner reward by this factor (default: 1.0).", )
+    parser.add_argument("--unbiased-learner", choices=["ddqn", "tabular"], default="ddqn", help="Output learner: neural DDQN or sparse tabular Q-learning.")
+    parser.add_argument("--tabular-alpha", type=_learning_rate, default=0.1, help="Learning rate used by the tabular unbiased learner.")
     parser.add_argument("--log-interval", type=int, default=100)
-    parser.add_argument(
-        "--eval-interval",
-        type=_positive_int,
-        default=1000,
-        help="Run autonomous greedy evaluation every N training episodes.",
-    )
-    parser.add_argument(
-        "--eval-episodes",
-        type=_positive_int,
-        default=50,
-        help="Number of fixed-seed episodes per learner and evaluation point.",
-    )
-    parser.add_argument(
-        "--eval-seed",
-        type=int,
-        default=100000,
-        help="First held-out seed reused at every evaluation point.",
-    )
+    parser.add_argument( "--eval-interval", type=_positive_int, default=1000, help="Run autonomous greedy evaluation every N training episodes.", )
+    parser.add_argument( "--eval-episodes", type=_positive_int, default=50, help="Number of fixed-seed episodes per learner and evaluation point.", )
+    parser.add_argument( "--eval-seed", type=int, default=100000, help="First held-out seed reused at every evaluation point.", )
     parser.add_argument("--plot-window", type=int, default=500)
-    parser.add_argument(
-        "--polyak",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use Polyak target updates (disable with --no-polyak).",
-    )
+    parser.add_argument( "--polyak", action=argparse.BooleanOptionalAction, default=True, help="Use Polyak target updates (disable with --no-polyak).", )
     parser.add_argument("--polyak-tau", type=float, default=0.005)
-    parser.add_argument(
-        "--target-update-freq",
-        type=int,
-        default=1000,
-        help="Hard target-network update interval used with --no-polyak.",
-    )
-    parser.add_argument(
-        "--network-type",
-        choices=["standard", "dueling"],
-        default="standard",
-        help="Q-network architecture: standard MLP or dueling value/advantage streams.",
-    )
+    parser.add_argument( "--target-update-freq", type=int, default=1000, help="Hard target-network update interval used with --no-polyak.", )
+    parser.add_argument( "--network-type", choices=["standard", "dueling"], default="standard", help="Q-network architecture: standard MLP or dueling value/advantage streams.", )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
     main(parser.parse_args())
