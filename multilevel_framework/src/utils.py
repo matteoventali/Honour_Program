@@ -33,22 +33,7 @@ SERIES_COLORS = (
 EPSILON_LINESTYLES = ("--", (0, (5, 2, 1, 2)), ":", "-.")
 PAPER_COLORS = SERIES_COLORS
 
-plt.rcParams.update(
-    {
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"],
-        "font.size": 10,
-        "axes.labelsize": 10,
-        "axes.linewidth": 0.8,
-        "legend.fontsize": 9,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "savefig.dpi": 300,
-        "savefig.facecolor": "white",
-    }
-)
+plt.rcParams.update( { "font.family": "sans-serif", "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"], "font.size": 10, "axes.labelsize": 10, "axes.linewidth": 0.8, "legend.fontsize": 9, "xtick.labelsize": 9, "ytick.labelsize": 9, "xtick.direction": "in", "ytick.direction": "in", "savefig.dpi": 300, "savefig.facecolor": "white", } )
 
 
 # ==============================
@@ -101,18 +86,8 @@ def _axis_boundaries(map_axis, size, lower, upper):
 
 def spatial_grid_boundaries(grid_w=12, grid_h=12):
     """Return x/y bin boundaries implied by the active phi_mapping_grid."""
-    x_boundaries = _axis_boundaries(
-        lambda x: phi_mapping_grid((x, 0.0), grid_w, grid_h)[0],
-        grid_w,
-        -1.0,
-        1.0,
-    )
-    y_boundaries = _axis_boundaries(
-        lambda y: phi_mapping_grid((0.0, y), grid_w, grid_h)[1],
-        grid_h,
-        0.0,
-        1.5,
-    )
+    x_boundaries = _axis_boundaries( lambda x: phi_mapping_grid((x, 0.0), grid_w, grid_h)[0], grid_w, -1.0, 1.0, )
+    y_boundaries = _axis_boundaries( lambda y: phi_mapping_grid((0.0, y), grid_w, grid_h)[1], grid_h, 0.0, 1.5, )
     return x_boundaries, y_boundaries
 
 
@@ -156,37 +131,15 @@ def _draw_visible_area_overlay(axis, width, height):
     bottom = float(to_plot(visible_y_min, y_boundaries))
     top = float(to_plot(visible_y_max, y_boundaries))
 
-    axis.add_patch(
-        Rectangle(
-            (left, bottom),
-            right - left,
-            top - bottom,
-            fill=False,
-            edgecolor="#ff1744",
-            linewidth=1.4,
-            linestyle="--",
-            label="Visible RGB viewport",
-            zorder=5,
-        )
-    )
-    axis.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.08),
-        borderaxespad=0.0,
-        frameon=False,
-        fontsize=8,
-    )
+    axis.add_patch( Rectangle( (left, bottom), right - left, top - bottom, fill=False, edgecolor="#ff1744", linewidth=1.4, linestyle="--", label="Visible RGB viewport", zorder=5, ) )
+    axis.legend( loc="upper center", bbox_to_anchor=(0.5, -0.08), borderaxespad=0.0, frameon=False, fontsize=8, )
 
 # ==============================
 # Abstract-potential heatmaps
 # ==============================
 
 
-def save_sequential_heatmaps(
-    abstract_mdp,
-    filename_prefix="v_star",
-    output_dir=None,
-):
+def save_sequential_heatmaps( abstract_mdp, filename_prefix="v_star", output_dir=None, ):
     """
     Generates and saves a separate heatmap for V* for each phase defined in the MDP,
     without any waypoint or goal markers (clean heatmap).
@@ -233,26 +186,9 @@ def save_sequential_heatmaps(
                 text_color = 'white' if val < color_midpoint else 'black'
                 next_q = canonical_q(x, y, current_q)
                 value_y = y + 0.13 if next_q != current_q else y
-                plt.text(
-                    x,
-                    value_y,
-                    f"{val:.1f}",
-                    ha='center',
-                    va='center',
-                    color=text_color,
-                    fontsize=7,
-                )
+                plt.text( x, value_y, f"{val:.1f}", ha='center', va='center', color=text_color, fontsize=7, )
                 if next_q != current_q:
-                    plt.text(
-                        x,
-                        y - 0.18,
-                        f"→q{next_q}",
-                        ha='center',
-                        va='center',
-                        color='#d32f2f',
-                        fontsize=6.5,
-                        fontweight='bold',
-                    )
+                    plt.text( x, y - 0.18, f"→q{next_q}", ha='center', va='center', color='#d32f2f', fontsize=6.5, fontweight='bold', )
                     
         plt.colorbar(im, fraction=0.046, pad=0.04, label="Potential Value (V*)")
         
@@ -268,27 +204,16 @@ def save_sequential_heatmaps(
             
         plt.savefig(os.path.join(output_dir, f"{filename_prefix}_q{current_q}.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        print(
-            f" -> Generated V* Heatmap for {abstract_mdp.level_name}, "
-            f"DFA State q={current_q}"
-        )
+        print( f" -> Generated V* Heatmap for {abstract_mdp.level_name}, " f"DFA State q={current_q}" )
 
 
-def save_multilevel_heatmaps(
-    multilevel_mdp,
-    filename_prefix="v_star",
-    output_root=None,
-):
+def save_multilevel_heatmaps( multilevel_mdp, filename_prefix="v_star", output_root=None, ):
     """Save each level's heatmaps under ``level1``, ``level2``, and so on."""
     output_root = output_root or os.path.join("img", "heatmaps")
     generated_directories = []
     for level_number, abstract_mdp in enumerate(multilevel_mdp.levels, start=1):
         level_directory = os.path.join(output_root, f"level{level_number}")
-        save_sequential_heatmaps(
-            abstract_mdp,
-            filename_prefix=filename_prefix,
-            output_dir=level_directory,
-        )
+        save_sequential_heatmaps( abstract_mdp, filename_prefix=filename_prefix, output_dir=level_directory, )
         generated_directories.append(level_directory)
     return generated_directories
 
@@ -310,22 +235,13 @@ def _style_paper_axis(axis, grid_axis="y"):
         spine.set_visible(True)
         spine.set_linewidth(0.8)
     axis.set_axisbelow(True)
-    axis.grid(
-        axis=grid_axis,
-        color="#d9d9d9",
-        linestyle="-",
-        linewidth=0.6,
-        alpha=0.8,
-    )
+    axis.grid( axis=grid_axis, color="#d9d9d9", linestyle="-", linewidth=0.6, alpha=0.8, )
 
 
 def _trailing_mean(values, window_size):
     """Return the mean of the current and previous N-1 episodes."""
     return (
-        pd.Series(np.asarray(values, dtype=np.float64))
-        .rolling(window=window_size, min_periods=1, center=False)
-        .mean()
-        .to_numpy()
+        pd.Series(np.asarray(values, dtype=np.float64)) .rolling(window=window_size, min_periods=1, center=False) .mean() .to_numpy()
     )
 
 
@@ -355,10 +271,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
         raise ValueError("window_size must be greater than zero")
 
     smoothed_runs = (
-        pd.DataFrame(runs.T)
-        .rolling(window=window_size, min_periods=1, center=False)
-        .mean()
-        .to_numpy()
+        pd.DataFrame(runs.T) .rolling(window=window_size, min_periods=1, center=False) .mean() .to_numpy()
         .T
     )
     mean_reward = np.mean(smoothed_runs, axis=0)
@@ -368,15 +281,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
     _prepare_plot_path(filename)
     fig, ax = plt.subplots(figsize=(7.2, 4.4), constrained_layout=True)
     ax.plot(episodes, mean_reward, color=LEARNING_REWARD_COLOR, linewidth=1.7, label=f"Mean {label}")
-    ax.fill_between(
-        episodes,
-        mean_reward - std_reward,
-        mean_reward + std_reward,
-        color=LEARNING_REWARD_COLOR,
-        alpha=0.18,
-        linewidth=0,
-        label="±1 SD across seeds",
-    )
+    ax.fill_between( episodes, mean_reward - std_reward, mean_reward + std_reward, color=LEARNING_REWARD_COLOR, alpha=0.18, linewidth=0, label="±1 SD across seeds", )
     ax.set_xlabel("#Episode")
     ax.set_ylabel(label)
     _style_paper_axis(ax)
@@ -394,10 +299,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
         elif epsilon_runs.ndim == 3:
             epsilon_curves = np.mean(epsilon_runs, axis=0)
         else:
-            raise ValueError(
-                "epsilon_histories must have shape (episodes), "
-                "(seeds, episodes), or (seeds, epsilon_series, episodes)"
-            )
+            raise ValueError( "epsilon_histories must have shape (episodes), " "(seeds, episodes), or (seeds, epsilon_series, episodes)" )
         if epsilon_curves.shape[1] != runs.shape[1]:
             raise ValueError("epsilon_histories must contain one value per episode")
         if epsilon_labels is not None and len(epsilon_labels) != len(epsilon_curves):
@@ -411,14 +313,7 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
                 epsilon_label = "Epsilon"
             else:
                 epsilon_label = f"Epsilon {index + 1}"
-            epsilon_axis.plot(
-                episodes,
-                epsilon_curve,
-                color=EPSILON_COLOR,
-                linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)],
-                linewidth=1.4,
-                label=epsilon_label,
-            )
+            epsilon_axis.plot( episodes, epsilon_curve, color=EPSILON_COLOR, linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)], linewidth=1.4, label=epsilon_label, )
         epsilon_axis.set_ylabel("Epsilon")
         epsilon_axis.set_ylim(0.0, 1.0)
         epsilon_axis.grid(False)
@@ -433,15 +328,42 @@ def plot_training_variance(reward_histories, window_size=100, title="Training Pe
     print(f"\n>>> Training variance plot saved to: {filename}")
     plt.close(fig)
 
+
+def plot_tabular_training_diagnostics(table_sizes, updated_state_actions, state_action_coverage, positive_updates, filename="img/tabular_training_diagnostics.png"):
+    """Plot sparse Q-table growth and coverage across training seeds."""
+    table_runs = np.atleast_2d(np.asarray(table_sizes, dtype=np.float64))
+    pair_runs = np.atleast_2d(np.asarray(updated_state_actions, dtype=np.float64))
+    coverage_runs = np.atleast_2d(np.asarray(state_action_coverage, dtype=np.float64))
+    positive_runs = np.atleast_2d(np.asarray(positive_updates, dtype=np.float64))
+    if table_runs.shape != pair_runs.shape or table_runs.shape != coverage_runs.shape or table_runs.shape != positive_runs.shape:
+        raise ValueError("tabular metrics must share shape (num_seeds, episodes)")
+    _prepare_plot_path(filename)
+    episodes = np.arange(1, table_runs.shape[1] + 1)
+    fig, axes = plt.subplots(2, 1, figsize=(7.2, 6.4), constrained_layout=True)
+    axes[0].plot(episodes, np.nanmean(table_runs, axis=0), color=LEARNING_REWARD_COLOR, label="Q-table states")
+    axes[0].plot(episodes, np.nanmean(pair_runs, axis=0), color=TASK_REWARD_COLOR, label="Updated state-action pairs")
+    axes[0].plot(episodes, np.nanmean(positive_runs, axis=0), color=EPSILON_COLOR, label="Positive-reward updates")
+    axes[0].set_xlabel("#Training episode")
+    axes[0].set_ylabel("Cumulative count")
+    axes[0].legend()
+    axes[1].plot(episodes, np.nanmean(coverage_runs, axis=0), color=LEARNING_REWARD_COLOR, label="State-action coverage")
+    axes[1].set_xlabel("#Training episode")
+    axes[1].set_ylabel("Fraction")
+    axes[1].set_ylim(0.0, 1.0)
+    axes[1].legend()
+    for axis in axes:
+        _style_paper_axis(axis)
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
+    print(f"\n>>> Tabular diagnostics plot saved to: {filename}")
+    plt.close(fig)
+
 def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/buffer_variance.png", state_labels=None, title="Replay Buffer Composition Across Seeds"):
     """Plot mean replay-buffer fractions with a ±1 std band across seeds."""
     runs = np.asarray(buffer_histories_runs, dtype=np.float64)
     if runs.ndim == 2:
         runs = runs[np.newaxis, ...]
     if runs.ndim != 3 or 0 in runs.shape:
-        raise ValueError(
-            "buffer_histories_runs must have shape (num_seeds, num_states, episodes)"
-        )
+        raise ValueError( "buffer_histories_runs must have shape (num_seeds, num_states, episodes)" )
     if window_size <= 0:
         raise ValueError("window_size must be greater than zero")
 
@@ -449,10 +371,7 @@ def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/b
     for seed_index in range(runs.shape[0]):
         for state_index in range(runs.shape[1]):
             smoothed_runs[seed_index, state_index] = (
-                pd.Series(runs[seed_index, state_index])
-                .rolling(window=window_size, min_periods=1, center=False)
-                .mean()
-                .to_numpy()
+                pd.Series(runs[seed_index, state_index]) .rolling(window=window_size, min_periods=1, center=False) .mean() .to_numpy()
             )
 
     mean_fractions = np.mean(smoothed_runs, axis=0)
@@ -467,14 +386,7 @@ def plot_buffer_variance(buffer_histories_runs, window_size=100, filename="img/b
         mean = mean_fractions[state_index]
         std = std_fractions[state_index]
         ax.plot(episodes, mean, color=color, linewidth=1.7, label=f"DFA state q={state_label}")
-        ax.fill_between(
-            episodes,
-            np.clip(mean - std, 0.0, 1.0),
-            np.clip(mean + std, 0.0, 1.0),
-            color=color,
-            alpha=0.16,
-            linewidth=0,
-        )
+        ax.fill_between( episodes, np.clip(mean - std, 0.0, 1.0), np.clip(mean + std, 0.0, 1.0), color=color, alpha=0.16, linewidth=0, )
 
     ax.set_xlabel("#Episode")
     ax.set_ylabel("Buffer fraction")
@@ -528,26 +440,11 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
         raise ValueError("eps_histories must contain one value per episode")
 
     _prepare_plot_path(filename)
-    figure, reward_axis = plt.subplots(
-        figsize=(7.2, 4.4),
-        constrained_layout=True,
-    )
+    figure, reward_axis = plt.subplots( figsize=(7.2, 4.4), constrained_layout=True, )
     epsilon_axis = reward_axis.twinx()
     episodes = np.arange(1, len(true_rewards) + 1)
-    reward_axis.plot(
-        episodes,
-        _trailing_mean(true_rewards, window_size),
-        color=TASK_REWARD_COLOR,
-        linewidth=1.6,
-        label="Task reward",
-    )
-    reward_axis.plot(
-        episodes,
-        _trailing_mean(total_rewards, window_size),
-        color=LEARNING_REWARD_COLOR,
-        linewidth=1.7,
-        label="Learning reward (goal + shaping)",
-    )
+    reward_axis.plot( episodes, _trailing_mean(true_rewards, window_size), color=TASK_REWARD_COLOR, linewidth=1.6, label="Task reward", )
+    reward_axis.plot( episodes, _trailing_mean(total_rewards, window_size), color=LEARNING_REWARD_COLOR, linewidth=1.7, label="Learning reward (goal + shaping)", )
     reward_axis.axhline(0.0, color=REFERENCE_LINE_COLOR, linewidth=0.7, alpha=0.7)
     reward_axis.set_xlabel("#Episode")
     reward_axis.set_ylabel("Episode Reward")
@@ -556,14 +453,7 @@ def plot_shaping_reward_breakdown(true_rewards, total_rewards, eps_histories, wi
     for index, history in enumerate(exploration_runs):
         phase = "Goal" if index == len(exploration_runs) - 1 else f"WP {index + 1}"
         label = "Epsilon" if len(exploration_runs) == 1 else f"Epsilon q={index} ({phase})"
-        epsilon_axis.plot(
-            episodes,
-            history,
-            color=EPSILON_COLOR,
-            linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)],
-            linewidth=1.4,
-            label=label,
-        )
+        epsilon_axis.plot( episodes, history, color=EPSILON_COLOR, linestyle=EPSILON_LINESTYLES[index % len(EPSILON_LINESTYLES)], linewidth=1.4, label=label, )
     epsilon_axis.set_ylabel("Epsilon")
     epsilon_axis.set_ylim(0.0, 1.0)
     epsilon_axis.grid(False)

@@ -20,7 +20,7 @@ import torch
 
 from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, LTLfWaypointMDP
-from agent import DuelingQNetwork, QNetwork
+from agent import DuelingQNetwork, QNetwork, TabularQLearner
 from grid_overlay import (
     abstract_cell_to_pixel,
     draw_abstract_grid,
@@ -90,8 +90,7 @@ def _abstract_position(observation, q, grid_w, grid_h):
 # Policy evaluation
 # ==============================
 
-def evaluate_policy(policy, policy_dir, episodes, render, formula, regions,
-                    goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard"):
+def evaluate_policy(policy, policy_dir, episodes, render, formula, regions, goal_reward, grid_w, grid_h, seed, trace_episodes=0, network_type="standard"):
     """Load and evaluate one policy using the same DFA semantics as training."""
     # Rebuild the same automaton and abstract MDP used during training.
     policy_path = _resolve_policy_path(policy, policy_dir)
@@ -107,13 +106,19 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, regions,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if network_type not in {"standard", "dueling"}:
         raise ValueError("network_type must be one of: standard, dueling")
-    network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
-    network = network_cls(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
+    network = None
+    tabular_learner = None
 
     # Load the trained parameters before starting any episode.
     try:
-        network.load_state_dict(_load_state_dict(policy_path, device))
-        network.eval()
+        if policy_path.suffix.lower() == ".pkl":
+            tabular_learner = TabularQLearner(env=env, num_phases=len(automaton_states), random_seed=seed)
+            tabular_learner.load_policy(policy_path)
+        else:
+            network_cls = DuelingQNetwork if network_type == "dueling" else QNetwork
+            network = network_cls(env.observation_space.shape[0] + len(automaton_states), env.action_space.n).to(device)
+            network.load_state_dict(_load_state_dict(policy_path, device))
+            network.eval()
     except Exception:
         env.close()
         raise
@@ -159,9 +164,12 @@ def evaluate_policy(policy, policy_dir, episodes, render, formula, regions,
                 augmented_state = np.concatenate((observation, one_hot)).astype(np.float32)
 
                 # Evaluation is greedy: always select the action with maximum Q-value.
-                with torch.inference_mode():
-                    state_tensor = torch.as_tensor(augmented_state, device=device).unsqueeze(0)
-                    action = network(state_tensor).argmax(dim=1).item()
+                if tabular_learner is not None:
+                    action = tabular_learner.greedy_action(augmented_state)
+                else:
+                    with torch.inference_mode():
+                        state_tensor = torch.as_tensor(augmented_state, device=device).unsqueeze(0)
+                        action = network(state_tensor).argmax(dim=1).item()
 
                 next_observation, env_reward, terminated, truncated, _ = env.step(action)
                 environment_return += float(env_reward)
@@ -272,20 +280,9 @@ def plot_comparison(results, window_size, output_dir):
 def plot_grid_traces(result, regions, grid_w, grid_h, output_dir):
     """Save one abstract-grid path image for every recorded episode."""
     output_paths = []
-    trace_data = zip(
-        result["grid_traces"],
-        result["trace_frames"],
-        result["trace_geometries"],
-    )
+    trace_data = zip( result["grid_traces"], result["trace_frames"], result["trace_geometries"], )
     for episode_index, (cells, frame, geometry) in enumerate(trace_data, start=1):
-        figure = draw_abstract_grid(
-            frame=frame,
-            geometry=geometry,
-            grid_w=grid_w,
-            grid_h=grid_h,
-            regions=regions,
-            title=f"Agent Abstract-Cell Trace — Episode {episode_index}",
-        )
+        figure = draw_abstract_grid( frame=frame, geometry=geometry, grid_w=grid_w, grid_h=grid_h, regions=regions, title=f"Agent Abstract-Cell Trace — Episode {episode_index}", )
         axis = figure.axes[0]
         points = [
             abstract_cell_to_pixel(x, y, grid_w, grid_h, geometry)
@@ -293,35 +290,10 @@ def plot_grid_traces(result, regions, grid_w, grid_h, output_dir):
         ]
         if points:
             pixel_x, pixel_y = zip(*points)
-            axis.plot(
-                pixel_x,
-                pixel_y,
-                color="#00e5ff",
-                linewidth=2.8,
-                marker="o",
-                markersize=5,
-                label="Visited-cell path",
-                zorder=4,
-            )
-            for change_index, ((cell_x, cell_y), (point_x, point_y)) in enumerate(
-                zip(cells, points)
-            ):
-                axis.annotate(
-                    str(change_index),
-                    (point_x, point_y),
-                    ha="center",
-                    va="center",
-                    fontsize=7,
-                    fontweight="bold",
-                    color="black",
-                    zorder=7,
-                )
-        axis.legend(
-            loc="upper left",
-            bbox_to_anchor=(1.02, 1.0),
-            borderaxespad=0.0,
-            frameon=True,
-        )
+            axis.plot( pixel_x, pixel_y, color="#00e5ff", linewidth=2.8, marker="o", markersize=5, label="Visited-cell path", zorder=4, )
+            for change_index, ((cell_x, cell_y), (point_x, point_y)) in enumerate( zip(cells, points) ):
+                axis.annotate( str(change_index), (point_x, point_y), ha="center", va="center", fontsize=7, fontweight="bold", color="black", zorder=7, )
+        axis.legend( loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0, frameon=True, )
         figure.tight_layout(rect=(0.0, 0.0, 0.82, 1.0))
         output_path = output_dir / (
             f"grid_trace_{_safe_stem(result['policy'])}_episode_{episode_index}.png"
@@ -363,45 +335,22 @@ def _select_files_graphically(policy_dir, config_path):
         import tkinter as tk
         from tkinter import filedialog
     except ImportError as error:
-        raise RuntimeError(
-            "The graphical selector requires tkinter. Install python3-tk or pass "
-            "the policy paths and --config from the command line."
-        ) from error
+        raise RuntimeError( "The graphical selector requires tkinter. Install python3-tk or pass " "the policy paths and --config from the command line." ) from error
 
     try:
         root = tk.Tk()
     except tk.TclError as error:
-        raise RuntimeError(
-            "The graphical selector could not be opened. Make sure a desktop "
-            "session is available, or use the command-line arguments."
-        ) from error
+        raise RuntimeError( "The graphical selector could not be opened. Make sure a desktop " "session is available, or use the command-line arguments." ) from error
     root.withdraw()
     root.update()
 
     try:
         initial_directory = EXPERIMENTS_DIR if EXPERIMENTS_DIR.is_dir() else SCRIPT_DIR
-        policies = filedialog.askopenfilenames(
-            parent=root,
-            title="Select one or more policy files",
-            initialdir=str(initial_directory),
-            filetypes=[
-                ("PyTorch checkpoints", "*.pt *.pth *.ckpt"),
-                ("All files", "*"),
-            ],
-        )
+        policies = filedialog.askopenfilenames( parent=root, title="Select one or more policy files", initialdir=str(initial_directory), filetypes=[ ("Policy checkpoints", "*.pt *.pth *.ckpt *.pkl"), ("All files", "*"), ], )
         if not policies:
             raise RuntimeError("No policy file was selected.")
 
-        config = filedialog.askopenfilename(
-            parent=root,
-            title="Select trajectory.json",
-            initialdir=str(initial_directory),
-            initialfile=Path(config_path).name,
-            filetypes=[
-                ("JSON files", "*.json"),
-                ("All files", "*"),
-            ],
-        )
+        config = filedialog.askopenfilename( parent=root, title="Select trajectory.json", initialdir=str(initial_directory), initialfile=Path(config_path).name, filetypes=[ ("JSON files", "*.json"), ("All files", "*"), ], )
         if not config:
             raise RuntimeError("No trajectory configuration was selected.")
     finally:
@@ -412,43 +361,20 @@ def _select_files_graphically(policy_dir, config_path):
 
 def parse_args():
     """Build and parse the evaluator command-line arguments."""
-    parser = argparse.ArgumentParser(description="Evaluate LTLf-guided DQN policies for LunarLander.")
-    parser.add_argument(
-        "policies",
-        nargs="*",
-        help="Checkpoint filenames or explicit checkpoint paths. If omitted, graphical file selectors are opened.",
-    )
+    parser = argparse.ArgumentParser(description="Evaluate LTLf-guided neural or tabular policies for LunarLander.")
+    parser.add_argument( "policies", nargs="*", help="Checkpoint filenames or explicit checkpoint paths. If omitted, graphical file selectors are opened.", )
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR / "trajectory.json", help="Experiment JSON configuration.")
-    parser.add_argument(
-        "--abstraction-config",
-        type=Path,
-        default=SCRIPT_DIR / "abstraction.json",
-        help="Grid hierarchy; evaluation uses its level1 dimensions.",
-    )
+    parser.add_argument( "--abstraction-config", type=Path, default=SCRIPT_DIR / "abstraction.json", help="Grid hierarchy; evaluation uses its level1 dimensions.", )
     parser.add_argument("--policy-dir", type=Path, default=FRAMEWORK_DIR / "results", help="Directory used to resolve checkpoint filenames.")
     parser.add_argument("--gui", action="store_true", help="Select policies and trajectory.json using graphical dialogs.")
     parser.add_argument("--episodes", type=_positive_int, default=100)
     parser.add_argument("--window", type=_positive_int, default=10)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--render", action="store_true")
-    parser.add_argument(
-        "--trace-grid",
-        action="store_true",
-        help="Save the sequence of abstract cells visited during evaluation.",
-    )
-    parser.add_argument(
-        "--trace-episodes",
-        type=_positive_int,
-        default=1,
-        help="Number of episodes to trace when --trace-grid is enabled (default: 1).",
-    )
+    parser.add_argument( "--trace-grid", action="store_true", help="Save the sequence of abstract cells visited during evaluation.", )
+    parser.add_argument( "--trace-episodes", type=_positive_int, default=1, help="Number of episodes to trace when --trace-grid is enabled (default: 1).", )
     parser.add_argument("--output-dir", type=Path, default=FRAMEWORK_DIR / "results" / "evaluation")
-    parser.add_argument(
-        "--network-type",
-        choices=["standard", "dueling"],
-        default="standard",
-        help="Q-network architecture used by the checkpoint.",
-    )
+    parser.add_argument( "--network-type", choices=["standard", "dueling"], default="standard", help="Q-network architecture used by the checkpoint.", )
     return parser.parse_args()
 
 
@@ -460,10 +386,7 @@ def main():
     """Load the configuration, evaluate the policies, and generate the plots."""
     args = parse_args()
     if args.render and args.trace_grid:
-        raise SystemExit(
-            "--render and --trace-grid cannot be used together because Gymnasium "
-            "requires a single render mode. Run them as separate evaluations."
-        )
+        raise SystemExit( "--render and --trace-grid cannot be used together because Gymnasium " "requires a single render mode. Run them as separate evaluations." )
 
     # Open native file dialogs when requested or when no policy was supplied.
     if args.gui or not args.policies:
@@ -487,12 +410,7 @@ def main():
     results = []
     for policy in args.policies:
         traced_episodes = min(args.trace_episodes, args.episodes) if args.trace_grid else 0
-        result = evaluate_policy(
-            policy, args.policy_dir, args.episodes, args.render, formula,
-            regions, goal_reward, grid_w, grid_h, args.seed,
-            trace_episodes=traced_episodes,
-            network_type=args.network_type,
-        )
+        result = evaluate_policy( policy, args.policy_dir, args.episodes, args.render, formula, regions, goal_reward, grid_w, grid_h, args.seed, trace_episodes=traced_episodes, network_type=args.network_type, )
         results.append(result)
 
     # Print the summary and create one plot for each evaluated policy.
@@ -505,17 +423,10 @@ def main():
         print(f"[{result['policy']}] success={success_rate:.1%}, mean Gym return={mean_gym_return:.2f}, mean length={mean_length:.1f} | reached: {reached}")
         print(f"Plot saved to: {plot_policy(result, args.window, args.output_dir)}")
         if args.trace_grid:
-            trace_paths = plot_grid_traces(
-                result, regions, grid_w, grid_h, args.output_dir
-            )
-            for episode_index, (cells, trace_path) in enumerate(
-                zip(result["grid_traces"], trace_paths), start=1
-            ):
+            trace_paths = plot_grid_traces( result, regions, grid_w, grid_h, args.output_dir )
+            for episode_index, (cells, trace_path) in enumerate( zip(result["grid_traces"], trace_paths), start=1 ):
                 region_status = format_region_trace(cells, regions, grid_w, grid_h)
-                print(
-                    f"Grid trace episode {episode_index}: {region_status} | "
-                    f"saved to: {trace_path}"
-                )
+                print( f"Grid trace episode {episode_index}: {region_status} | " f"saved to: {trace_path}" )
 
     # Add a combined comparison when more than one policy was requested.
     if len(results) > 1:

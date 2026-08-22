@@ -21,7 +21,7 @@ import torch
 
 from abstraction import AbstractionConfig
 from abstract_mdps import LTLfAutomaton, MultiLevelWaypointMDP
-from agent import HierarchicalDQNLearner
+from agent import HierarchicalDQNLearner, TabularQLearner
 from automaton_validator import validate_automaton
 from spatial_regions import load_regions
 from utils import (
@@ -29,6 +29,7 @@ from utils import (
     plot_buffer_fractions,
     plot_buffer_variance,
     plot_shaping_reward_breakdown,
+    plot_tabular_training_diagnostics,
     plot_training_variance,
     save_multilevel_heatmaps,
 )
@@ -61,13 +62,18 @@ def _discount_factor(value):
     return number
 
 
+def _learning_rate(value):
+    number = float(value)
+    if not 0.0 < number <= 1.0:
+        raise argparse.ArgumentTypeError("must be in the interval (0, 1]")
+    return number
+
+
 def _experiment_name(value):
     """Validate a safe single-directory experiment name."""
     name = str(value).strip()
     if len(name) > 100 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
-        raise argparse.ArgumentTypeError(
-            "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'"
-        )
+        raise argparse.ArgumentTypeError( "must start with a letter or digit and contain only letters, digits, '.', '_' or '-'" )
     return name
 
 
@@ -81,12 +87,7 @@ def _resolve_config_path(requested_path, default_filename, experiment_dir, post_
     )
     candidates = []
     if post_process and uses_default:
-        candidates.extend(
-            [
-                Path(experiment_dir) / default_filename,
-                Path(experiment_dir) / "results" / default_filename,
-            ]
-        )
+        candidates.extend( [ Path(experiment_dir) / default_filename, Path(experiment_dir) / "results" / default_filename, ] )
     candidates.append(requested)
     if not requested.is_absolute():
         candidates.append(Path(SCRIPT_DIR) / requested)
@@ -180,9 +181,7 @@ def _aggregate_seed_metrics(seed_metrics, seeds):
         if key == "automaton_states":
             continue
         try:
-            aggregated[f"{key}_runs"] = np.stack(
-                [np.asarray(metrics[key]) for metrics in seed_metrics]
-            )
+            aggregated[f"{key}_runs"] = np.stack( [np.asarray(metrics[key]) for metrics in seed_metrics] )
         except ValueError as error:
             raise ValueError(f"Metric {key!r} has inconsistent shapes across seeds") from error
     for key in ("task_rewards", "learning_rewards", "shaping_rewards"):
@@ -194,9 +193,7 @@ def _aggregate_seed_metrics(seed_metrics, seeds):
 
 def _abstract_position(observation, abstract_mdp):
     """Map a raw environment observation to its abstract spatial coordinates."""
-    x, y, _ = phi_mapping_sequential(
-        observation, 0, abstract_mdp.width, abstract_mdp.height
-    )
+    x, y, _ = phi_mapping_sequential( observation, 0, abstract_mdp.width, abstract_mdp.height )
     return x, y
 
 
@@ -273,6 +270,9 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
     recent_entries_details = ", ".join(f"{q}: {recent_state_entries[index]}" for index, q in enumerate(automaton_states))
     cumulative_visits_details = ", ".join(f"{q}: {cumulative_counters['state_visits'][q]}" for q in automaton_states)
     cumulative_entries_details = ", ".join(f"{q}: {cumulative_counters['state_entries'][q]}" for q in automaton_states)
+    tabular_metrics = agent.metrics_snapshot() if isinstance(agent, TabularQLearner) else None
+    tabular_diagnostics = agent.consume_diagnostics() if isinstance(agent, TabularQLearner) else None
+    tabular_line = f"tabular Q-table             : {tabular_metrics['table_size']} states, {tabular_metrics['updated_state_actions']} updated pairs, coverage={tabular_metrics['state_action_coverage']:.3%}, positive updates={tabular_metrics['positive_updates']}\ntabular updates in window   : {tabular_diagnostics['updates']}, |TD error| mean/max={tabular_diagnostics['mean_abs_td_error']:.4g}/{tabular_diagnostics['max_abs_td_error']:.4g}, positive={tabular_diagnostics['positive_update_fraction']:.3%}\n" if tabular_metrics is not None else ""
 
     return (
         "\n"
@@ -287,6 +287,7 @@ def _build_training_log(episode, episodes, log_interval, automaton_states, agent
         f"DFA transitions in window   : {_format_counter(recent_transitions)}\n"
         f"epsilon (next episode)       : {histories['epsilons'][-1]:.5f}\n"
         f"replay buffer                : {len(agent.memory)} samples [{buffer_details}]\n"
+        f"{tabular_line}"
         f"DFA state visits in window   : {recent_visits_details}\n"
         f"DFA state visits cumulative  : {cumulative_visits_details}\n"
         f"DFA state entries in window  : {recent_entries_details}\n"
@@ -303,6 +304,10 @@ def _save_named_policy(agent, policy_name):
     os.makedirs(os.path.join(agent.policy_dir, category), exist_ok=True)
     agent.policy_name = os.path.join(category, policy_name)
     agent._save_policy()
+
+
+def _policy_extension(agent):
+    return "pkl" if isinstance(agent, TabularQLearner) else "pth"
 
 
 def _monitoring_average(values, episode, log_interval):
@@ -342,6 +347,11 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
         "best_mean_learning_reward": best_mean_reward,
         "best_policy_episode": best_policy_episode,
         "gamma_shaping": gamma_shaping,
+        "tabular_table_sizes": histories["tabular_table_sizes"],
+        "tabular_visited_states": histories["tabular_visited_states"],
+        "tabular_updated_state_actions": histories["tabular_updated_state_actions"],
+        "tabular_state_action_coverage": histories["tabular_state_action_coverage"],
+        "tabular_positive_updates": histories["tabular_positive_updates"],
     }
 
 
@@ -351,13 +361,13 @@ def _build_training_results(histories, initial_acceptance_history, buffer_histor
 
 def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=10000, save_policy=True, use_shaping=True, gamma_shaping=1.0, log_file=None, log_interval=100, seed=None, policy_suffix=""):
     """
-    Train the DDQN agent with the LTLf automaton and one global epsilon.
+    Train one DDQN or tabular agent with the LTLf automaton and one epsilon.
 
     The Gym reward is deliberately discarded. The learning reward is the
     synthetic goal reward plus potential-based shaping. Shaping is evaluated
     only when the complete abstract state (x, y, q) changes.
     """
-    # Build a stable mapping between DFA states and neural-network features.
+    # Build a stable mapping between DFA states and learner features.
     automaton = abstract_mdp.automaton
     automaton_states = list(automaton.states)
     state_to_index = {q: index for index, q in enumerate(automaton_states)}
@@ -394,6 +404,11 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
         "transition_counters": transition_counter_history,
         "state_visits": state_visit_histories,
         "state_entries": state_entry_histories,
+        "tabular_table_sizes": [],
+        "tabular_visited_states": [],
+        "tabular_updated_state_actions": [],
+        "tabular_state_action_coverage": [],
+        "tabular_positive_updates": [],
     }
 
     # Keep cumulative counters for diagnostics shown during training.
@@ -484,7 +499,7 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
 
                 # Stop data collection on any Gym ending or DFA success.
                 # A truncation (for example Gym's time limit) ends data
-                # collection, but it is not an MDP terminal state: DDQN must
+                # collection, but it is not an MDP terminal state: the learner must
                 # still bootstrap from its final observation.
                 episode_done = env_terminated or env_truncated or succeeded
                 bootstrap_terminal = env_terminated or succeeded
@@ -499,16 +514,13 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     phi_next_state = abstract_mdp.v_star.get(abstract_next_state, 0.0)
                     shaping_signal = gamma_shaping * phi_next_state - phi_state
 
-                # Store the transition and perform one DDQN optimization step.
+                # Store the transition and perform one learner update.
                 learning_reward = synthetic_goal_reward + shaping_signal
-                agent.memory.push(
-                    augmented_state,
-                    action,
-                    learning_reward,
-                    next_augmented_state,
-                    bootstrap_terminal,
-                )
-                agent.optimize_model()
+                agent.memory.push(augmented_state, action, learning_reward, next_augmented_state, bootstrap_terminal)
+                if isinstance(agent, TabularQLearner):
+                    agent.update(augmented_state, action, learning_reward, next_augmented_state, bootstrap_terminal)
+                else:
+                    agent.optimize_model()
 
                 # Update the episode totals and move to the next state.
                 episode_steps += 1
@@ -540,6 +552,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
             abstract_change_history.append(episode_abstract_changes)
             dfa_transition_history.append(episode_dfa_transitions)
             transition_counter_history.append(episode_transitions)
+            tabular_metrics = agent.metrics_snapshot() if isinstance(agent, TabularQLearner) else {"table_size": np.nan, "visited_states": np.nan, "updated_state_actions": np.nan, "state_action_coverage": np.nan, "positive_updates": np.nan}
+            histories["tabular_table_sizes"].append(tabular_metrics["table_size"])
+            histories["tabular_visited_states"].append(tabular_metrics["visited_states"])
+            histories["tabular_updated_state_actions"].append(tabular_metrics["updated_state_actions"])
+            histories["tabular_state_action_coverage"].append(tabular_metrics["state_action_coverage"])
+            histories["tabular_positive_updates"].append(tabular_metrics["positive_updates"])
 
             # Record replay-buffer composition, state visits, and entries from other states.
             for index in range(num_states):
@@ -558,12 +576,12 @@ def run_sequential_training(env, agent, abstract_mdp, episodes, goal_reward=1000
                     best_mean_reward = monitored_mean_reward
                     best_policy_episode = episode + 1
                     if save_policy:
-                        _save_named_policy(agent, f"best_policy{policy_suffix}.pth")
+                        _save_named_policy(agent, f"best_policy{policy_suffix}.{_policy_extension(agent)}")
                         _write_log(f"Best policy updated at episode {best_policy_episode}: mean learning reward={best_mean_reward:.3f}\n", log_handle)
 
         # Save the final policy independently from its monitored performance.
         if save_policy:
-            _save_named_policy(agent, f"last_policy{policy_suffix}.pth")
+            _save_named_policy(agent, f"last_policy{policy_suffix}.{_policy_extension(agent)}")
             _write_log(f"Last policy saved after episode {episodes}. Best policy: episode {best_policy_episode}, mean learning reward={best_mean_reward:.3f}\n", log_handle)
     finally:
         # Always close the log, including when training raises an exception.
@@ -582,6 +600,8 @@ def main(args):
     """Configure the experiment, run or load training, and generate diagnostic plots."""
     if args.num_seeds <= 0:
         raise ValueError("num_seeds must be greater than zero")
+    if args.learner == "tabular" and args.stochastic_bellman_update:
+        raise ValueError("--stochastic-bellman-update is only valid with --learner ddqn; use --tabular-alpha for tabular Q-learning")
     # Keep every artifact isolated under results/<experiment-name>/.
     experiment_dir = os.path.join(FRAMEWORK_DIR, "results", args.experiment_name)
     if args.post_process and not os.path.isdir(experiment_dir):
@@ -606,15 +626,8 @@ def main(args):
     print(f"Experiment outputs: {experiment_dir}")
 
     # Load the temporal task and optional training parameters.
-    config_path = _resolve_config_path(
-        args.config, "trajectory.json", experiment_dir, args.post_process
-    )
-    abstraction_config_path = _resolve_config_path(
-        args.abstraction_config,
-        "abstraction.json",
-        experiment_dir,
-        args.post_process,
-    )
+    config_path = _resolve_config_path( args.config, "trajectory.json", experiment_dir, args.post_process )
+    abstraction_config_path = _resolve_config_path( args.abstraction_config, "abstraction.json", experiment_dir, args.post_process, )
     print(f"Task configuration: {config_path}")
     print(f"Abstraction configuration: {abstraction_config_path}")
     with config_path.open(encoding="utf-8") as config_file:
@@ -630,49 +643,20 @@ def main(args):
     goal_reward = float(config.get("goal_reward", 10000))
     # Build the DFA once for both training and post-processing.
     automaton = LTLfAutomaton(formula)
-    validation_report = validate_automaton(
-        automaton,
-        regions,
-    )
-    level_summary = ", ".join(
-        f"{index}:{level.name}={level.width}x{level.height}"
-        for index, level in enumerate(abstraction_config.levels, start=1)
-    )
-    bellman_summary = str(args.stochastic_bellman_update)
-    if args.stochastic_bellman_update:
+    validation_report = validate_automaton( automaton, regions, )
+    level_summary = ", ".join( f"{index}:{level.name}={level.width}x{level.height}" for index, level in enumerate(abstraction_config.levels, start=1) )
+    bellman_summary = "not applicable" if args.learner == "tabular" else str(args.stochastic_bellman_update)
+    if args.learner == "ddqn" and args.stochastic_bellman_update:
         bellman_summary += f" (alpha={args.bellman_alpha})"
-    print(
-        "=== LTLf TRAINING (single epsilon) ===\n"
-        f"Formula: {formula}\n"
-        f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n"
-        f"Abstractions: {level_summary}\n"
-        "Inter-level shaping: gamma*Phi(next)-Phi(state)\n"
-        f"Training gamma_shaping: {args.gamma_shaping}\n"
-        f"Stochastic Bellman update: {bellman_summary}\n"
-        "Automaton coordinates and training potential: level1\n"
-        f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, "
-        f"accepting={sorted(automaton.accepting_states)}\n"
-        "Gym reward is ignored by design.\n"
-        f"{validation_report.format()}"
-    )
+    print( "=== LTLf TRAINING (single epsilon) ===\n" f"Learner: {args.learner}\n" f"Formula: {formula}\n" f"Regions: { {name: region.as_dict() for name, region in regions.items()} }\n" f"Abstractions: {level_summary}\n" "Inter-level shaping: gamma*Phi(next)-Phi(state)\n" f"Training gamma_shaping: {args.gamma_shaping}\n" f"Stochastic Bellman update: {bellman_summary}\n" "Automaton coordinates and training potential: level1\n" f"DFA: states={automaton.states}, pre-trace={automaton.initial_state}, " f"accepting={sorted(automaton.accepting_states)}\n" "Gym reward is ignored by design.\n" f"{validation_report.format()}" )
 
     if not args.post_process:
         automaton.render_graph(directory=image_dir)
 
     # Heatmaps depend only on the saved task configuration, not on agent training.
-    multilevel_mdp = MultiLevelWaypointMDP(
-        regions=regions,
-        ltlf_automaton=automaton,
-        abstraction_config=abstraction_config,
-        gamma=gamma,
-        goal_reward=goal_reward,
-    )
+    multilevel_mdp = MultiLevelWaypointMDP( regions=regions, ltlf_automaton=automaton, abstraction_config=abstraction_config, gamma=gamma, goal_reward=goal_reward, )
     multilevel_mdp.compute_value_functions()
-    save_multilevel_heatmaps(
-        multilevel_mdp,
-        filename_prefix="single_epsilon_exp",
-        output_root=os.path.join(image_dir, "heatmaps"),
-    )
+    save_multilevel_heatmaps( multilevel_mdp, filename_prefix="single_epsilon_exp", output_root=os.path.join(image_dir, "heatmaps"), )
     abstract_mdp = multilevel_mdp.primary_mdp
 
     if not args.post_process:
@@ -685,20 +669,10 @@ def main(args):
             env = gym.make("LunarLander-v3", continuous=False)
             try:
                 _set_training_seed(run_seed, env)
-                agent = HierarchicalDQNLearner(
-                    env=env,
-                    max_episodes=args.episodes,
-                    eps_decay=args.eps_decay,
-                    gamma=gamma,
-                    extra_state_dims=len(automaton.states),
-                    use_polyak=args.polyak,
-                    tau=args.polyak_tau,
-                    target_update_freq=args.target_update_freq,
-                    network_type=args.network_type,
-                    policy_dir=policy_dir,
-                    stochastic_bellman_update=args.stochastic_bellman_update,
-                    bellman_alpha=args.bellman_alpha,
-                )
+                if args.learner == "tabular":
+                    agent = TabularQLearner(env=env, num_phases=len(automaton.states), eps_decay=args.eps_decay, gamma=gamma, alpha=args.tabular_alpha, policy_dir=policy_dir, random_seed=run_seed)
+                else:
+                    agent = HierarchicalDQNLearner(env=env, max_episodes=args.episodes, eps_decay=args.eps_decay, gamma=gamma, extra_state_dims=len(automaton.states), use_polyak=args.polyak, tau=args.polyak_tau, target_update_freq=args.target_update_freq, network_type=args.network_type, policy_dir=policy_dir, stochastic_bellman_update=args.stochastic_bellman_update, bellman_alpha=args.bellman_alpha)
                 policy_suffix = "" if args.num_seeds == 1 else f"_seed_{run_seed}"
                 metrics = run_sequential_training(env=env, agent=agent, abstract_mdp=abstract_mdp, episodes=args.episodes, goal_reward=goal_reward, use_shaping=not args.no_shaping, gamma_shaping=args.gamma_shaping, log_file=f"{log_dir}/single_epsilon_training_seed_{run_seed}.log", log_interval=args.log_interval, seed=run_seed, policy_suffix=policy_suffix)
                 seed_metrics.append(metrics)
@@ -728,13 +702,14 @@ def main(args):
         plot_shaping_reward_breakdown(task_rewards, learning_rewards, epsilon_history, window_size=args.plot_window, filename=f"{seed_plot_dir}/reward_breakdown_single_epsilon.png", title=f"Reward Breakdown — Seed {int(run_seed)}")
         if run_index < len(buffer_runs):
             plot_buffer_fractions(buffer_runs[run_index], filename=f"{seed_plot_dir}/buffer_fractions_single_epsilon.png", window_size=args.plot_window, state_labels=data["automaton_states"], title=f"Replay Buffer Composition — Seed {int(run_seed)}")
-    plot_training_variance(
-        learning_reward_runs,
-        window_size=args.plot_window,
-        filename=f"{plot_dir}/training_variance_single_epsilon.png",
-        epsilon_histories=epsilon_runs,
-    )
+    plot_training_variance( learning_reward_runs, window_size=args.plot_window, filename=f"{plot_dir}/training_variance_single_epsilon.png", epsilon_histories=epsilon_runs, )
     plot_buffer_variance(buffer_runs, window_size=args.plot_window, filename=f"{plot_dir}/buffer_variance_single_epsilon.png", state_labels=data["automaton_states"])
+    tabular_table_runs = data["tabular_table_sizes_runs"] if "tabular_table_sizes_runs" in data else data["tabular_table_sizes"][np.newaxis, ...] if "tabular_table_sizes" in data else None
+    if tabular_table_runs is not None and np.isfinite(tabular_table_runs).any():
+        tabular_pair_runs = data["tabular_updated_state_actions_runs"] if "tabular_updated_state_actions_runs" in data else data["tabular_updated_state_actions"][np.newaxis, ...]
+        tabular_coverage_runs = data["tabular_state_action_coverage_runs"] if "tabular_state_action_coverage_runs" in data else data["tabular_state_action_coverage"][np.newaxis, ...]
+        tabular_positive_runs = data["tabular_positive_updates_runs"] if "tabular_positive_updates_runs" in data else data["tabular_positive_updates"][np.newaxis, ...]
+        plot_tabular_training_diagnostics(tabular_table_runs, tabular_pair_runs, tabular_coverage_runs, tabular_positive_runs, filename=f"{plot_dir}/tabular_training_diagnostics.png")
     print("\nFinished.")
 
 
@@ -744,60 +719,25 @@ def main(args):
 
 if __name__ == "__main__":
     # Expose the main training and post-processing options.
-    parser = argparse.ArgumentParser(description="LTLf DDQN training with one global epsilon.")
+    parser = argparse.ArgumentParser(description="LTLf DDQN or tabular Q-learning with one global epsilon.")
     parser.add_argument("--experiment-name", type=_experiment_name, required=True, help="Output directory name under results/.")
     parser.add_argument("--episodes", type=int, default=1000)
     parser.add_argument("--num-seeds", type=_positive_int, default=1, help="Number of training runs with consecutive seeds.")
     parser.add_argument("--seed", type=int, default=42, help="First training seed.")
     parser.add_argument("--config", default="trajectory.json")
-    parser.add_argument(
-        "--abstraction-config",
-        default="abstraction.json",
-        help="Ordered grid hierarchy (level1 defines automaton coordinates).",
-    )
+    parser.add_argument( "--abstraction-config", default="abstraction.json", help="Ordered grid hierarchy (level1 defines automaton coordinates).", )
     parser.add_argument("--eps-decay", type=float, default=0.9996)
+    parser.add_argument("--learner", choices=["ddqn", "tabular"], default="ddqn", help="Ground learner used for action selection and updates.")
+    parser.add_argument("--tabular-alpha", type=_learning_rate, default=0.1, help="Learning rate used when --learner tabular is selected.")
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--plot-window", type=int, default=500)
-    parser.add_argument(
-        "--polyak",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use Polyak target updates (disable with --no-polyak).",
-    )
+    parser.add_argument( "--polyak", action=argparse.BooleanOptionalAction, default=True, help="Use Polyak target updates (disable with --no-polyak).", )
     parser.add_argument("--polyak-tau", type=float, default=0.005)
-    parser.add_argument(
-        "--target-update-freq",
-        type=int,
-        default=1000,
-        help="Hard target-network update interval used with --no-polyak.",
-    )
-    parser.add_argument(
-        "--network-type",
-        choices=["standard", "dueling"],
-        default="standard",
-        help="Q-network architecture: standard MLP or dueling value/advantage streams.",
-    )
-    parser.add_argument(
-        "--stochastic-bellman-update",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Use Q <- Q + alpha*(target_DDQN-Q) as the regression target "
-            "(disabled by default)."
-        ),
-    )
-    parser.add_argument(
-        "--bellman-alpha",
-        type=float,
-        default=0.1,
-        help="Alpha used by --stochastic-bellman-update (default: 0.1).",
-    )
-    parser.add_argument(
-        "--gamma-shaping",
-        type=_discount_factor,
-        default=1.0,
-        help="Discount used in Phi shaping (default: 1.0).",
-    )
+    parser.add_argument( "--target-update-freq", type=int, default=1000, help="Hard target-network update interval used with --no-polyak.", )
+    parser.add_argument( "--network-type", choices=["standard", "dueling"], default="standard", help="Q-network architecture: standard MLP or dueling value/advantage streams.", )
+    parser.add_argument( "--stochastic-bellman-update", action=argparse.BooleanOptionalAction, default=False, help=( "Use Q <- Q + alpha*(target_DDQN-Q) as the regression target " "(disabled by default)." ), )
+    parser.add_argument( "--bellman-alpha", type=float, default=0.1, help="Alpha used by --stochastic-bellman-update (default: 0.1).", )
+    parser.add_argument( "--gamma-shaping", type=_discount_factor, default=1.0, help="Discount used in Phi shaping (default: 1.0).", )
     parser.add_argument("--no-shaping", action="store_true")
     parser.add_argument("--post-process", action="store_true")
     main(parser.parse_args())

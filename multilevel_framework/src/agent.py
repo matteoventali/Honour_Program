@@ -1,6 +1,7 @@
 import numpy as np
 import random as ran
 import os
+import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,12 +22,7 @@ class QNetwork(nn.Module):
 class DuelingQNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(DuelingQNetwork, self).__init__()
-        self.feature = nn.Sequential(
-            nn.Linear(state_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-        )
+        self.feature = nn.Sequential( nn.Linear(state_dim, 128), nn.ReLU(), nn.Linear(128, 128), nn.ReLU(), )
         self.value_stream = nn.Linear(128, 1)
         self.advantage_stream = nn.Linear(128, action_dim)
 
@@ -90,23 +86,7 @@ class ReplayBuffer:
         return float(self.phase_counts[q_index] / len(self.buffer))
 
 class HierarchicalDQNLearner:
-    def __init__(
-        self,
-        env,
-        abstract_mdp=None,
-        max_episodes=1000,
-        eps_decay=0.995,
-        gamma=0.99,
-        policy_name="policy",
-        extra_state_dims=0,
-        use_polyak=True,
-        tau=0.005,
-        target_update_freq=1000,
-        network_type="standard",
-        policy_dir="policy",
-        stochastic_bellman_update=False,
-        bellman_alpha=0.1,
-    ):
+    def __init__( self, env, abstract_mdp=None, max_episodes=1000, eps_decay=0.995, gamma=0.99, policy_name="policy", extra_state_dims=0, use_polyak=True, tau=0.005, target_update_freq=1000, network_type="standard", policy_dir="policy", stochastic_bellman_update=False, bellman_alpha=0.1, ):
         if extra_state_dims < 0:
             raise ValueError("extra_state_dims cannot be negative")
         if not 0.0 < tau <= 1.0:
@@ -203,7 +183,114 @@ class HierarchicalDQNLearner:
 
     def _save_policy(self):
         os.makedirs(self.policy_dir, exist_ok=True)
-        torch.save(
-            self.policy_net.state_dict(),
-            os.path.join(self.policy_dir, self.policy_name),
-        )
+        torch.save( self.policy_net.state_dict(), os.path.join(self.policy_dir, self.policy_name), )
+
+
+class TabularQLearner:
+    """Sparse online Q-learning over discretized LunarLander and DFA states."""
+
+    PHYSICAL_BINS = ((-0.8, -0.5, -0.2, 0.0, 0.2, 0.5, 0.8), (0.2, 0.5, 0.8, 1.0, 1.2, 1.5), (-0.3, -0.1, 0.1, 0.3), (-0.3, -0.1, 0.1, 0.3), (-0.2, 0.0, 0.2), (-0.2, 0.0, 0.2))
+
+    def __init__(self, env, num_phases, eps_decay=0.995, gamma=0.99, alpha=0.1, policy_name="policy", policy_dir="policy", random_seed=None):
+        if num_phases <= 0:
+            raise ValueError("num_phases must be greater than zero")
+        if not 0.0 < alpha <= 1.0:
+            raise ValueError("alpha must be in the interval (0, 1]")
+        self.env = env
+        self.num_phases = num_phases
+        self.gamma = gamma
+        self.alpha = alpha
+        self.eps = 1.0
+        self.eps_min = 0.01
+        self.eps_decay = eps_decay
+        self.policy_name = policy_name
+        self.policy_dir = os.fspath(policy_dir)
+        self.action_dim = env.action_space.n
+        self.algo_name = "Tabular Q-learning"
+        self.random_rng = ran.Random(random_seed)
+        self.q_table = {}
+        self.visited_states = set()
+        self.updated_state_actions = set()
+        self.total_updates = 0
+        self.positive_updates = 0
+        self.memory = ReplayBuffer(capacity=300000, num_phases=num_phases)
+        self.reset_diagnostics()
+
+    def state_key(self, augmented_state):
+        state = np.asarray(augmented_state, dtype=np.float64)
+        expected_size = 8 + self.num_phases
+        if state.size != expected_size:
+            raise ValueError(f"Expected augmented state size {expected_size}, received {state.size}")
+        physical = tuple(int(np.digitize(state[index], bins)) for index, bins in enumerate(self.PHYSICAL_BINS))
+        contacts = (int(state[6] >= 0.5), int(state[7] >= 0.5))
+        phase_index = int(np.argmax(state[-self.num_phases:]))
+        return physical + contacts + (phase_index,)
+
+    def _values(self, key, create=True):
+        values = self.q_table.get(key)
+        if values is None and create:
+            values = np.zeros(self.action_dim, dtype=np.float64)
+            self.q_table[key] = values
+        return values
+
+    def greedy_action(self, state, return_known=False):
+        key = self.state_key(state)
+        values = self._values(key, create=False)
+        known = values is not None
+        candidates = list(range(self.action_dim)) if values is None else np.flatnonzero(np.isclose(values, np.max(values))).tolist()
+        action = self.random_rng.choice(candidates)
+        return (action, known) if return_known else action
+
+    def select_action(self, state):
+        return self.random_rng.randrange(self.action_dim) if self.random_rng.random() < self.eps else self.greedy_action(state)
+
+    def update(self, state, action, reward, next_state, terminal):
+        state_key = self.state_key(state)
+        next_key = self.state_key(next_state)
+        self.visited_states.update((state_key, next_key))
+        self.updated_state_actions.add((state_key, int(action)))
+        values = self._values(state_key)
+        next_values = self._values(next_key)
+        target = float(reward) if terminal else float(reward) + self.gamma * float(np.max(next_values))
+        td_error = target - values[action]
+        values[action] += self.alpha * td_error
+        self.total_updates += 1
+        self.positive_updates += int(reward > 0)
+        self._diagnostics["updates"] += 1
+        self._diagnostics["positive_updates"] += int(reward > 0)
+        self._diagnostics["abs_td_error_sum"] += abs(td_error)
+        self._diagnostics["max_abs_td_error"] = max(self._diagnostics["max_abs_td_error"], abs(td_error))
+
+    def metrics_snapshot(self):
+        possible_pairs = len(self.visited_states) * self.action_dim
+        return {"table_size": len(self.q_table), "visited_states": len(self.visited_states), "updated_state_actions": len(self.updated_state_actions), "state_action_coverage": len(self.updated_state_actions) / possible_pairs if possible_pairs else 0.0, "positive_updates": self.positive_updates}
+
+    def reset_diagnostics(self):
+        self._diagnostics = {"updates": 0, "positive_updates": 0, "abs_td_error_sum": 0.0, "max_abs_td_error": 0.0}
+
+    def consume_diagnostics(self):
+        diagnostics = self._diagnostics
+        updates = diagnostics["updates"]
+        result = {"updates": updates, "positive_update_fraction": diagnostics["positive_updates"] / updates if updates else 0.0, "mean_abs_td_error": diagnostics["abs_td_error_sum"] / updates if updates else 0.0, "max_abs_td_error": diagnostics["max_abs_td_error"]}
+        self.reset_diagnostics()
+        return result
+
+    def _save_policy(self):
+        destination = os.path.join(self.policy_dir, self.policy_name)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        serializable_table = {key: values.tolist() for key, values in self.q_table.items()}
+        with open(destination, "wb") as policy_file:
+            pickle.dump({"q_table": serializable_table, "num_phases": self.num_phases, "gamma": self.gamma, "alpha": self.alpha, "physical_bins": self.PHYSICAL_BINS}, policy_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def load_policy(self, policy_path=None):
+        source = os.fspath(policy_path) if policy_path is not None else os.path.join(self.policy_dir, self.policy_name)
+        with open(source, "rb") as policy_file:
+            checkpoint = pickle.load(policy_file)
+        if checkpoint.get("num_phases") != self.num_phases:
+            raise ValueError("Tabular checkpoint DFA-state count does not match the learner")
+        saved_bins = tuple(tuple(boundaries) for boundaries in checkpoint.get("physical_bins", ()))
+        if saved_bins != self.PHYSICAL_BINS:
+            raise ValueError("Tabular checkpoint discretization does not match the learner")
+        self.q_table = {tuple(key): np.asarray(values, dtype=np.float64) for key, values in checkpoint["q_table"].items()}
+        self.gamma = float(checkpoint["gamma"])
+        self.alpha = float(checkpoint["alpha"])
